@@ -1,0 +1,32 @@
+import { TimelineResolvedObject } from './superfly-timeline';
+export interface Mappings {
+    [layerName: string]: Mapping;
+}
+export interface Mapping {
+    device: DeviceType;
+    deviceId: string;
+    channel?: number;
+    layer?: number;
+}
+export interface MappingAbstract extends Mapping {
+    device: DeviceType.ABSTRACT;
+}
+export declare enum DeviceType {
+    ABSTRACT = 0,
+    CASPARCG = 1,
+    ATEM = 2,
+    LAWO = 3,
+    HTTPSEND = 4,
+    PANASONIC_PTZ = 5,
+    HYPERDECK = 7,
+    PHAROS = 8,
+    OSC = 9
+}
+export interface DeviceOptions {
+    type: DeviceType;
+    options?: {};
+}
+export interface TimelineResolvedObjectExtended extends TimelineResolvedObject {
+    isBackground?: boolean;
+    originalLLayer?: string | number;
+}
