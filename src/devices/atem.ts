@@ -147,7 +147,8 @@ export class AtemDevice extends DeviceWithState<DeviceState> {
 			this.emit('info', 'Atem not initialized yet')
 			return
 		}
-		let oldState: DeviceState = (this.getStateBefore(newState.time) || { state: this._getDefaultState() }).state
+		let previousState = Math.max(this.getCurrentTime(), newState.time)
+		let oldState: DeviceState = (this.getStateBefore(previousState) || { state: this._getDefaultState() }).state
 
 		let oldAtemState = oldState
 		let newAtemState = this.convertStateToAtem(newState)
@@ -165,7 +166,7 @@ export class AtemDevice extends DeviceWithState<DeviceState> {
 		let commandsToAchieveState: Array<AtemCommandWithContext> = this._diffStates(oldAtemState, newAtemState)
 
 		// clear any queued commands later than this time:
-		this._doOnTime.clearQueueNowAndAfter(newState.time)
+		this._doOnTime.clearQueueNowAndAfter(previousState)
 		// add the new commands to the queue:
 		this._addToQueue(commandsToAchieveState, newState.time)
 
