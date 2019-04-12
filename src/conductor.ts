@@ -709,18 +709,20 @@ export class Conductor extends EventEmitter {
 				}
 			})
 			_.each(sentCallbacksOld, (cb, callBackId: string) => {
-				if (cb.callBackStopped) {
-					if (!sentCallbacksNew[callBackId]) {
-						// Object has stopped playing
-						this._queueCallback({
-							type: 'start',
-							time: tlState.time,
-							id: cb.id,
-							callBack: cb.callBackStopped,
-							callBackData: cb.callBackData
-						})
+				this._doOnTime.queue(tlState.time, () => {
+					if (cb.callBackStopped) {
+						if (!sentCallbacksNew[callBackId]) {
+							// Object has stopped playing
+							this._queueCallback({
+								type: 'stop',
+								time: tlState.time,
+								id: cb.id,
+								callBack: cb.callBackStopped,
+								callBackData: cb.callBackData
+							})
+						}
 					}
-				}
+				})
 			})
 			this._sentCallbacks = sentCallbacksNew
 
