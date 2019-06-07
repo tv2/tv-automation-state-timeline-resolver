@@ -44,6 +44,7 @@ import * as request from 'request'
 
 const MAX_TIMESYNC_TRIES = 5
 const MAX_TIMESYNC_DURATION = 40
+const LOADBG_RETRY_TIME = 5 * 1000
 export interface CasparCGDeviceOptions extends DeviceOptions {
 	options?: {
 		commandReceiver?: CommandReceiver
@@ -70,6 +71,8 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> {
 	private _doOnTime: DoOnTime
 	private _connectionOptions?: CasparCGOptions
 	private _connected: boolean = false
+
+	private _loadBgReloadStatus: {[channelLayer: string]: true} = {}
 
 	constructor (deviceId: string, deviceOptions: CasparCGDeviceOptions, options) {
 		super(deviceId, deviceOptions, options)
@@ -299,6 +302,10 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> {
 
 						channelLayout:	mediaObj.content.channelLayout
 					})
+
+					// @todo: Make permanent:
+					stateLayer['retryOnFail'] = mediaObj.content.retryOnFail
+
 				} else if (layer.content.type === TimelineContentTypeCasparCg.IP) {
 
 					const ipObj = layer as any as TimelineObjCCGIP
@@ -701,6 +708,59 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> {
 				delete this._queue[resCommand.token]
 			}
 		}).catch((error) => {
+
+			// Check if it's a LoadBgCommand to be re-sent:
+			if (
+				cmd &&
+				cmd.name === 'LoadBgCommand' // is a LoadBgCommand
+			) {
+				if (
+					error &&
+					error.response &&
+					error.response.code === 404 // the response is 404 - file not found
+				) {
+					const { channel, layer } = this._getStateLayerFromCommand(cmd, this.getCurrentTime())
+
+					if (
+						channel &&
+						layer &&
+						layer.nextUp &&
+						layer.nextUp['retryOnFail'] &&
+						layer.nextUp.media === cmd['_objectParams'].media
+					) {
+
+						const channelLayer = channel.channelNo + '_' + layer.layerNo
+						if (!this._loadBgReloadStatus[channelLayer]) {
+							this._loadBgReloadStatus[channelLayer] = true
+
+							this._doOnTime.queue(
+								this.getCurrentTime() + LOADBG_RETRY_TIME,
+								undefined,
+								(c: {command: CommandNS.IAMCPCommand, context: string, layerId: string}) => {
+									delete this._loadBgReloadStatus[channelLayer]
+
+									// Check state again, perhaps it has changed since last time?
+									const { channel, layer } = this._getStateLayerFromCommand(cmd, this.getCurrentTime())
+									if (
+										channel &&
+										layer &&
+										layer.nextUp &&
+										layer.nextUp['retryOnFail'] &&
+										layer.nextUp.media === cmd['_objectParams'].media
+									) {
+										return this._doCommand(c.command, c.context, c.layerId)
+									} else {
+										return Promise.resolve()
+									}
+								},
+								{ command: cmd, context: context, layerId: timelineObjId }
+							)
+							return
+						}
+					}
+				}
+			}
+
 			let errorString = ''
 			if (error && error.response && error.response.code === 404) {
 				errorString = `404: File not found`
@@ -722,7 +782,7 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> {
 			} else if (cmd.payload && !_.isEmpty(cmd.payload)) {
 				errorString += ', payload: ' + JSON.stringify(cmd.payload)
 			}
-			console.log('commandError', errorString)
+
 			this.emit('commandError', new Error(errorString), cwc)
 			if (cmd.name === 'ScheduleSetCommand') {
 				// delete this._queue[cmd.getParam('command').token]
@@ -757,5 +817,32 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> {
 	}
 	private _connectionChanged () {
 		this.emit('connectionChanged', this.getStatus())
+	}
+	private _getStateLayerFromCommand (cmd: CommandNS.IAMCPCommand, time: number): { channel: StateNS.Channel | undefined, layer: StateNS.ILayerBase | undefined } {
+		let channel: StateNS.Channel | undefined
+		let layer: StateNS.ILayerBase | undefined
+		if (
+			cmd &&
+			cmd.name &&
+			cmd['_objectParams']
+		) {
+			const channelNo = cmd['_objectParams'].channel
+			const layerNo = cmd['_objectParams'].layer
+			if (channelNo && layerNo) {
+				const state = this.getStateBefore(time)
+				if (state) {
+					const casparState = this.convertStateToCaspar(state.state)
+
+					channel = casparState.channels[channelNo]
+					if (channel) {
+						layer = channel.layers[layerNo]
+					}
+				}
+			}
+		}
+		return {
+			channel,
+			layer
+		}
 	}
 }

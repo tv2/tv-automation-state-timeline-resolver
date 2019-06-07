@@ -91,6 +91,10 @@ export interface TimelineObjCCGMedia extends TimelineObjCasparCGBase {
 
 		/** If true, the startTime won't be used to SEEK to the correct place in the media */
 		noStarttime?: boolean
+
+		/** If true, LoadBg commands will retry if failed */
+		retryOnFail?: boolean
+
 	} & TimelineObjCCGProducerContentBase
 }
 export interface TimelineObjCCGIP extends TimelineObjCasparCGBase {
