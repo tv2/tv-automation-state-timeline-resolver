@@ -1,0 +1,167 @@
+/// <reference types="node" />
+import { TimelineState } from 'superfly-timeline';
+import { Mappings, DeviceType, DeviceOptions, ExpectedPlayoutItemContent } from '../types/src';
+import { EventEmitter } from 'events';
+import { CommandReport, DoOnTime } from '../doOnTime';
+export interface DeviceCommand {
+    time: number;
+    deviceId: string;
+    command: any;
+}
+export interface DeviceCommandContainer {
+    deviceId: string;
+    commands: Array<DeviceCommand>;
+}
+export interface CommandWithContext {
+    context: any;
+    timelineObjId: string;
+    command: any;
+}
+export declare enum StatusCode {
+    UNKNOWN = 0,
+    GOOD = 1,
+    WARNING_MINOR = 2,
+    WARNING_MAJOR = 3,
+    BAD = 4,
+    FATAL = 5
+}
+export interface DeviceStatus {
+    statusCode: StatusCode;
+    messages?: Array<string>;
+}
+export declare function literal<T>(o: T): T;
+export interface DeviceClassOptions {
+    getCurrentTime: () => number;
+}
+/**
+ * Base class for all Devices to inherit from. Defines the API that the conductor
+ * class will use.
+ */
+export declare abstract class Device extends EventEmitter {
+    private _getCurrentTime;
+    private _deviceId;
+    private _mappings;
+    private _currentTimeDiff;
+    private _currentTimeUpdated;
+    private _instanceId;
+    private _startTime;
+    useDirectTime: boolean;
+    protected _deviceOptions: DeviceOptions;
+    protected _reportAllCommands: boolean;
+    constructor(deviceId: string, deviceOptions: DeviceOptions, options: DeviceClassOptions);
+    /**
+     * Connect to the device, resolve the promise when ready.
+     * @param connectionOptions Device-specific options
+     */
+    abstract init(connectionOptions: any): Promise<boolean>;
+    terminate(): Promise<boolean>;
+    getCurrentTime(): number;
+    /** Called from Conductor when a new state is about to be handled soon */
+    abstract prepareForHandleState(newStateTime: number): any;
+    /** Called from Conductor when a new state is to be handled */
+    abstract handleState(newState: TimelineState): any;
+    /**
+     * Clear any scheduled commands after this time
+     * @param clearAfterTime
+     */
+    abstract clearFuture(clearAfterTime: number): any;
+    abstract readonly canConnect: boolean;
+    abstract readonly connected: boolean;
+    /**
+     * The makeReady method could be triggered at a time before broadcast
+     * Whenever we know that the user want's to make sure things are ready for broadcast
+     * The exact implementation differ between different devices
+     * @param okToDestroyStuff If true, the device may do things that might affect the output (temporarily)
+     */
+    makeReady(_okToDestroyStuff?: boolean): Promise<void>;
+    /**
+     * The standDown event could be triggered at a time after broadcast
+     * The exact implementation differ between different devices
+     * @param okToDestroyStuff If true, the device may do things that might affect the output (temporarily)
+     */
+    standDown(_okToDestroyStuff?: boolean): Promise<void>;
+    abstract getStatus(): DeviceStatus;
+    getMapping(): Mappings;
+    setMapping(mappings: Mappings): void;
+    readonly deviceId: string;
+    /**
+     * A human-readable name for this device
+     */
+    abstract readonly deviceName: string;
+    abstract readonly deviceType: DeviceType;
+    readonly deviceOptions: DeviceOptions;
+    readonly supportsExpectedPlayoutItems: boolean;
+    handleExpectedPlayoutItems(_expectedPlayoutItems: Array<ExpectedPlayoutItemContent>): void;
+    private _updateCurrentTime;
+    on(event: 'info', listener: (info: string) => void): this;
+    on(event: 'warning', listener: (warning: string) => void): this;
+    on(event: 'error', listener: (context: string, err: Error) => void): this;
+    on(event: 'debug', listener: (...debug: any[]) => void): this;
+    /** The connection status has changed */
+    on(event: 'connectionChanged', listener: (status: DeviceStatus) => void): this;
+    /** A message to the resolver that something has happened that warrants a reset of the resolver (to re-run it again) */
+    on(event: 'resetResolver', listener: () => void): this;
+    /** A report that a command was sent too late */
+    on(event: 'slowCommand', listener: (commandInfo: string) => void): this;
+    /** Something went wrong when executing a command  */
+    on(event: 'commandError', listener: (error: Error, context: CommandWithContext) => void): this;
+    emit(event: 'info', info: string): boolean;
+    emit(event: 'warning', warning: string): boolean;
+    emit(event: 'error', context: string, err: Error): boolean;
+    emit(event: 'debug', ...debug: any[]): boolean;
+    emit(event: 'connectionChanged', status: DeviceStatus): boolean;
+    emit(event: 'resetResolver'): boolean;
+    emit(event: 'slowCommand', commandInfo: string): boolean;
+    emit(event: 'commandReport', commandReport: CommandReport): boolean;
+    emit(event: 'commandError', error: Error, context: CommandWithContext): boolean;
+    readonly instanceId: number;
+    readonly startTime: number;
+    protected handleDoOnTime(doOnTime: DoOnTime, deviceType: string): void;
+}
+/**
+ * Basic class that devices with state tracking can inherit from. Defines some
+ * extra convenience methods for tracking state while inheriting all other methods
+ * from the Device class.
+ */
+export declare abstract class DeviceWithState<T> extends Device {
+    private _states;
+    private _setStateCount;
+    /**
+     * Get the last known state before a point time. Useful for creating device
+     * diffs.
+     * @param time
+     */
+    getStateBefore(time: number): {
+        state: T;
+        time: number;
+    } | null;
+    /**
+     * Get the last known state at a point in time. Useful for creating device
+     * diffs.
+     *
+     * @todo is this literally the same as "getStateBefore(time + 1)"?
+     *
+     * @param time
+     */
+    getState(time?: number): {
+        state: T;
+        time: number;
+    } | null;
+    /**
+     * Saves a state on a certain time point. Overwrites any previous state
+     * saved at the same time. Removes any state after this time point.
+     * @param state
+     * @param time
+     */
+    setState(state: T, time: number): void;
+    /**
+     * Sets a windows outside of which all states will be removed.
+     * @param removeBeforeTime
+     * @param removeAfterTime
+     */
+    cleanUpStates(removeBeforeTime: number, removeAfterTime: number): void;
+    /**
+     * Removes all states
+     */
+    clearStates(): void;
+}
