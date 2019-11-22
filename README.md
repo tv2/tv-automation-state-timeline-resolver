@@ -2,6 +2,7 @@
 # Timeline State Resolver
 
 [![CircleCI](https://circleci.com/gh/nrkno/tv-automation-state-timeline-resolver.svg?style=svg)](https://circleci.com/gh/nrkno/tv-automation-state-timeline-resolver)
+[![codecov](https://codecov.io/gh/nrkno/tv-automation-state-timeline-resolver/branch/master/graph/badge.svg)](https://codecov.io/gh/nrkno/tv-automation-state-timeline-resolver)
 
 This is a part of the [**Sofie** TV News Studio Automation System](https://github.com/nrkno/Sofie-TV-automation/).
 
@@ -281,6 +282,32 @@ Activate channel 3 on sisyfos pgm output
 		type: TimelineContentTypeSisyfos.SISYFOS,
 
 		faderLevel: 0.75
+	}
+}
+//LABEL:
+{
+	id: 'channel3',
+	enable: {
+		start: 'now'	
+	},
+	layer: 'myLayerSisyfosScene1',
+	content: {
+		deviceType: DeviceType.SISYFOS,
+		type: TimelineContentTypeSisyfos.SISYFOS,
+		label: 'SERVER B'
+	}
+}
+//VISIBLE: (shows or hide a fader)
+{
+	id: 'channel3',
+	enable: {
+		start: 'now'	
+	},
+	layer: 'myLayerSisyfosScene1',
+	content: {
+		deviceType: DeviceType.SISYFOS,
+		type: TimelineContentTypeSisyfos.SISYFOS,
+		visible: false // false: hide - true: show
 	}
 }
 ```

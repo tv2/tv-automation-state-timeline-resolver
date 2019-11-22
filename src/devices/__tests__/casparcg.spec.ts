@@ -5,7 +5,6 @@ import {
 	Mappings,
 	DeviceType,
 	ChannelFormat,
-	TimelineObjCasparCGAny,
 	Transition,
 	Ease,
 	Direction
@@ -14,12 +13,12 @@ import { MockTime } from '../../__tests__/mockTime'
 import { getMockCall } from '../../__tests__/lib'
 
 // usage logCalls(commandReceiver0)
-function logCalls (fcn) {
-	console.log('calls')
-	fcn.mock.calls.forEach((call) => {
-		console.log(call[0], call[1])
-	})
-}
+// function logCalls (fcn) {
+// 	console.log('calls')
+// 	fcn.mock.calls.forEach((call) => {
+// 		console.log(call[0], call[1])
+// 	})
+// }
 
 describe('CasparCG', () => {
 	let mockTime = new MockTime()
@@ -31,7 +30,7 @@ describe('CasparCG', () => {
 	})
 	test('CasparCG: Play AMB for 60s', async () => {
 
-		let commandReceiver0 = jest.fn(() => {
+		const commandReceiver0: any = jest.fn(() => {
 			return Promise.resolve()
 		})
 		let myLayerMapping0: MappingCasparCG = {
@@ -53,6 +52,7 @@ describe('CasparCG', () => {
 			type: DeviceType.CASPARCG,
 			options: {
 				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
 				useScheduling: true
 			}
 		})
@@ -116,7 +116,7 @@ describe('CasparCG', () => {
 	})
 	test('CasparCG: Play AMB for 60s, start at 10s', async () => {
 
-		let commandReceiver0 = jest.fn(() => {
+		const commandReceiver0: any = jest.fn(() => {
 			return Promise.resolve()
 		})
 		let myLayerMapping0: MappingCasparCG = {
@@ -138,6 +138,7 @@ describe('CasparCG', () => {
 			type: DeviceType.CASPARCG,
 			options: {
 				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
 				useScheduling: true
 			}
 		})
@@ -190,7 +191,7 @@ describe('CasparCG', () => {
 
 	test('CasparCG: Play IP input for 60s', async () => {
 
-		let commandReceiver0 = jest.fn(() => {
+		const commandReceiver0: any = jest.fn(() => {
 			return Promise.resolve()
 		})
 		let myLayerMapping0: MappingCasparCG = {
@@ -212,6 +213,7 @@ describe('CasparCG', () => {
 			type: DeviceType.CASPARCG,
 			options: {
 				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
 				useScheduling: false
 			}
 		})
@@ -263,7 +265,7 @@ describe('CasparCG', () => {
 
 	test('CasparCG: Play decklink input for 60s', async () => {
 
-		let commandReceiver0 = jest.fn(() => {
+		const commandReceiver0: any = jest.fn(() => {
 			return Promise.resolve()
 		})
 		let myLayerMapping0: MappingCasparCG = {
@@ -285,6 +287,7 @@ describe('CasparCG', () => {
 			type: DeviceType.CASPARCG,
 			options: {
 				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
 				useScheduling: true
 			}
 		})
@@ -350,7 +353,7 @@ describe('CasparCG', () => {
 
 	test('CasparCG: Play template for 60s', async () => {
 
-		let commandReceiver0 = jest.fn(() => {
+		const commandReceiver0: any = jest.fn(() => {
 			return Promise.resolve()
 		})
 		let myLayerMapping0: MappingCasparCG = {
@@ -372,6 +375,7 @@ describe('CasparCG', () => {
 			type: DeviceType.CASPARCG,
 			options: {
 				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
 				useScheduling: true
 			}
 		})
@@ -434,7 +438,7 @@ describe('CasparCG', () => {
 
 	test('CasparCG: Play template for 60s', async () => {
 
-		let commandReceiver0 = jest.fn(() => {
+		const commandReceiver0: any = jest.fn(() => {
 			return Promise.resolve()
 		})
 		let myLayerMapping0: MappingCasparCG = {
@@ -456,6 +460,7 @@ describe('CasparCG', () => {
 			type: DeviceType.CASPARCG,
 			options: {
 				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
 				useScheduling: true
 			}
 		})
@@ -512,7 +517,7 @@ describe('CasparCG', () => {
 
 	test('CasparCG: Play 2 routes for 60s', async () => {
 
-		let commandReceiver0 = jest.fn(() => {
+		const commandReceiver0: any = jest.fn(() => {
 			return Promise.resolve()
 		})
 		let myLayerMapping0: MappingCasparCG = {
@@ -541,6 +546,7 @@ describe('CasparCG', () => {
 			type: DeviceType.CASPARCG,
 			options: {
 				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
 				useScheduling: true
 			}
 		})
@@ -629,7 +635,7 @@ describe('CasparCG', () => {
 
 	test('CasparCG: AMB with transitions', async () => {
 
-		let commandReceiver0 = jest.fn(() => {
+		const commandReceiver0: any = jest.fn(() => {
 			return Promise.resolve()
 		})
 		let myLayerMapping0: MappingCasparCG = {
@@ -651,6 +657,7 @@ describe('CasparCG', () => {
 			type: DeviceType.CASPARCG,
 			options: {
 				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
 				useScheduling: true
 			}
 		})
@@ -734,7 +741,7 @@ describe('CasparCG', () => {
 
 	test('CasparCG: Mixer commands', async () => {
 
-		let commandReceiver0 = jest.fn(() => {
+		const commandReceiver0: any = jest.fn(() => {
 			return Promise.resolve()
 		})
 		let myLayerMapping0: MappingCasparCG = {
@@ -758,6 +765,7 @@ describe('CasparCG', () => {
 			type: DeviceType.CASPARCG,
 			options: {
 				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
 				useScheduling: true
 			}
 		})
@@ -871,7 +879,7 @@ describe('CasparCG', () => {
 
 	test('CasparCG: loadbg command', async () => {
 
-		let commandReceiver0 = jest.fn(() => {
+		const commandReceiver0: any = jest.fn(() => {
 			return Promise.resolve()
 		})
 		let myLayerMapping0: MappingCasparCG = {
@@ -893,6 +901,7 @@ describe('CasparCG', () => {
 			type: DeviceType.CASPARCG,
 			options: {
 				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
 				timeBase: 50,
 				useScheduling: true
 			}
@@ -952,7 +961,8 @@ describe('CasparCG', () => {
 			clip: 'AMB',
 			auto: false,
 			loop: true,
-			seek: 0
+			seek: 0,
+			clearOn404: true
 		})
 		expect(getMockCall(commandReceiver0, 4, 1).name).toEqual('ScheduleSetCommand')
 		expect(getMockCall(commandReceiver0, 4, 1)._objectParams.timecode).toEqual('00:00:11:10') // 11s 10 frames == 1.2 s @50fpx
@@ -975,9 +985,117 @@ describe('CasparCG', () => {
 
 	})
 
+	test('CasparCG: load command', async () => {
+
+		const commandReceiver0: any = jest.fn(() => {
+			return Promise.resolve()
+		})
+		let myLayerMapping0: MappingCasparCG = {
+			device: DeviceType.CASPARCG,
+			deviceId: 'myCCG',
+			channel: 2,
+			layer: 42,
+			previewWhenNotOnAir: true
+		}
+		let myLayerMapping: Mappings = {
+			'myLayer0': myLayerMapping0
+		}
+
+		let myConductor = new Conductor({
+			initializeAsClear: true,
+			getCurrentTime: mockTime.getCurrentTime
+		})
+		await myConductor.init()
+		await myConductor.addDevice('myCCG', {
+			type: DeviceType.CASPARCG,
+			options: {
+				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
+				timeBase: 50,
+				useScheduling: true
+			}
+		})
+		await myConductor.setMapping(myLayerMapping)
+
+		expect(mockTime.getCurrentTime()).toEqual(10000)
+
+		await mockTime.advanceTimeToTicks(10050)
+		expect(commandReceiver0).toHaveBeenCalledTimes(3)
+		expect(getMockCall(commandReceiver0, 0, 1).name).toEqual('TimeCommand')
+		expect(getMockCall(commandReceiver0, 1, 1).name).toEqual('TimeCommand')
+		expect(getMockCall(commandReceiver0, 2, 1).name).toEqual('TimeCommand')
+
+		myConductor.timeline = [
+			{
+				id: 'obj0_bg',
+				enable: {
+					start: 10000,
+					duration: 1200
+				},
+				layer: 'myLayer0',
+				content: {
+					deviceType: DeviceType.CASPARCG,
+					type: TimelineContentTypeCasparCg.MEDIA,
+
+					file: 'AMB',
+					loop: true
+				},
+				// @ts-ignore
+				isLookahead: true
+			},
+			{
+				id: 'obj0',
+				enable: {
+					start: 11200, // 1.2 seconds in the future
+					duration: 2000
+				},
+				layer: 'myLayer0',
+				content: {
+					deviceType: DeviceType.CASPARCG,
+					type: TimelineContentTypeCasparCg.MEDIA,
+
+					file: 'AMB',
+					loop: true
+				}
+			}
+		]
+
+		await mockTime.advanceTimeTicks(100)
+		expect(commandReceiver0).toHaveBeenCalledTimes(5)
+		expect(getMockCall(commandReceiver0, 3, 1).name).toEqual('LoadCommand')
+		expect(getMockCall(commandReceiver0, 3, 1)._objectParams).toMatchObject({
+			channel: 2,
+			layer: 42,
+			noClear: false,
+			clip: 'AMB',
+			loop: true,
+			seek: 0,
+			clearOn404: true
+		})
+		expect(getMockCall(commandReceiver0, 4, 1).name).toEqual('ScheduleSetCommand')
+		expect(getMockCall(commandReceiver0, 4, 1)._objectParams.timecode).toEqual('00:00:11:10') // 11s 10 frames == 1.2 s @50fpx
+
+		expect(getMockCall(commandReceiver0, 4, 1)._objectParams.command.name).toEqual('ResumeCommand')
+		expect(getMockCall(commandReceiver0, 4, 1)._objectParams.command._objectParams).toEqual({
+			channel: 2,
+			layer: 42,
+			noClear: false
+		})
+
+		await mockTime.advanceTimeTicks(2000)
+		expect(commandReceiver0).toHaveBeenCalledTimes(6)
+		expect(getMockCall(commandReceiver0, 5, 1).name).toEqual('ScheduleSetCommand')
+		expect(getMockCall(commandReceiver0, 5, 1)._objectParams.command.name).toEqual('ClearCommand')
+		expect(getMockCall(commandReceiver0, 5, 1)._objectParams.command._objectParams).toEqual({
+			channel: 2,
+			layer: 42
+		})
+
+	})
+
 	test('CasparCG: Schedule Play, then change my mind', async () => {
 
-		let commandReceiver0 = jest.fn(() => {
+		const commandReceiver0: any = jest.fn(() => {
 			return Promise.resolve()
 		})
 		let myLayerMapping0: MappingCasparCG = {
@@ -999,6 +1117,7 @@ describe('CasparCG', () => {
 			type: DeviceType.CASPARCG,
 			options: {
 				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
 				timeBase: 50,
 				useScheduling: true
 			}
@@ -1091,7 +1210,7 @@ describe('CasparCG', () => {
 	})
 	test('CasparCG: Play a looping video, then continue looping', async () => {
 
-		let commandReceiver0 = jest.fn(() => {
+		const commandReceiver0: any = jest.fn(() => {
 			return Promise.resolve()
 		})
 		let myLayerMapping0: MappingCasparCG = {
@@ -1113,6 +1232,7 @@ describe('CasparCG', () => {
 			type: DeviceType.CASPARCG,
 			options: {
 				commandReceiver: commandReceiver0,
+				host: '127.0.0.1',
 				timeBase: 50,
 				useScheduling: true
 			}

@@ -2,17 +2,25 @@ import { Mapping } from './mapping'
 import { TSRTimelineObjBase, DeviceType } from '.'
 
 export interface MappingCasparCG extends Mapping {
-	device: DeviceType.CASPARCG,
-	channel: number,
+	device: DeviceType.CASPARCG
+	channel: number
 	layer: number
+	previewWhenNotOnAir?: boolean
 }
 
 export interface CasparCGOptions {
-	host: string,
-	port: number,
-	useScheduling?: boolean, // whether to use the CasparCG-SCHEDULE command to run future commands, or the internal (backwards-compatible) command queue
-	launcherHost: string,
-	launcherPort: string
+	/** Host of CasparCG server */
+	host: string
+	/** Port of CasparCG Server */
+	port?: number
+
+	/** whether to use the CasparCG-SCHEDULE command to run future commands, or the internal (backwards-compatible) command queue */
+	useScheduling?: boolean
+	/* Timecode base of channel */
+	timeBase?: {[channel: string]: number} | number
+
+	launcherHost?: string,
+	launcherPort?: string
 }
 
 export enum TimelineContentTypeCasparCg { //  CasparCG-state
