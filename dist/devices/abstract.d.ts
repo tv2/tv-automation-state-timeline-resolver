@@ -1,11 +1,6 @@
-import { DeviceWithState, DeviceStatus } from './device';
-import { DeviceType, DeviceOptions } from '../types/src';
+import { DeviceWithState, DeviceStatus, IDevice } from './device';
+import { DeviceType, AbstractOptions, DeviceOptionsAbstract } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
-export interface AbstractDeviceOptions extends DeviceOptions {
-    options?: {
-        commandReceiver?: (time: number, cmd: any) => Promise<any>;
-    };
-}
 export interface Command {
     commandName: string;
     timelineObjId: string;
@@ -14,14 +9,20 @@ export interface Command {
 }
 declare type CommandContent = any;
 declare type CommandContext = string;
-export declare class AbstractDevice extends DeviceWithState<TimelineState> {
+export interface DeviceOptionsAbstractInternal extends DeviceOptionsAbstract {
+    options: (DeviceOptionsAbstract['options'] & {
+        commandReceiver?: CommandReceiver;
+    });
+}
+export declare type CommandReceiver = (time: number, cmd: Command, context: CommandContext, timelineObjId: string) => Promise<any>;
+export declare class AbstractDevice extends DeviceWithState<TimelineState> implements IDevice {
     private _doOnTime;
     private _commandReceiver;
-    constructor(deviceId: string, deviceOptions: AbstractDeviceOptions, options: any);
+    constructor(deviceId: string, deviceOptions: DeviceOptionsAbstractInternal, options: any);
     /**
      * Initiates the connection with CasparCG through the ccg-connection lib.
      */
-    init(): Promise<boolean>;
+    init(_initOptions: AbstractOptions): Promise<boolean>;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime: number): void;
     /**

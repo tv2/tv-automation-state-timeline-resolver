@@ -46,16 +46,16 @@ class QuantelDevice extends device_1.DeviceWithState {
         }, doOnTime_1.SendMode.BURST, this._deviceOptions);
         this.handleDoOnTime(this._doOnTimeBurst, 'Quantel.burst');
     }
-    init(connectionOptions) {
+    init(initOptions) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            this._connectionOptions = connectionOptions;
-            if (!this._connectionOptions.gatewayUrl)
+            this._initOptions = initOptions;
+            if (!this._initOptions.gatewayUrl)
                 throw new Error('Quantel bad connection option: gatewayUrl');
-            if (!this._connectionOptions.ISAUrl)
+            if (!this._initOptions.ISAUrl)
                 throw new Error('Quantel bad connection option: ISAUrl');
-            if (!this._connectionOptions.serverId)
+            if (!this._initOptions.serverId)
                 throw new Error('Quantel bad connection option: serverId');
-            yield this._quantel.init(this._connectionOptions.gatewayUrl, this._connectionOptions.ISAUrl, this._connectionOptions.zoneId, this._connectionOptions.serverId);
+            yield this._quantel.init(this._initOptions.gatewayUrl, this._initOptions.ISAUrl, this._initOptions.zoneId, this._initOptions.serverId);
             this._quantel.monitorServerStatus((_connected) => {
                 this._connectionChanged();
             });

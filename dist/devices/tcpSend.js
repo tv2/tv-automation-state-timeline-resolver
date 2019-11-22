@@ -8,6 +8,9 @@ const src_1 = require("../types/src");
 const doOnTime_1 = require("../doOnTime");
 const TIMEOUT = 3000; // ms
 const RETRY_TIMEOUT = 5000; // ms
+/**
+ * This is a TCPSendDevice, it sends commands over tcp when it feels like it
+ */
 class TCPSendDevice extends device_1.DeviceWithState {
     constructor(deviceId, deviceOptions, options) {
         super(deviceId, deviceOptions, options);
@@ -25,11 +28,11 @@ class TCPSendDevice extends device_1.DeviceWithState {
         }, doOnTime_1.SendMode.IN_ORDER, this._deviceOptions);
         this.handleDoOnTime(this._doOnTime, 'TCPSend');
     }
-    init(options) {
-        this._makeReadyCommands = options.makeReadyCommands || [];
-        this._host = options.host;
-        this._port = options.port;
-        this._bufferEncoding = options.bufferEncoding;
+    init(initOptions) {
+        this._makeReadyCommands = initOptions.makeReadyCommands || [];
+        this._host = initOptions.host;
+        this._port = initOptions.port;
+        this._bufferEncoding = initOptions.bufferEncoding;
         return this._connectTCPClient()
             .then(() => {
             return true;

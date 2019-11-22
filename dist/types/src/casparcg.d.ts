@@ -4,13 +4,20 @@ export interface MappingCasparCG extends Mapping {
     device: DeviceType.CASPARCG;
     channel: number;
     layer: number;
+    previewWhenNotOnAir?: boolean;
 }
 export interface CasparCGOptions {
+    /** Host of CasparCG server */
     host: string;
-    port: number;
+    /** Port of CasparCG Server */
+    port?: number;
+    /** whether to use the CasparCG-SCHEDULE command to run future commands, or the internal (backwards-compatible) command queue */
     useScheduling?: boolean;
-    launcherHost: string;
-    launcherPort: string;
+    timeBase?: {
+        [channel: string]: number;
+    } | number;
+    launcherHost?: string;
+    launcherPort?: string;
 }
 export declare enum TimelineContentTypeCasparCg {
     MEDIA = "media",

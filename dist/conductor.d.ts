@@ -1,8 +1,23 @@
 /// <reference types="node" />
 import { CommandWithContext } from './devices/device';
-import { Mappings, DeviceOptions, TSRTimeline } from './types/src';
+import { DeviceOptionsCasparCGInternal } from './devices/casparCG';
+import { DeviceOptionsAbstractInternal } from './devices/abstract';
+import { DeviceOptionsHTTPSendInternal } from './devices/httpSend';
+import { Mappings, TSRTimeline } from './types/src';
+import { DeviceOptionsAtemInternal } from './devices/atem';
 import { EventEmitter } from 'events';
+import { DeviceOptionsLawoInternal } from './devices/lawo';
+import { DeviceOptionsPanasonicPTZInternal } from './devices/panasonicPTZ';
+import { DeviceOptionsHyperdeckInternal } from './devices/hyperdeck';
+import { DeviceOptionsTCPSendInternal } from './devices/tcpSend';
+import { DeviceOptionsPharosInternal } from './devices/pharos';
+import { DeviceOptionsOSCInternal } from './devices/osc';
 import { DeviceContainer } from './devices/deviceContainer';
+import { DeviceOptionsHTTPWatcherInternal } from './devices/httpWatcher';
+import { DeviceOptionsQuantelInternal } from './devices/quantel';
+import { DeviceOptionsSisyfosInternal } from './devices/sisyfos';
+import { DeviceOptionsSingularLiveInternal } from './devices/singularLive';
+import { DeviceOptionsVizMSEInternal } from './devices/vizMSE';
 export { DeviceContainer };
 export { CommandWithContext };
 export declare const LOOKAHEADTIME = 5000;
@@ -92,7 +107,7 @@ export declare class Conductor extends EventEmitter {
      * @param deviceOptions The options used to initalize the device
      * @returns A promise that resolves with the created device, or rejects with an error message.
      */
-    addDevice(deviceId: any, deviceOptions: DeviceOptions): Promise<DeviceContainer>;
+    addDevice(deviceId: any, deviceOptions: DeviceOptionsAnyInternal): Promise<DeviceContainer>;
     /**
      * Safely remove a device
      * @param deviceId The id of the device to be removed
@@ -140,3 +155,4 @@ export declare class Conductor extends EventEmitter {
      */
     private getFilteredLayers;
 }
+export declare type DeviceOptionsAnyInternal = (DeviceOptionsAbstractInternal | DeviceOptionsCasparCGInternal | DeviceOptionsAtemInternal | DeviceOptionsLawoInternal | DeviceOptionsHTTPSendInternal | DeviceOptionsHTTPWatcherInternal | DeviceOptionsPanasonicPTZInternal | DeviceOptionsTCPSendInternal | DeviceOptionsHyperdeckInternal | DeviceOptionsPharosInternal | DeviceOptionsOSCInternal | DeviceOptionsSisyfosInternal | DeviceOptionsQuantelInternal | DeviceOptionsVizMSEInternal | DeviceOptionsSingularLiveInternal);

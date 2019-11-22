@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { Mapping } from './mapping';
 import { TSRTimelineObjBase, DeviceType } from '.';
 export interface MappingTCPSend extends Mapping {
@@ -13,7 +14,7 @@ export interface TCPSendOptions {
     makeReadyCommands?: TcpSendCommandContent[];
     host: string;
     port: number;
-    bufferEncoding?: string;
+    bufferEncoding?: BufferEncoding;
 }
 export declare enum TimelineContentTypeTcp {
     GET = "get",

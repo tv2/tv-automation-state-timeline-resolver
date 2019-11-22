@@ -1,12 +1,12 @@
-import { DeviceWithState, DeviceStatus } from './device';
-import { DeviceType, DeviceOptions, OSCMessageCommandContent, OSCOptions } from '../types/src';
+import { DeviceWithState, DeviceStatus, IDevice } from './device';
+import { DeviceType, OSCMessageCommandContent, OSCOptions, DeviceOptionsOSC } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 import * as osc from 'osc';
-export interface OSCMessageDeviceOptions extends DeviceOptions {
-    options?: {
+export interface DeviceOptionsOSCInternal extends DeviceOptionsOSC {
+    options: (DeviceOptionsOSC['options'] & {
         commandReceiver?: CommandReceiver;
         oscSender?: (msg: osc.OscMessage, address?: string | undefined, port?: number | undefined) => void;
-    };
+    });
 }
 export declare type CommandReceiver = (time: number, cmd: OSCMessageCommandContent, context: CommandContext, timelineObjId: string) => Promise<any>;
 declare type CommandContext = string;
@@ -19,15 +19,15 @@ interface OSCDeviceStateContent extends OSCMessageCommandContent {
 /**
  * This is a generic wrapper for any osc-enabled device.
  */
-export declare class OSCMessageDevice extends DeviceWithState<TimelineState> {
+export declare class OSCMessageDevice extends DeviceWithState<TimelineState> implements IDevice {
     private _doOnTime;
     private _oscClient;
     private transitions;
     private transitionInterval;
     private _commandReceiver;
     private _oscSender;
-    constructor(deviceId: string, deviceOptions: OSCMessageDeviceOptions, options: any);
-    init(options: OSCOptions): Promise<boolean>;
+    constructor(deviceId: string, deviceOptions: DeviceOptionsOSCInternal, options: any);
+    init(initOptions: OSCOptions): Promise<boolean>;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime: number): void;
     /**

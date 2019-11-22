@@ -28,12 +28,12 @@ class OSCMessageDevice extends device_1.DeviceWithState {
         }, doOnTime_1.SendMode.BURST, this._deviceOptions);
         this.handleDoOnTime(this._doOnTime, 'OSC');
     }
-    init(options) {
+    init(initOptions) {
         this._oscClient = new osc.UDPPort({
             localAddress: '0.0.0.0',
             localPort: 0,
-            remoteAddress: options.host,
-            remotePort: options.port,
+            remoteAddress: initOptions.host,
+            remotePort: initOptions.port,
             metadata: true
         });
         this._oscClient.open();

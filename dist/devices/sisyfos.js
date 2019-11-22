@@ -26,17 +26,21 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
         this._sisyfos.on('disconnected', () => {
             this._connectionChanged();
         });
+        this._sisyfos.on('mixerOnline', (onlineStatus) => {
+            this._sisyfos.setMixerOnline(onlineStatus);
+            this._connectionChanged();
+        });
         this._doOnTime = new doOnTime_1.DoOnTime(() => {
             return this.getCurrentTime();
         }, doOnTime_1.SendMode.BURST, this._deviceOptions);
         this.handleDoOnTime(this._doOnTime, 'Sisyfos');
     }
-    init(options) {
+    init(initOptions) {
         this._sisyfos.once('initialized', () => {
             this.setState(this.getDeviceState(), this.getCurrentTime());
             this.emit('resetResolver');
         });
-        return this._sisyfos.connect(options.host, options.port)
+        return this._sisyfos.connect(initOptions.host, initOptions.port)
             .then(() => true);
     }
     /** Called by the Conductor a bit before a .handleState is called */
@@ -90,6 +94,10 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             statusCode = device_1.StatusCode.BAD;
             messages.push(`Sisyfos device connection not initialized (restart required)`);
         }
+        if (!this._sisyfos.mixerOnline) {
+            statusCode = device_1.StatusCode.BAD;
+            messages.push(`Sisyfos has no connection to Audiomixer`);
+        }
         return {
             statusCode: statusCode,
             messages: messages
@@ -113,7 +121,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
         const deviceState = { channels: {} };
         for (const ch of Object.keys(deviceStateFromAPI.channels)) {
             const channelFromAPI = deviceStateFromAPI.channels[ch];
-            const channel = Object.assign(Object.assign({}, channelFromAPI), { faderLevel: 0.75, pgmOn: 0, pstOn: 0, label: '', tlObjIds: [] });
+            const channel = Object.assign(Object.assign({}, channelFromAPI), { faderLevel: 0.75, pgmOn: 0, pstOn: 0, label: '', visible: true, tlObjIds: [] });
             deviceState.channels[ch] = channel;
         }
         return deviceState;
@@ -132,7 +140,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             if (!foundMapping && layer.isLookahead && layer.lookaheadForLayer) {
                 foundMapping = this.getMapping()[layer.lookaheadForLayer];
             }
-            if (foundMapping) {
+            if (foundMapping && _.has(foundMapping, 'channel') && deviceState.channels[foundMapping.channel]) {
                 if (layer.isLookahead) {
                     deviceState.channels[foundMapping.channel].pstOn = layer.content.isPgm || 0;
                 }
@@ -142,11 +150,11 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                 if (layer.content.faderLevel !== undefined) {
                     deviceState.channels[foundMapping.channel].faderLevel = layer.content.faderLevel;
                 }
-                if (layer.content.fadeToBlack !== undefined) {
-                    deviceState.channels[foundMapping.channel].fadeToBlack = layer.content.fadeToBlack;
-                }
                 if (layer.content.label !== undefined) {
                     deviceState.channels[foundMapping.channel].label = layer.content.label;
+                }
+                if (layer.content.visible !== undefined) {
+                    deviceState.channels[foundMapping.channel].visible = layer.content.visible;
                 }
                 deviceState.channels[foundMapping.channel].tlObjIds.push(tlObject.id);
             }
@@ -185,7 +193,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             const oldChannel = oldOscSendState.channels[index];
             if (oldChannel && oldChannel.pgmOn !== newChannel.pgmOn) {
                 commands.push({
-                    context: 'Channel ${index} goes from "${oldChannel.pgmOn}" to "${newChannel.pgmOn}"',
+                    context: `Channel ${index} goes from "${oldChannel.pgmOn}" to "${newChannel.pgmOn}"`,
                     content: {
                         type: sisyfos_1.Commands.TOGGLE_PGM,
                         channel: Number(index),
@@ -196,7 +204,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             }
             if (oldChannel && oldChannel.pstOn !== newChannel.pstOn) {
                 commands.push({
-                    context: 'Channel ${index} goes from "${oldChannel.pgmOn}" to "${newChannel.pgmOn}"',
+                    context: `Channel ${index} goes from "${oldChannel.pgmOn}" to "${newChannel.pgmOn}"`,
                     content: {
                         type: sisyfos_1.Commands.TOGGLE_PST,
                         channel: Number(index),
@@ -216,17 +224,6 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                     timelineObjId: newChannel.tlObjIds[0] || ''
                 });
             }
-            if (oldChannel && oldChannel.fadeToBlack !== newChannel.fadeToBlack) {
-                commands.push({
-                    context: 'fade all pgm to black',
-                    content: {
-                        type: sisyfos_1.Commands.FADE_TO_BLACK,
-                        channel: 0,
-                        value: newChannel.fadeToBlack
-                    },
-                    timelineObjId: newChannel.tlObjIds[0] || ''
-                });
-            }
             if (newChannel.label !== '' && oldChannel.label !== newChannel.label) {
                 commands.push({
                     context: 'set label on fader',
@@ -234,6 +231,17 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                         type: sisyfos_1.Commands.LABEL,
                         channel: Number(index),
                         value: newChannel.label
+                    },
+                    timelineObjId: newChannel.tlObjIds[0] || ''
+                });
+            }
+            if (oldChannel && oldChannel.visible !== newChannel.visible) {
+                commands.push({
+                    context: `Channel ${index} Visibility goes from "${oldChannel.visible}" to "${newChannel.visible}"`,
+                    content: {
+                        type: sisyfos_1.Commands.VISIBLE,
+                        channel: Number(index),
+                        value: newChannel.visible
                     },
                     timelineObjId: newChannel.tlObjIds[0] || ''
                 });

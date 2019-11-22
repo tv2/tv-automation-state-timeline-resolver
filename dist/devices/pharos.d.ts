@@ -1,10 +1,10 @@
-import { DeviceWithState, DeviceStatus } from './device';
-import { DeviceType, DeviceOptions, PharosOptions, TimelineObjPharos } from '../types/src';
+import { DeviceWithState, DeviceStatus, IDevice } from './device';
+import { DeviceType, PharosOptions, TimelineObjPharos, DeviceOptionsPharos } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
-export interface PharosDeviceOptions extends DeviceOptions {
-    options?: {
+export interface DeviceOptionsPharosInternal extends DeviceOptionsPharos {
+    options: (DeviceOptionsPharos['options'] & {
         commandReceiver?: CommandReceiver;
-    };
+    });
 }
 export declare type CommandReceiver = (time: number, cmd: Command, context: CommandContext, timelineObjId: string) => Promise<any>;
 export interface Command {
@@ -26,16 +26,16 @@ declare type CommandContext = string;
  * This is a wrapper for a Pharos-devices,
  * https://www.pharoscontrols.com/downloads/documentation/application-notes/
  */
-export declare class PharosDevice extends DeviceWithState<TimelineState> {
+export declare class PharosDevice extends DeviceWithState<TimelineState> implements IDevice {
     private _doOnTime;
     private _pharos;
     private _pharosProjectInfo?;
     private _commandReceiver;
-    constructor(deviceId: string, deviceOptions: PharosDeviceOptions, options: any);
+    constructor(deviceId: string, deviceOptions: DeviceOptionsPharosInternal, options: any);
     /**
      * Initiates the connection with Pharos through the PharosAPI.
      */
-    init(connectionOptions: PharosOptions): Promise<boolean>;
+    init(initOptions: PharosOptions): Promise<boolean>;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime: number): void;
     /**

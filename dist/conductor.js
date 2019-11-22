@@ -208,10 +208,10 @@ class Conductor extends events_1.EventEmitter {
                     newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/atem.js', atem_1.AtemDevice, deviceId, deviceOptions, options, threadedClassOptions);
                 }
                 else if (deviceOptions.type === src_1.DeviceType.HTTPSEND) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/httpSend.js', httpSend_1.HttpSendDevice, deviceId, deviceOptions, options, threadedClassOptions);
+                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/httpSend.js', httpSend_1.HTTPSendDevice, deviceId, deviceOptions, options, threadedClassOptions);
                 }
                 else if (deviceOptions.type === src_1.DeviceType.HTTPWATCHER) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/httpWatcher.js', httpWatcher_1.HttpWatcherDevice, deviceId, deviceOptions, options, threadedClassOptions);
+                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/httpWatcher.js', httpWatcher_1.HTTPWatcherDevice, deviceId, deviceOptions, options, threadedClassOptions);
                 }
                 else if (deviceOptions.type === src_1.DeviceType.LAWO) {
                     newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/lawo.js', lawo_1.LawoDevice, deviceId, deviceOptions, options, threadedClassOptions);
@@ -244,8 +244,9 @@ class Conductor extends events_1.EventEmitter {
                     newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/singularLive.js', singularLive_1.SingularLiveDevice, deviceId, deviceOptions, options, threadedClassOptions);
                 }
                 else {
-                    return Promise.reject('No matching multithreaded device type for "' +
-                        deviceOptions.type + '" ("' + src_1.DeviceType[deviceOptions.type] + '") found');
+                    // @ts-ignore deviceOptions.type is of type "never"
+                    const type = deviceOptions.type;
+                    return Promise.reject(`No matching device type for "${type}" ("${src_1.DeviceType[type]}") found in conductor`);
                 }
                 newDevice.device.on('debug', (...e) => {
                     if (this.logDebug) {
@@ -419,23 +420,22 @@ class Conductor extends events_1.EventEmitter {
             let statTimeTimelineResolved = 0;
             try {
                 const now = this.getCurrentTime();
-                if (this._nextResolveTime < now) {
-                    this._nextResolveTime = now;
-                }
                 let resolveTime = this._nextResolveTime;
-                if (!this._nextResolveTime) {
-                    let estimatedResolveTime = this.estimateResolveTime();
+                const estimatedResolveTime = this.estimateResolveTime();
+                if (resolveTime === 0 || // About to be resolved ASAP
+                    resolveTime < now + estimatedResolveTime // We're late
+                ) {
                     resolveTime = now + estimatedResolveTime;
                     this.emit('debug', `resolveTimeline ${resolveTime} (${resolveTime - now} from now) (${estimatedResolveTime}) ---------`);
                 }
                 else {
                     this.emit('debug', `resolveTimeline ${resolveTime} (${resolveTime - now} from now) -----------------------------`);
-                }
-                if (resolveTime > now + exports.LOOKAHEADTIME) {
-                    // If the resolveTime is too far ahead, we'd rather wait and resolve it later.
-                    this.emit('debug', 'Too far ahead (' + resolveTime + ')');
-                    this._triggerResolveTimeline(exports.LOOKAHEADTIME);
-                    return;
+                    if (resolveTime > now + exports.LOOKAHEADTIME) {
+                        // If the resolveTime is too far ahead, we'd rather wait and resolve it later.
+                        this.emit('debug', 'Too far ahead (' + resolveTime + ')');
+                        this._triggerResolveTimeline(exports.LOOKAHEADTIME);
+                        return;
+                    }
                 }
                 // Let all devices know that a new state is about to come in.
                 // This is done so that they can clear future commands a bit earlier, possibly avoiding double or conflicting commands

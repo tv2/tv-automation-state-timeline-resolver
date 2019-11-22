@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { EventEmitter } from 'events';
-import { SlowReportOptions } from './types/src/mapping';
+import { SlowReportOptions } from './types/src/device';
 export declare type DoOrderFunction = (...args: any[]) => void | Promise<any> | any;
 export declare type DoOrderFunctionNothing = () => void | Promise<any> | any;
 export declare type DoOrderFunction0<A> = (arg0: A) => void | Promise<any> | any;

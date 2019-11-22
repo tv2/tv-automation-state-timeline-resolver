@@ -12,8 +12,10 @@ const crypto = require("crypto");
 const IDEAL_PREPARE_TIME = 1000;
 /** Minimum time to wait after preparing elements */
 const PREPARE_TIME_WAIT = 50;
-// const DEFAULT_FPS = 25 // frames per second
-// const JUMP_ERROR_MARGIN = 10 // frames
+// How often to check / preload elements
+const MONITOR_INTERVAL = 5 * 1000;
+// How long to wait after any action (takes, cues, etc) before trying to cue for preloading
+const SAFE_PRELOAD_TIME = 2000;
 function getHash(str) {
     const hash = crypto.createHash('sha1');
     return hash.update(str).digest('base64').replace(/[\+\/\=]/g, '_'); // remove +/= from strings, because they cause troubles
@@ -23,7 +25,6 @@ exports.getHash = getHash;
  * This class is used to interface with a vizRT Media Sequence Editor, through the v-connection library
  */
 class VizMSEDevice extends device_1.DeviceWithState {
-    // private _initialized: boolean = false
     constructor(deviceId, deviceOptions, options) {
         super(deviceId, deviceOptions, options);
         this._vizMSEConnected = false;
@@ -38,21 +39,19 @@ class VizMSEDevice extends device_1.DeviceWithState {
         }, doOnTime_1.SendMode.IN_ORDER, this._deviceOptions);
         this.handleDoOnTime(this._doOnTime, 'VizMSE');
     }
-    init(connectionOptions) {
+    init(initOptions) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            this._connectionOptions = connectionOptions;
-            if (!this._connectionOptions.host)
-                throw new Error('VizMSE bad connection option: host');
-            this._vizMSE = v_connection_1.createMSE(this._connectionOptions.host, this._connectionOptions.restPort, this._connectionOptions.wsPort);
-            this._vizmseManager = new VizMSEManager(this._vizMSE, this._connectionOptions.preloadAllElements);
-            this._vizmseManager.on('connectionChanged', (connected) => this._connectionChanged(connected));
-            yield this._vizmseManager.initializeRundown(connectionOptions.showID, connectionOptions.profile, connectionOptions.playlistID);
-            // this._vizmse.on('error', e => this.emit('error', 'VizMSE.v-connection', e))
+            this._initOptions = initOptions;
+            if (!this._initOptions.host)
+                throw new Error('VizMSE bad option: host');
+            this._vizMSE = v_connection_1.createMSE(this._initOptions.host, this._initOptions.restPort, this._initOptions.wsPort);
+            this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements);
+            this._vizmseManager.on('connectionChanged', (connected) => this.connectionChanged(connected));
+            yield this._vizmseManager.initializeRundown(initOptions.showID, initOptions.profile, initOptions.playlistID);
             this._vizmseManager.on('info', str => this.emit('info', 'VizMSE: ' + str));
             this._vizmseManager.on('warning', str => this.emit('warning', 'VizMSE' + str));
             this._vizmseManager.on('error', e => this.emit('error', 'VizMSE', e));
             this._vizmseManager.on('debug', (...args) => this.emit('debug', ...args));
-            // this._initialized = true
             return true;
         });
     }
@@ -126,6 +125,14 @@ class VizMSEDevice extends device_1.DeviceWithState {
             this._vizmseManager.setExpectedPlayoutItems(expectedPlayoutItems);
         }
     }
+    getCurrentState() {
+        return (this.getState() || {}).state;
+    }
+    connectionChanged(connected) {
+        if (connected === true || connected === false)
+            this._vizMSEConnected = connected;
+        this.emit('connectionChanged', this.getStatus());
+    }
     /**
      * Takes a timeline state and returns a VizMSE State that will work with the state lib.
      * @param timelineState The timeline state to generate from.
@@ -147,11 +154,44 @@ class VizMSEDevice extends device_1.DeviceWithState {
             if (foundMapping &&
                 foundMapping.device === src_1.DeviceType.VIZMSE) {
                 if (layer.content) {
-                    const stateLayer = content2StateLayer(layer.id, layer.content);
-                    if (stateLayer) {
-                        if (isLookahead)
-                            stateLayer.lookahead = true;
-                        state.layer[layerName] = stateLayer;
+                    let l = layer;
+                    if (l.content.type === src_1.TimelineContentTypeVizMSE.LOAD_ALL_ELEMENTS) {
+                        state.layer[layerName] = device_1.literal({
+                            timelineObjId: l.id,
+                            contentType: src_1.TimelineContentTypeVizMSE.LOAD_ALL_ELEMENTS
+                        });
+                    }
+                    else if (l.content.type === src_1.TimelineContentTypeVizMSE.CONTINUE) {
+                        state.layer[layerName] = device_1.literal({
+                            timelineObjId: l.id,
+                            contentType: src_1.TimelineContentTypeVizMSE.CONTINUE,
+                            direction: l.content.direction,
+                            reference: l.content.reference
+                        });
+                    }
+                    else {
+                        const stateLayer = content2StateLayer(l.id, l.content);
+                        if (stateLayer) {
+                            if (isLookahead)
+                                stateLayer.lookahead = true;
+                            state.layer[layerName] = stateLayer;
+                        }
+                    }
+                }
+            }
+        });
+        // Fix references:
+        _.each(state.layer, (layer) => {
+            if (layer.contentType === src_1.TimelineContentTypeVizMSE.CONTINUE) {
+                const otherLayer = state.layer[layer.reference];
+                if (otherLayer) {
+                    if (otherLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL ||
+                        otherLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT) {
+                        layer.referenceContent = otherLayer;
+                    }
+                    else {
+                        // it's not possible to reference that kind of object
+                        this.emit('warning', `object "${layer.timelineObjId}" of contentType="${layer.contentType}", cannot reference object "${otherLayer.timelineObjId}" on layer "${layer.reference}" of contentType="${otherLayer.contentType}" `);
                     }
                 }
             }
@@ -167,6 +207,8 @@ class VizMSEDevice extends device_1.DeviceWithState {
             if (this._vizmseManager) {
                 yield this._vizmseManager.activate();
             }
+            else
+                throw new Error(`Unable to activate vizMSE, not initialized yet!`);
             if (okToDestroyStuff) {
                 // reset our own state(s):
                 this.clearStates();
@@ -193,14 +235,12 @@ class VizMSEDevice extends device_1.DeviceWithState {
             statusCode = device_1.StatusCode.BAD;
             messages.push('Not connected');
         }
-        // if (this._vizMSE.statusMessage) {
-        // 	statusCode = StatusCode.BAD
-        // 	messages.push(this._vizMSE.statusMessage)
-        // }
-        // if (!this._vizMSE.initialized) {
-        // 	statusCode = StatusCode.BAD
-        // 	messages.push(`VizMSE device connection not initialized (restart required)`)
-        // }
+        if (this._vizmseManager &&
+            (this._vizmseManager.notLoadedCount > 0 ||
+                this._vizmseManager.loadingCount > 0)) {
+            statusCode = device_1.StatusCode.WARNING_MINOR;
+            messages.push(`Got ${this._vizmseManager.notLoadedCount} elements not yet loaded to the Viz Engine (${this._vizmseManager.loadingCount} are currently loading)`);
+        }
         return {
             statusCode: statusCode,
             messages: messages
@@ -223,79 +263,92 @@ class VizMSEDevice extends device_1.DeviceWithState {
         }
         _.each(newState.layer, (newLayer, layerId) => {
             const oldLayer = oldState.layer[layerId];
-            // if (
-            // 	!oldLayer ||
-            // 	!_.isEqual(newLayer.channels, oldLayer.channels)
-            // ) {
-            // 	const channel = newLayer.channels[0] as number | undefined
-            // 	if (channel !== undefined) { // todo: support for multiple channels
-            // 		addCommand({
-            // 			type: VizMSECommandType.SETUPPORT,
-            // 			time: prepareTime,
-            // 			portId: portId,
-            // 			timelineObjId: newLayer.timelineObjId,
-            // 			channel: channel
-            // 		}, newLayer.lookahead)
-            // 	}
-            // }
-            if (!oldLayer ||
-                !_.isEqual(_.omit(newLayer, ['continueStep']), _.omit(oldLayer, ['continueStep']))) {
-                if (newLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL ||
-                    newLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT) {
-                    // Maybe prepare the element first:
-                    addCommand({
-                        type: VizMSECommandType.PREPARE_ELEMENT,
-                        time: prepareTime,
+            if (newLayer.contentType === src_1.TimelineContentTypeVizMSE.LOAD_ALL_ELEMENTS) {
+                if (!oldLayer || !_.isEqual(newLayer, oldLayer)) {
+                    addCommand(device_1.literal({
                         timelineObjId: newLayer.timelineObjId,
                         fromLookahead: newLayer.lookahead,
-                        templateInstance: VizMSEManager.getTemplateInstance(newLayer),
-                        templateName: VizMSEManager.getTemplateName(newLayer),
-                        templateData: VizMSEManager.getTemplateData(newLayer)
-                    }, newLayer.lookahead);
-                    // Start playing
-                    addCommand({
-                        type: VizMSECommandType.TAKE_ELEMENT,
-                        time: time,
-                        timelineObjId: newLayer.timelineObjId,
-                        fromLookahead: newLayer.lookahead,
-                        templateInstance: VizMSEManager.getTemplateInstance(newLayer),
-                        templateName: VizMSEManager.getTemplateName(newLayer),
-                        templateData: VizMSEManager.getTemplateData(newLayer)
-                    }, newLayer.lookahead);
+                        type: VizMSECommandType.LOAD_ALL_ELEMENTS,
+                        time: time
+                    }), newLayer.lookahead);
                 }
             }
-            else if ((newLayer.continueStep || 0) > (oldLayer.continueStep || 0)) {
-                // An increase in continueStep should result in triggering a continue:
-                addCommand({
-                    type: VizMSECommandType.CONTINUE_ELEMENT,
-                    time: prepareTime,
-                    timelineObjId: newLayer.timelineObjId,
-                    fromLookahead: newLayer.lookahead,
-                    templateInstance: VizMSEManager.getTemplateInstance(newLayer)
-                }, newLayer.lookahead);
+            else if (newLayer.contentType === src_1.TimelineContentTypeVizMSE.CONTINUE) {
+                if ((!oldLayer ||
+                    !_.isEqual(newLayer, oldLayer)) &&
+                    newLayer.referenceContent) {
+                    const props = {
+                        timelineObjId: newLayer.timelineObjId,
+                        fromLookahead: newLayer.lookahead,
+                        templateInstance: VizMSEManager.getTemplateInstance(newLayer.referenceContent),
+                        templateName: VizMSEManager.getTemplateName(newLayer.referenceContent),
+                        templateData: VizMSEManager.getTemplateData(newLayer.referenceContent),
+                        channelName: newLayer.referenceContent.channelName
+                    };
+                    if ((newLayer.direction || 1) === 1) {
+                        addCommand(device_1.literal(Object.assign(Object.assign({}, props), { type: VizMSECommandType.CONTINUE_ELEMENT, time: time })), newLayer.lookahead);
+                    }
+                    else {
+                        addCommand(device_1.literal(Object.assign(Object.assign({}, props), { type: VizMSECommandType.CONTINUE_ELEMENT_REVERSE, time: time })), newLayer.lookahead);
+                    }
+                }
             }
-            else if ((newLayer.continueStep || 0) < (oldLayer.continueStep || 0)) {
-                // A decrease in continueStep should result in triggering a continue:
-                addCommand({
-                    type: VizMSECommandType.CONTINUE_ELEMENT_REVERSE,
-                    time: prepareTime,
+            else {
+                const props = {
                     timelineObjId: newLayer.timelineObjId,
                     fromLookahead: newLayer.lookahead,
-                    templateInstance: VizMSEManager.getTemplateInstance(newLayer)
-                }, newLayer.lookahead);
+                    templateInstance: VizMSEManager.getTemplateInstance(newLayer),
+                    templateName: VizMSEManager.getTemplateName(newLayer),
+                    templateData: VizMSEManager.getTemplateData(newLayer),
+                    channelName: newLayer.channelName
+                };
+                if (!oldLayer ||
+                    !_.isEqual(_.omit(newLayer, ['continueStep']), _.omit(oldLayer, ['continueStep']))) {
+                    if (newLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL ||
+                        newLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT) {
+                        // Maybe prepare the element first:
+                        addCommand(device_1.literal(Object.assign(Object.assign({}, props), { type: VizMSECommandType.PREPARE_ELEMENT, time: prepareTime })), newLayer.lookahead);
+                        if (newLayer.cue) {
+                            // Cue the element
+                            addCommand(device_1.literal(Object.assign(Object.assign({}, props), { type: VizMSECommandType.CUE_ELEMENT, time: time })), newLayer.lookahead);
+                        }
+                        else {
+                            // Start playing element
+                            addCommand(device_1.literal(Object.assign(Object.assign({}, props), { type: VizMSECommandType.TAKE_ELEMENT, time: time })), newLayer.lookahead);
+                        }
+                    }
+                }
+                else if ((oldLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL ||
+                    oldLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT) &&
+                    (newLayer.continueStep || 0) > (oldLayer.continueStep || 0)) {
+                    // An increase in continueStep should result in triggering a continue:
+                    addCommand(device_1.literal(Object.assign(Object.assign({}, props), { type: VizMSECommandType.CONTINUE_ELEMENT, time: time })), newLayer.lookahead);
+                }
+                else if ((oldLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL ||
+                    oldLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT) &&
+                    (newLayer.continueStep || 0) < (oldLayer.continueStep || 0)) {
+                    // A decrease in continueStep should result in triggering a continue:
+                    addCommand(device_1.literal(Object.assign(Object.assign({}, props), { type: VizMSECommandType.CONTINUE_ELEMENT_REVERSE, time: time })), newLayer.lookahead);
+                }
             }
         });
         _.each(oldState.layer, (oldLayer, layerId) => {
             const newLayer = newState.layer[layerId];
             if (!newLayer) {
-                // Stopped playing
-                addCommand({
-                    type: VizMSECommandType.TAKEOUT_ELEMENT,
-                    time: prepareTime,
-                    timelineObjId: oldLayer.timelineObjId,
-                    fromLookahead: oldLayer.lookahead,
-                    elementName: VizMSEManager.getTemplateInstance(oldLayer)
-                }, oldLayer.lookahead);
+                if (oldLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL ||
+                    oldLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT) {
+                    // Stopped playing
+                    addCommand(device_1.literal({
+                        type: VizMSECommandType.TAKEOUT_ELEMENT,
+                        time: time,
+                        timelineObjId: oldLayer.timelineObjId,
+                        fromLookahead: oldLayer.lookahead,
+                        templateInstance: VizMSEManager.getTemplateInstance(oldLayer),
+                        templateName: VizMSEManager.getTemplateName(oldLayer),
+                        templateData: VizMSEManager.getTemplateData(oldLayer),
+                        channelName: oldLayer.channelName
+                    }), oldLayer.lookahead);
+                }
             }
         });
         return highPrioCommands.concat(lowPrioCommands);
@@ -350,6 +403,9 @@ class VizMSEDevice extends device_1.DeviceWithState {
                     else if (cmd.type === VizMSECommandType.CONTINUE_ELEMENT_REVERSE) {
                         yield this._vizmseManager.continueElementReverse(cmd);
                     }
+                    else if (cmd.type === VizMSECommandType.LOAD_ALL_ELEMENTS) {
+                        yield this._vizmseManager.loadAllElements(cmd);
+                    }
                     else {
                         // @ts-ignore never
                         throw new Error(`Unsupported command type "${cmd.type}"`);
@@ -367,23 +423,23 @@ class VizMSEDevice extends device_1.DeviceWithState {
             }
         });
     }
-    _connectionChanged(connected) {
-        if (connected === true || connected === false)
-            this._vizMSEConnected = connected;
-        this.emit('connectionChanged', this.getStatus());
-    }
 }
 exports.VizMSEDevice = VizMSEDevice;
 class VizMSEManager extends events_1.EventEmitter {
-    constructor(_vizMSE, preloadAllElements) {
+    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements) {
         super();
+        this._parentVizMSEDevice = _parentVizMSEDevice;
         this._vizMSE = _vizMSE;
         this.preloadAllElements = preloadAllElements;
         this.initialized = false;
+        this.notLoadedCount = 0;
+        this.loadingCount = 0;
         this._elementCache = {};
         this._expectedPlayoutItems = [];
-        // this._vizmse.on('error', (...args) => this.emit('error', ...args))
-        // this._vizmse.on('debug', (...args) => this.emit('debug', ...args))
+        this._expectedPlayoutItemsItems = {};
+        this._lastTimeCommandSent = 0;
+        this._hasActiveRundown = false;
+        this._elementsLoaded = {};
     }
     initializeRundown(showID, profile, playlistID) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
@@ -393,7 +449,7 @@ class VizMSEManager extends events_1.EventEmitter {
             this.emit('connectionChanged', true);
             // Setup the rundown used by this device
             // check if it already exists:
-            this._rundown = _.find(this._vizMSE.getRundowns(), (rundown) => {
+            this._rundown = _.find(yield this._vizMSE.getRundowns(), (rundown) => {
                 return (rundown.show === showID &&
                     rundown.profile === profile &&
                     rundown.playlist === playlistID);
@@ -405,11 +461,18 @@ class VizMSEManager extends events_1.EventEmitter {
                 throw new Error(`VizMSEManager: unable to create rundown!`);
             // const profile = await this._vizMSE.getProfile('sofie') // TODO: Figure out if this is needed
             this._updateExpectedPlayoutItems().catch(e => this.emit('error', e));
+            if (this._monitorAndLoadElementsInterval) {
+                clearInterval(this._monitorAndLoadElementsInterval);
+            }
+            this._monitorAndLoadElementsInterval = setInterval(() => this._monitorLoadedElements(), MONITOR_INTERVAL);
             this.initialized = true;
         });
     }
     terminate() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            if (this._monitorAndLoadElementsInterval) {
+                clearInterval(this._monitorAndLoadElementsInterval);
+            }
             if (this._vizMSE) {
                 yield this._vizMSE.close();
                 delete this._vizMSE;
@@ -426,15 +489,23 @@ class VizMSEManager extends events_1.EventEmitter {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
                 throw new Error(`Viz Rundown not initialized!`);
+            this._triggerCommandSent();
             yield this._rundown.activate();
+            this._triggerCommandSent();
+            yield this._triggerLoadAllElements();
+            this._triggerCommandSent();
+            this._hasActiveRundown = true;
         });
     }
     deactivate() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
                 throw new Error(`Viz Rundown not initialized!`);
+            this._triggerCommandSent();
             yield this._rundown.deactivate();
+            this._triggerCommandSent();
             this._clearCache();
+            this._hasActiveRundown = false;
         });
     }
     prepareElement(cmd) {
@@ -443,56 +514,83 @@ class VizMSEManager extends events_1.EventEmitter {
                 throw new Error(`Viz Rundown not initialized!`);
             const elementHash = this.getElementHash(cmd);
             this.emit('debug', `VizMSE: prepare "${elementHash}"`);
+            this._triggerCommandSent();
             yield this._checkPrepareElement(cmd, true);
+            this._triggerCommandSent();
         });
     }
     cueElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
                 throw new Error(`Viz Rundown not initialized!`);
+            const rundown = this._rundown;
             const elementRef = yield this._checkPrepareElement(cmd);
-            this.emit('debug', `VizMSE: cue "${elementRef}"`);
-            yield this._rundown.cue(elementRef);
+            yield this._handleRetry(() => {
+                this.emit('debug', `VizMSE: cue "${elementRef}"`);
+                return rundown.cue(elementRef);
+            });
         });
     }
     takeElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
                 throw new Error(`Viz Rundown not initialized!`);
+            const rundown = this._rundown;
             const elementRef = yield this._checkPrepareElement(cmd);
-            this.emit('debug', `VizMSE: take "${elementRef}"`);
-            yield this._rundown.take(elementRef);
+            yield this._handleRetry(() => {
+                this.emit('debug', `VizMSE: take "${elementRef}"`);
+                return rundown.take(elementRef);
+            });
         });
     }
     takeoutElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
                 throw new Error(`Viz Rundown not initialized!`);
-            this.emit('debug', `VizMSE: out "${cmd.elementName}"`);
-            yield this._rundown.out(cmd.elementName);
+            const rundown = this._rundown;
+            const elementRef = yield this._checkPrepareElement(cmd);
+            yield this._handleRetry(() => {
+                this.emit('debug', `VizMSE: out "${elementRef}"`);
+                return rundown.out(elementRef);
+            });
         });
     }
     continueElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
                 throw new Error(`Viz Rundown not initialized!`);
-            this.emit('debug', `VizMSE: continue "${cmd.templateInstance}"`);
-            yield this._rundown.continue(cmd.templateInstance);
+            const rundown = this._rundown;
+            const elementRef = yield this._checkPrepareElement(cmd);
+            yield this._handleRetry(() => {
+                this.emit('debug', `VizMSE: continue "${elementRef}"`);
+                return rundown.continue(elementRef);
+            });
         });
     }
     continueElementReverse(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
                 throw new Error(`Viz Rundown not initialized!`);
-            this.emit('debug', `VizMSE: continue reverse "${cmd.templateInstance}"`);
-            yield this._rundown.continueReverse(cmd.templateInstance);
+            const rundown = this._rundown;
+            const elementRef = yield this._checkPrepareElement(cmd);
+            yield this._handleRetry(() => {
+                this.emit('debug', `VizMSE: continue reverse "${elementRef}"`);
+                return rundown.continueReverse(elementRef);
+            });
+        });
+    }
+    loadAllElements(_cmd) {
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            this._triggerCommandSent();
+            yield this._triggerLoadAllElements();
+            this._triggerCommandSent();
         });
     }
     static getTemplateName(layer) {
         if (layer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL)
             return layer.templateName;
         if (layer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT)
-            return '';
+            return layer.templateVcpId;
         throw new Error(`Unknown layer.contentType "${layer['contentType']}"`);
     }
     static getTemplateData(layer) {
@@ -524,7 +622,7 @@ class VizMSEManager extends events_1.EventEmitter {
         if (this._elementCache[hash]) {
             this.emit('error', `There is already an element with hash "${hash}" in cache`);
         }
-        this._elementCache[hash] = element;
+        this._elementCache[hash] = { hash, element };
     }
     _clearCache() {
         _.each(_.keys(this._elementCache), hash => {
@@ -535,20 +633,20 @@ class VizMSEManager extends events_1.EventEmitter {
         if (this._isInternalElement(el))
             return el.name;
         if (this._isExternalElement(el))
-            return el.vcpid;
+            return Number(el.vcpid); // TMP!!
         throw Error('Unknown element type, neither internal nor external');
     }
     _isInternalElement(el) {
         return (el && el.name && !el.vcpid);
     }
     _isExternalElement(el) {
-        return (el && !el.name && el.vcpid);
+        return (el && el.vcpid);
     }
     _checkPrepareElement(cmd, fromPrepare) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             // check if element is prepared
             const elementHash = this.getElementHash(cmd);
-            let element = this._getCachedElement(elementHash);
+            let element = (this._getCachedElement(elementHash) || {}).element;
             if (!element) {
                 if (!fromPrepare) {
                     this.emit('warning', `Late preparation of element "${elementHash}"`);
@@ -557,6 +655,8 @@ class VizMSEManager extends events_1.EventEmitter {
                     this.emit('debug', `VizMSE: preparing new "${elementHash}"`);
                 }
                 element = yield this._prepareNewElement(cmd);
+                if (!fromPrepare)
+                    yield this._wait(100); // wait a bit, because taking isn't possible right away anyway at this point
             }
             return this._getElementReference(element);
             // })
@@ -568,15 +668,16 @@ class VizMSEManager extends events_1.EventEmitter {
                 throw new Error(`Viz Rundown not initialized!`);
             const elementHash = this.getElementHash(cmd);
             try {
+                console.log(`Creating an element of type ${typeof cmd.templateName}: ${cmd.templateName}, channel="${cmd.channelName}"`);
                 if (_.isNumber(cmd.templateName)) {
                     // Prepare a pilot element
-                    const pilotEl = yield this._rundown.createElement(cmd.templateName);
+                    const pilotEl = yield this._rundown.createElement(cmd.templateName, cmd.channelName);
                     this._cacheElement(elementHash, pilotEl);
                     return pilotEl;
                 }
                 else {
                     // Prepare an internal element
-                    const internalEl = yield this._rundown.createElement(cmd.templateName, cmd.templateInstance, cmd.templateData || []);
+                    const internalEl = yield this._rundown.createElement(cmd.templateName, cmd.templateInstance, cmd.templateData || [], cmd.channelName);
                     this._cacheElement(elementHash, internalEl);
                     return internalEl;
                 }
@@ -598,6 +699,7 @@ class VizMSEManager extends events_1.EventEmitter {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (this.preloadAllElements) {
                 this.emit('debug', `VISMSE: _updateExpectedPlayoutItems (${this._expectedPlayoutItems.length})`);
+                const hashesAndItems = {};
                 yield Promise.all(_.map(this._expectedPlayoutItems, (expectedPlayoutItem) => tslib_1.__awaiter(this, void 0, void 0, function* () {
                     const stateLayer = (_.isNumber(expectedPlayoutItem.templateName) ?
                         content2StateLayer('', {
@@ -613,41 +715,212 @@ class VizMSEManager extends events_1.EventEmitter {
                         }));
                     if (stateLayer) {
                         const item = Object.assign(Object.assign({}, expectedPlayoutItem), { templateInstance: VizMSEManager.getTemplateInstance(stateLayer) });
+                        hashesAndItems[this.getElementHash(item)] = item;
                         yield this._checkPrepareElement(item, true);
                     }
                 })));
+                this._expectedPlayoutItemsItems = hashesAndItems;
             }
         });
+    }
+    updateElementsLoadedStatus(forceReloadAll) {
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            const elementsToLoad = _.compact(_.map(this._expectedPlayoutItemsItems, (item, hash) => {
+                const el = this._getCachedElement(hash);
+                if (!item.noAutoPreloading && el) {
+                    return Object.assign(Object.assign({}, el), { item: item, hash: hash });
+                }
+                return undefined;
+            }));
+            if (this._rundown) {
+                const rundown = this._rundown;
+                if (forceReloadAll) {
+                    this._elementsLoaded = {};
+                }
+                yield Promise.all(_.map(elementsToLoad, (e) => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                    const cachedEl = this._elementsLoaded[e.hash];
+                    if (!cachedEl || !cachedEl.isLoaded) {
+                        const elementRef = yield this._checkPrepareElement(e.item);
+                        // Update cached status of the element:
+                        const newEl = yield rundown.getElement(elementRef);
+                        this._elementsLoaded[e.hash] = {
+                            element: newEl,
+                            isLoaded: this._isElementLoaded(newEl),
+                            isNotLoaded: this._isElementNotLoaded(newEl)
+                        };
+                    }
+                })));
+            }
+            else {
+                throw Error('VizMSE.v-connection not initialized yet');
+            }
+        });
+    }
+    _triggerLoadAllElements() {
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            if (!this._rundown)
+                throw Error('VizMSE.v-connection not initialized yet');
+            const rundown = this._rundown;
+            // First, update the loading-status of all elements:
+            yield this.updateElementsLoadedStatus(true);
+            // Then, load all elements that needs loading:
+            yield Promise.all(_.map(this._elementsLoaded, (e) => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                if (this._isInternalElement(e.element)) {
+                    // TODO: what?
+                }
+                else if (this._isExternalElement(e.element)) {
+                    if (e.isLoaded) {
+                        // The element is loaded fine, no need to do anything
+                        this.emit('debug', `Element "${this._getElementReference(e.element)}" is loaded`);
+                    }
+                    else if (e.isNotLoaded) {
+                        // The element has not started loading, load it:
+                        this.emit('debug', `Element "${this._getElementReference(e.element)}" is not loaded, initializing`);
+                        yield rundown.initialize(this._getElementReference(e.element));
+                    }
+                    else {
+                        // The element is currently loading, do nothing
+                        this.emit('debug', `Element "${this._getElementReference(e.element)}" is loading`);
+                    }
+                }
+            })));
+        });
+    }
+    /** Monitor loading status of expected elements */
+    _monitorLoadedElements() {
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            try {
+                if (this._rundown &&
+                    this._hasActiveRundown &&
+                    this.preloadAllElements &&
+                    this._timeSinceLastCommandSent() > SAFE_PRELOAD_TIME) {
+                    yield this.updateElementsLoadedStatus(false);
+                    let notLoaded = 0;
+                    let loading = 0;
+                    _.each(this._elementsLoaded, (e) => {
+                        if (!e.isLoaded && e.isNotLoaded)
+                            notLoaded++;
+                        else
+                            loading++;
+                    });
+                    this._setLoadedStatus(notLoaded, loading);
+                }
+                else
+                    this._setLoadedStatus(0, 0);
+            }
+            catch (e) {
+                this.emit('error', e);
+            }
+        });
+    }
+    _wait(time) {
+        return new Promise(resolve => setTimeout(resolve, time));
+    }
+    /** Execute fcn an retry a couple of times until */
+    _handleRetry(fcn) {
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            let i = 0;
+            const maxNumberOfTries = 5;
+            while (true) {
+                try {
+                    this._triggerCommandSent();
+                    const result = fcn();
+                    this._triggerCommandSent();
+                    return result;
+                }
+                catch (e) {
+                    if (i++ < maxNumberOfTries) {
+                        if (e && e.toString && e.toString().match(/inexistent/i)) { // "PepTalk inexistent error"
+                            this.emit('debug', `VizMSE: _handleRetry got "inexistent" error, trying again...`);
+                            // Wait and try again:
+                            yield this._wait(300);
+                        }
+                        else {
+                            // Unhandled error, give up:
+                            throw e;
+                        }
+                    }
+                    else {
+                        // Give up, we've tried enough times already
+                        throw e;
+                    }
+                }
+            }
+        });
+    }
+    _triggerCommandSent() {
+        this._lastTimeCommandSent = Date.now();
+    }
+    _timeSinceLastCommandSent() {
+        return Date.now() - this._lastTimeCommandSent;
+    }
+    _setLoadedStatus(notLoaded, loading) {
+        if (notLoaded !== this.notLoadedCount ||
+            loading !== this.loadingCount) {
+            this.notLoadedCount = notLoaded;
+            this.loadingCount = loading;
+            this._parentVizMSEDevice.connectionChanged();
+        }
+    }
+    _isElementLoaded(el) {
+        if (this._isInternalElement(el)) {
+            return true; // not implemented / unknown
+        }
+        else if (this._isExternalElement(el)) {
+            return ((el.available === '1.00' || el.available === '1') &&
+                (el.loaded === '1.00' || el.loaded === '1') &&
+                el.is_loading !== 'yes');
+        }
+        else {
+            throw new Error(`vizMSE: _isLoaded: unknown element type: ${el && JSON.stringify(el)}`);
+        }
+    }
+    _isElementNotLoaded(el) {
+        if (this._isInternalElement(el)) {
+            return false; // not implemented / unknown
+        }
+        else if (this._isExternalElement(el)) {
+            return ((el.loaded === '0.00' || el.loaded === '0' || !el.loaded) &&
+                el.is_loading !== 'yes');
+        }
+        else {
+            throw new Error(`vizMSE: _isLoaded: unknown element type: ${el && JSON.stringify(el)}`);
+        }
     }
 }
 var VizMSECommandType;
 (function (VizMSECommandType) {
-    // ACTIVATE = 'activate', // something to be done before starting to use the viz engine
-    // DEACTIVATE = 'deactivate', // something to be done when done with a viz engine
     VizMSECommandType["PREPARE_ELEMENT"] = "prepare";
     VizMSECommandType["CUE_ELEMENT"] = "cue";
     VizMSECommandType["TAKE_ELEMENT"] = "take";
     VizMSECommandType["TAKEOUT_ELEMENT"] = "out";
     VizMSECommandType["CONTINUE_ELEMENT"] = "continue";
     VizMSECommandType["CONTINUE_ELEMENT_REVERSE"] = "continuereverse";
+    VizMSECommandType["LOAD_ALL_ELEMENTS"] = "load_all_elements";
 })(VizMSECommandType = exports.VizMSECommandType || (exports.VizMSECommandType = {}));
 function content2StateLayer(timelineObjId, content) {
     if (content.type === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL) {
-        return {
+        const o = {
             timelineObjId: timelineObjId,
             contentType: src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL,
             continueStep: content.continueStep,
+            cue: content.cue,
             templateName: content.templateName,
-            templateData: content.templateData
+            templateData: content.templateData,
+            channelName: content.channelName
         };
+        return o;
     }
     else if (content.type === src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT) {
-        return {
+        const o = {
             timelineObjId: timelineObjId,
             contentType: src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT,
             continueStep: content.continueStep,
-            templateVcpId: content.templateVcpId
+            cue: content.cue,
+            templateVcpId: content.templateVcpId,
+            channelName: content.channelName
         };
+        return o;
     }
     return;
 }

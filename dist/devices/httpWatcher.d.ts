@@ -1,21 +1,15 @@
-import { DeviceStatus, Device } from './device';
-import { DeviceType, DeviceOptions } from '../types/src';
+import { DeviceStatus, Device, IDevice } from './device';
+import { DeviceType, HTTPWatcherOptions, DeviceOptionsHTTPpWatcher } from '../types/src';
 import * as request from 'request';
 import { TimelineState } from 'superfly-timeline';
-export interface HttpWatcherDeviceOptions extends DeviceOptions {
-    options?: {
-        uri?: string;
-        httpMethod?: string;
-        expectedHttpResponse?: number;
-        keyword?: string;
-        interval?: number;
-    };
+export interface DeviceOptionsHTTPWatcherInternal extends DeviceOptionsHTTPpWatcher {
+    options: (DeviceOptionsHTTPpWatcher['options']);
 }
 /**
  * This is a HTTPWatcherDevice, requests a uri on a regular interval and watches
  * it's response.
  */
-export declare class HttpWatcherDevice extends Device {
+export declare class HTTPWatcherDevice extends Device implements IDevice {
     private uri?;
     private httpMethod;
     private expectedHttpResponse;
@@ -24,12 +18,12 @@ export declare class HttpWatcherDevice extends Device {
     private interval;
     private status;
     private statusReason;
-    constructor(deviceId: string, deviceOptions: HttpWatcherDeviceOptions, options: any);
+    constructor(deviceId: string, deviceOptions: DeviceOptionsHTTPWatcherInternal, options: any);
     onInterval(): void;
     stopInterval(): void;
     startInterval(): void;
     handleResponse(error: any, response: request.Response, body: any): void;
-    init(): Promise<boolean>;
+    init(_initOptions: HTTPWatcherOptions): Promise<boolean>;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(_newStateTime: number): void;
     handleState(_newState: TimelineState): void;

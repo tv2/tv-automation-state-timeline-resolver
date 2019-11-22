@@ -1,6 +1,7 @@
 node_modules
 test
 src/**.js
+src/types/dist
 
 /coverage
 /docs

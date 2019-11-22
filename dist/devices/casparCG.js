@@ -45,13 +45,13 @@ class CasparCGDevice extends device_1.DeviceWithState {
      * Initiates the connection with CasparCG through the ccg-connection lib and
      * initializes CasparCG State library.
      */
-    init(connectionOptions) {
+    init(initOptions) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            this._connectionOptions = connectionOptions;
-            this._useScheduling = connectionOptions.useScheduling;
+            this.initOptions = initOptions;
+            this._useScheduling = initOptions.useScheduling;
             this._ccg = new casparcg_connection_1.CasparCG({
-                host: connectionOptions.host,
-                port: connectionOptions.port,
+                host: initOptions.host,
+                port: initOptions.port,
                 autoConnect: true,
                 virginServerCheck: true,
                 onConnectionChanged: (connected) => {
@@ -173,23 +173,196 @@ class CasparCGDevice extends device_1.DeviceWithState {
             return [];
         }
     }
+    convertObjectToCasparState(layer, mapping, isForeground) {
+        const startTime = layer.instance.originalStart || layer.instance.start;
+        let stateLayer = null;
+        if (layer.content.type === src_1.TimelineContentTypeCasparCg.MEDIA) {
+            const mediaObj = layer;
+            stateLayer = device_1.literal({
+                id: layer.id,
+                layerNo: mapping.layer,
+                content: casparcg_state_1.CasparCG.LayerContentType.MEDIA,
+                media: mediaObj.content.file,
+                playTime: (mediaObj.content.noStarttime ||
+                    (mediaObj.content.loop &&
+                        !mediaObj.content.seek &&
+                        !mediaObj.content.inPoint &&
+                        !mediaObj.content.length)
+                    ?
+                        null :
+                    startTime) || null,
+                pauseTime: mediaObj.isLookahead && isForeground ? startTime : (mediaObj.content.pauseTime || null),
+                playing: !mediaObj.isLookahead && (mediaObj.content.playing !== undefined ? mediaObj.content.playing : isForeground),
+                looping: mediaObj.content.loop,
+                seek: mediaObj.content.seek,
+                inPoint: mediaObj.content.inPoint,
+                length: mediaObj.content.length,
+                channelLayout: mediaObj.content.channelLayout,
+                clearOn404: true
+            });
+        }
+        else if (layer.content.type === src_1.TimelineContentTypeCasparCg.IP) {
+            const ipObj = layer;
+            stateLayer = device_1.literal({
+                id: layer.id,
+                layerNo: mapping.layer,
+                content: casparcg_state_1.CasparCG.LayerContentType.MEDIA,
+                media: ipObj.content.uri,
+                channelLayout: ipObj.content.channelLayout,
+                playTime: null,
+                playing: true,
+                seek: 0 // ip inputs can't be seeked
+            });
+        }
+        else if (layer.content.type === src_1.TimelineContentTypeCasparCg.INPUT) {
+            const inputObj = layer;
+            stateLayer = device_1.literal({
+                id: layer.id,
+                layerNo: mapping.layer,
+                content: casparcg_state_1.CasparCG.LayerContentType.INPUT,
+                media: 'decklink',
+                input: {
+                    device: inputObj.content.device,
+                    channelLayout: inputObj.content.channelLayout
+                },
+                playing: true,
+                playTime: null
+            });
+        }
+        else if (layer.content.type === src_1.TimelineContentTypeCasparCg.TEMPLATE) {
+            const recordObj = layer;
+            stateLayer = device_1.literal({
+                id: layer.id,
+                layerNo: mapping.layer,
+                content: casparcg_state_1.CasparCG.LayerContentType.TEMPLATE,
+                media: recordObj.content.name,
+                playTime: startTime || null,
+                playing: true,
+                templateType: recordObj.content.templateType || 'html',
+                templateData: recordObj.content.data,
+                cgStop: recordObj.content.useStopCommand
+            });
+        }
+        else if (layer.content.type === src_1.TimelineContentTypeCasparCg.HTMLPAGE) {
+            const htmlObj = layer;
+            stateLayer = device_1.literal({
+                id: layer.id,
+                layerNo: mapping.layer,
+                content: casparcg_state_1.CasparCG.LayerContentType.HTMLPAGE,
+                media: htmlObj.content.url,
+                playTime: startTime || null,
+                playing: true
+            });
+        }
+        else if (layer.content.type === src_1.TimelineContentTypeCasparCg.ROUTE) {
+            const routeObj = layer;
+            if (routeObj.content.mappedLayer) {
+                let routeMapping = this.getMapping()[routeObj.content.mappedLayer];
+                if (routeMapping) {
+                    routeObj.content.channel = routeMapping.channel;
+                    routeObj.content.layer = routeMapping.layer;
+                }
+            }
+            stateLayer = device_1.literal({
+                id: layer.id,
+                layerNo: mapping.layer,
+                content: casparcg_state_1.CasparCG.LayerContentType.ROUTE,
+                media: 'route',
+                route: {
+                    channel: routeObj.content.channel || 0,
+                    layer: routeObj.content.layer,
+                    channelLayout: routeObj.content.channelLayout
+                },
+                mode: routeObj.content.mode || undefined,
+                playing: true,
+                playTime: null // layer.resolved.startTime || null
+            });
+        }
+        else if (layer.content.type === src_1.TimelineContentTypeCasparCg.RECORD) {
+            const recordObj = layer;
+            if (startTime) {
+                stateLayer = device_1.literal({
+                    id: layer.id,
+                    layerNo: mapping.layer,
+                    content: casparcg_state_1.CasparCG.LayerContentType.RECORD,
+                    media: recordObj.content.file,
+                    encoderOptions: recordObj.content.encoderOptions,
+                    playing: true,
+                    playTime: startTime || 0
+                });
+            }
+        }
+        // if no appropriate layer could be created, make it an empty layer
+        if (!stateLayer) {
+            let l = {
+                id: layer.id,
+                layerNo: mapping.layer,
+                content: casparcg_state_1.CasparCG.LayerContentType.NOTHING,
+                playing: false,
+                pauseTime: 0
+            };
+            stateLayer = l;
+        } // now it holds that stateLayer is truthy
+        const baseContent = layer.content;
+        if (baseContent.transitions) { // add transitions to the layer obj
+            switch (baseContent.type) {
+                case src_1.TimelineContentTypeCasparCg.MEDIA:
+                case src_1.TimelineContentTypeCasparCg.IP:
+                case src_1.TimelineContentTypeCasparCg.TEMPLATE:
+                case src_1.TimelineContentTypeCasparCg.INPUT:
+                case src_1.TimelineContentTypeCasparCg.ROUTE:
+                    // create transition object
+                    let media = stateLayer.media;
+                    let transitions = {};
+                    if (baseContent.transitions.inTransition) {
+                        transitions.inTransition = new casparcg_state_1.CasparCG.Transition(baseContent.transitions.inTransition.type, baseContent.transitions.inTransition.duration || baseContent.transitions.inTransition.maskFile, baseContent.transitions.inTransition.easing || baseContent.transitions.inTransition.delay, baseContent.transitions.inTransition.direction || baseContent.transitions.inTransition.overlayFile);
+                    }
+                    if (baseContent.transitions.outTransition) {
+                        transitions.outTransition = new casparcg_state_1.CasparCG.Transition(baseContent.transitions.outTransition.type, baseContent.transitions.outTransition.duration || baseContent.transitions.outTransition.maskFile, baseContent.transitions.outTransition.easing || baseContent.transitions.outTransition.delay, baseContent.transitions.outTransition.direction || baseContent.transitions.outTransition.overlayFile);
+                    }
+                    stateLayer.media = new casparcg_state_1.CasparCG.TransitionObject(media, {
+                        inTransition: transitions.inTransition,
+                        outTransition: transitions.outTransition
+                    });
+                    break;
+                default:
+                    // create transition using mixer
+                    break;
+            }
+        }
+        if (layer.content.mixer) { // add mixer properties
+            // just pass through values here:
+            let mixer = {};
+            _.each(layer.content.mixer, (value, property) => {
+                mixer[property] = value;
+            });
+            stateLayer.mixer = mixer;
+        }
+        stateLayer.layerNo = mapping.layer;
+        return stateLayer;
+    }
     /**
      * Takes a timeline state and returns a CasparCG State that will work with the state lib.
      * @param timelineState The timeline state to generate from.
      */
     convertStateToCaspar(timelineState) {
         const caspar = new casparcg_state_1.CasparCG.State();
-        _.each(timelineState.layers, (layer, layerName) => {
-            const layerExt = layer;
-            let foundMapping = this.getMapping()[layerName];
-            // if the tlObj is specifies to do a loadbg the original Layer is used to resolve the mapping
-            if (!foundMapping && layerExt.isLookahead && layerExt.lookaheadForLayer) {
-                foundMapping = this.getMapping()[layerExt.lookaheadForLayer];
-            }
+        _.each(this.getMapping(), (foundMapping, layerName) => {
             if (foundMapping &&
                 foundMapping.device === src_1.DeviceType.CASPARCG &&
                 _.has(foundMapping, 'channel') &&
                 _.has(foundMapping, 'layer')) {
+                let foregroundObj = timelineState.layers[layerName];
+                let backgroundObj = _.last(_.filter(timelineState.layers, obj => {
+                    // Takes the last one, to be consistent with previous behaviour
+                    const objExt = obj;
+                    return !!objExt.isLookahead && objExt.lookaheadForLayer === layerName;
+                }));
+                // If lookahead is on the same layer, then ensure objects are treated as such
+                if (foregroundObj && foregroundObj.isLookahead) {
+                    backgroundObj = foregroundObj;
+                    foregroundObj = undefined;
+                }
                 const mapping = foundMapping;
                 mapping.channel = mapping.channel || 0;
                 mapping.layer = mapping.layer || 0;
@@ -199,192 +372,25 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 // @todo: check if we need to get fps.
                 channel.fps = 25 / 1000; // 25 fps over 1000ms
                 caspar.channels[channel.channelNo] = channel;
-                const startTime = layer.instance.originalStart || layer.instance.start;
                 // create layer of appropriate type
-                let stateLayer = null;
-                if (layer.content.type === src_1.TimelineContentTypeCasparCg.MEDIA) {
-                    const mediaObj = layer;
-                    stateLayer = device_1.literal({
-                        id: layer.id,
-                        layerNo: mapping.layer,
-                        content: casparcg_state_1.CasparCG.LayerContentType.MEDIA,
-                        media: mediaObj.content.file,
-                        playTime: (mediaObj.content.noStarttime ||
-                            (mediaObj.content.loop &&
-                                !mediaObj.content.seek &&
-                                !mediaObj.content.inPoint &&
-                                !mediaObj.content.length)
-                            ?
-                                null :
-                            startTime) || null,
-                        pauseTime: mediaObj.content.pauseTime || null,
-                        playing: mediaObj.content.playing !== undefined ? mediaObj.content.playing : true,
-                        looping: mediaObj.content.loop,
-                        seek: mediaObj.content.seek,
-                        inPoint: mediaObj.content.inPoint,
-                        length: mediaObj.content.length,
-                        channelLayout: mediaObj.content.channelLayout
-                    });
+                const foregroundStateLayer = foregroundObj ? this.convertObjectToCasparState(foregroundObj, mapping, true) : undefined;
+                const backgroundStateLayer = backgroundObj ? this.convertObjectToCasparState(backgroundObj, mapping, false) : undefined;
+                if (foregroundStateLayer) {
+                    channel.layers[mapping.layer] = Object.assign(Object.assign({}, foregroundStateLayer), { nextUp: backgroundStateLayer ? device_1.literal(Object.assign(Object.assign({}, backgroundStateLayer), { auto: false })) : undefined });
                 }
-                else if (layer.content.type === src_1.TimelineContentTypeCasparCg.IP) {
-                    const ipObj = layer;
-                    stateLayer = device_1.literal({
-                        id: layer.id,
-                        layerNo: mapping.layer,
-                        content: casparcg_state_1.CasparCG.LayerContentType.MEDIA,
-                        media: ipObj.content.uri,
-                        channelLayout: ipObj.content.channelLayout,
-                        playTime: null,
-                        playing: true,
-                        seek: 0 // ip inputs can't be seeked
-                    });
-                }
-                else if (layer.content.type === src_1.TimelineContentTypeCasparCg.INPUT) {
-                    const inputObj = layer;
-                    stateLayer = device_1.literal({
-                        id: layer.id,
-                        layerNo: mapping.layer,
-                        content: casparcg_state_1.CasparCG.LayerContentType.INPUT,
-                        media: 'decklink',
-                        input: {
-                            device: inputObj.content.device,
-                            channelLayout: inputObj.content.channelLayout
-                        },
-                        playing: true,
-                        playTime: null
-                    });
-                }
-                else if (layer.content.type === src_1.TimelineContentTypeCasparCg.TEMPLATE) {
-                    const recordObj = layer;
-                    stateLayer = device_1.literal({
-                        id: layer.id,
-                        layerNo: mapping.layer,
-                        content: casparcg_state_1.CasparCG.LayerContentType.TEMPLATE,
-                        media: recordObj.content.name,
-                        playTime: startTime || null,
-                        playing: true,
-                        templateType: recordObj.content.templateType || 'html',
-                        templateData: recordObj.content.data,
-                        cgStop: recordObj.content.useStopCommand
-                    });
-                }
-                else if (layer.content.type === src_1.TimelineContentTypeCasparCg.HTMLPAGE) {
-                    const htmlObj = layer;
-                    stateLayer = device_1.literal({
-                        id: layer.id,
-                        layerNo: mapping.layer,
-                        content: casparcg_state_1.CasparCG.LayerContentType.HTMLPAGE,
-                        media: htmlObj.content.url,
-                        playTime: startTime || null,
-                        playing: true
-                    });
-                }
-                else if (layer.content.type === src_1.TimelineContentTypeCasparCg.ROUTE) {
-                    const routeObj = layer;
-                    if (routeObj.content.mappedLayer) {
-                        let routeMapping = this.getMapping()[routeObj.content.mappedLayer];
-                        if (routeMapping) {
-                            routeObj.content.channel = routeMapping.channel;
-                            routeObj.content.layer = routeMapping.layer;
-                        }
+                else if (backgroundStateLayer) {
+                    if (mapping.previewWhenNotOnAir) {
+                        channel.layers[mapping.layer] = Object.assign(Object.assign({}, backgroundStateLayer), { playing: false });
                     }
-                    stateLayer = device_1.literal({
-                        id: layer.id,
-                        layerNo: mapping.layer,
-                        content: casparcg_state_1.CasparCG.LayerContentType.ROUTE,
-                        media: 'route',
-                        route: {
-                            channel: routeObj.content.channel || 0,
-                            layer: routeObj.content.layer,
-                            channelLayout: routeObj.content.channelLayout
-                        },
-                        mode: routeObj.content.mode || undefined,
-                        playing: true,
-                        playTime: null // layer.resolved.startTime || null
-                    });
-                }
-                else if (layer.content.type === src_1.TimelineContentTypeCasparCg.RECORD) {
-                    const recordObj = layer;
-                    if (startTime) {
-                        stateLayer = device_1.literal({
-                            id: layer.id,
-                            layerNo: mapping.layer,
-                            content: casparcg_state_1.CasparCG.LayerContentType.RECORD,
-                            media: recordObj.content.file,
-                            encoderOptions: recordObj.content.encoderOptions,
-                            playing: true,
-                            playTime: startTime || 0
-                        });
-                    }
-                }
-                // if no appropriate layer could be created, make it an empty layer
-                if (!stateLayer) {
-                    let l = {
-                        id: layer.id,
-                        layerNo: mapping.layer,
-                        content: casparcg_state_1.CasparCG.LayerContentType.NOTHING,
-                        playing: false,
-                        pauseTime: 0
-                    };
-                    stateLayer = l;
-                } // now it holds that stateLayer is truthy
-                const baseContent = layer.content;
-                if (baseContent.transitions) { // add transitions to the layer obj
-                    switch (baseContent.type) {
-                        case src_1.TimelineContentTypeCasparCg.MEDIA:
-                        case src_1.TimelineContentTypeCasparCg.IP:
-                        case src_1.TimelineContentTypeCasparCg.TEMPLATE:
-                        case src_1.TimelineContentTypeCasparCg.INPUT:
-                        case src_1.TimelineContentTypeCasparCg.ROUTE:
-                            // create transition object
-                            let media = stateLayer.media;
-                            let transitions = {};
-                            if (baseContent.transitions.inTransition) {
-                                transitions.inTransition = new casparcg_state_1.CasparCG.Transition(baseContent.transitions.inTransition.type, baseContent.transitions.inTransition.duration || baseContent.transitions.inTransition.maskFile, baseContent.transitions.inTransition.easing || baseContent.transitions.inTransition.delay, baseContent.transitions.inTransition.direction || baseContent.transitions.inTransition.overlayFile);
-                            }
-                            if (baseContent.transitions.outTransition) {
-                                transitions.outTransition = new casparcg_state_1.CasparCG.Transition(baseContent.transitions.outTransition.type, baseContent.transitions.outTransition.duration || baseContent.transitions.outTransition.maskFile, baseContent.transitions.outTransition.easing || baseContent.transitions.outTransition.delay, baseContent.transitions.outTransition.direction || baseContent.transitions.outTransition.overlayFile);
-                            }
-                            stateLayer.media = new casparcg_state_1.CasparCG.TransitionObject(media, {
-                                inTransition: transitions.inTransition,
-                                outTransition: transitions.outTransition
-                            });
-                            break;
-                        default:
-                            // create transition using mixer
-                            break;
-                    }
-                }
-                if (layer.content.mixer) { // add mixer properties
-                    // just pass through values here:
-                    let mixer = {};
-                    _.each(layer.content.mixer, (value, property) => {
-                        mixer[property] = value;
-                    });
-                    stateLayer.mixer = mixer;
-                }
-                stateLayer.layerNo = mapping.layer;
-                if (!layerExt.isLookahead) { // foreground layer
-                    const prev = channel.layers[mapping.layer] || {};
-                    channel.layers[mapping.layer] = _.extend(stateLayer, _.pick(prev, 'nextUp'));
-                }
-                else { // background layer
-                    let s = stateLayer;
-                    s.auto = false;
-                    const res = channel.layers[mapping.layer];
-                    if (!res) { // create a new empty foreground layer if not found
-                        let l = {
-                            id: layer.id,
+                    else {
+                        channel.layers[mapping.layer] = device_1.literal({
+                            id: `${backgroundStateLayer.id}_empty_base`,
                             layerNo: mapping.layer,
                             content: casparcg_state_1.CasparCG.LayerContentType.NOTHING,
                             playing: false,
                             pauseTime: 0,
-                            nextUp: s
-                        };
-                        channel.layers[mapping.layer] = l;
-                    }
-                    else { // foreground layer exists, so set this layer as nextUp
-                        channel.layers[mapping.layer].nextUp = s;
+                            nextUp: device_1.literal(Object.assign(Object.assign({}, backgroundStateLayer), { auto: false }))
+                        });
                     }
                 }
             }
@@ -445,13 +451,13 @@ class CasparCGDevice extends device_1.DeviceWithState {
      */
     restartCasparCG() {
         return new Promise((resolve, reject) => {
-            if (!this._connectionOptions)
+            if (!this.initOptions)
                 throw new Error('CasparCGDevice._connectionOptions is not set!');
-            if (!this._connectionOptions.launcherHost)
+            if (!this.initOptions.launcherHost)
                 throw new Error('CasparCGDevice: config.launcherHost is not set!');
-            if (!this._connectionOptions.launcherPort)
+            if (!this.initOptions.launcherPort)
                 throw new Error('CasparCGDevice: config.launcherPort is not set!');
-            let url = `http://${this._connectionOptions.launcherHost}:${this._connectionOptions.launcherPort}/processes/casparcg/restart`;
+            let url = `http://${this.initOptions.launcherHost}:${this.initOptions.launcherPort}/processes/casparcg/restart`;
             request.post(url, {}, // json: cmd.params
             (error, response) => {
                 if (error) {

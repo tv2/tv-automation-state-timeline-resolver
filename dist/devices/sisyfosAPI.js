@@ -12,6 +12,7 @@ class SisyfosInterface extends events_1.EventEmitter {
         this._pingCounter = Math.round(Math.random() * 10000);
         this._connectivityTimeout = null;
         this._connected = false;
+        this._mixerOnline = true;
     }
     /**
      * Connnects to the OSC server.
@@ -60,9 +61,6 @@ class SisyfosInterface extends events_1.EventEmitter {
         if (command.type === sisyfos_1.Commands.TAKE) {
             this._oscClient.send({ address: '/take', args: [] });
         }
-        else if (command.type === sisyfos_1.Commands.FADE_TO_BLACK) {
-            this._oscClient.send({ address: '/fadetoblack', args: [] });
-        }
         else if (command.type === sisyfos_1.Commands.CLEAR_PST_ROW) {
             this._oscClient.send({ address: '/clearpst', args: [] });
         }
@@ -90,6 +88,12 @@ class SisyfosInterface extends events_1.EventEmitter {
                         value: command.value
                     }] });
         }
+        else if (command.type === sisyfos_1.Commands.VISIBLE) {
+            this._oscClient.send({ address: `/ch/${command.channel + 1}/visible`, args: [{
+                        type: 'i',
+                        value: command.value
+                    }] });
+        }
     }
     disconnect() {
         this._oscClient.close();
@@ -103,14 +107,18 @@ class SisyfosInterface extends events_1.EventEmitter {
     get state() {
         return this._state;
     }
+    get mixerOnline() {
+        return this._mixerOnline;
+    }
+    setMixerOnline(state) {
+        this._mixerOnline = state;
+    }
     _monitorConnectivity() {
         const pingSisyfos = () => {
             this._oscClient.send({ address: `/ping/${this._pingCounter}`, args: [] });
             const waitingForPingCounter = this._pingCounter;
             // Expect a reply within a certain time:
-            if (this._connectivityTimeout) {
-                clearTimeout(this._connectivityTimeout);
-            }
+            this._clearPingTimer();
             this._connectivityTimeout = setTimeout(() => {
                 if (waitingForPingCounter === this._pingCounter) {
                     // this._pingCounter hasn't changed, ie no response has been received
@@ -124,14 +132,17 @@ class SisyfosInterface extends events_1.EventEmitter {
             pingSisyfos();
         }, CONNECTIVITY_INTERVAL);
     }
+    _clearPingTimer() {
+        if (this._connectivityTimeout) {
+            clearTimeout(this._connectivityTimeout);
+            this._connectivityTimeout = null;
+        }
+    }
     receiver(message) {
         const address = message.address.substr(1).split('/');
         if (address[0] === 'state') {
             if (address[1] === 'full') {
-                const extState = JSON.parse(message.args[0].value);
-                this._state = {
-                    channels: extState.channel
-                };
+                this._state = this.parseSisyfosState(message);
                 this.emit('initialized');
             }
             else if (address[1] === 'ch') {
@@ -142,12 +153,16 @@ class SisyfosInterface extends events_1.EventEmitter {
         else if (address[0] === 'pong') { // a reply to "/ping"
             let pingValue = parseInt(message.args[0].value, 10);
             if (pingValue && this._pingCounter === pingValue) {
-                if (this._connectivityTimeout) {
-                    clearTimeout(this._connectivityTimeout);
-                    this._connectivityTimeout = null;
-                }
+                this._clearPingTimer();
                 this.updateIsConnected(true);
                 this._pingCounter++;
+                this.emit('mixerOnline', true);
+            }
+            else if (message.args[0].value === 'offline') {
+                this._clearPingTimer();
+                this.updateIsConnected(true);
+                this._pingCounter++;
+                this.emit('mixerOnline', false);
             }
         }
     }
@@ -173,6 +188,29 @@ class SisyfosInterface extends events_1.EventEmitter {
             return { faderLevel: message.args[0].value };
         }
         return {};
+    }
+    parseSisyfosState(message) {
+        const extState = JSON.parse(message.args[0].value);
+        const deviceState = { channels: {} };
+        Object.keys(extState.channel).forEach((ch, index) => {
+            let pgmOn = 0;
+            if (ch.pgmOn === true) {
+                pgmOn = 1;
+            }
+            else if (ch.voOn === true) {
+                pgmOn = 2;
+            }
+            const channel = {
+                faderLevel: ch.faderLevel || 0.75,
+                pgmOn: pgmOn,
+                pstOn: ch.pstOn === true ? 1 : 0,
+                label: ch.label || '',
+                visible: ch.showChannel ? true : false,
+                tlObjIds: []
+            };
+            deviceState.channels[index] = channel;
+        });
+        return deviceState;
     }
 }
 exports.SisyfosInterface = SisyfosInterface;

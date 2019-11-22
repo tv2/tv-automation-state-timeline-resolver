@@ -1,15 +1,12 @@
-import { DeviceWithState, DeviceStatus } from './device';
+import { DeviceWithState, DeviceStatus, IDevice } from './device';
 import { Command as CommandNS } from 'casparcg-connection';
-import { DeviceType, DeviceOptions, CasparCGOptions } from '../types/src';
+import { DeviceType, CasparCGOptions, DeviceOptionsCasparCG } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 import { CasparCG as StateNS } from 'casparcg-state';
-export interface CasparCGDeviceOptions extends DeviceOptions {
-    options?: {
+export interface DeviceOptionsCasparCGInternal extends DeviceOptionsCasparCG {
+    options: (DeviceOptionsCasparCG['options'] & {
         commandReceiver?: CommandReceiver;
-        timeBase?: {
-            [channel: string]: number;
-        } | number;
-    };
+    });
 }
 export declare type CommandReceiver = (time: number, cmd: CommandNS.IAMCPCommand, context: string, timelineObjId: string) => Promise<any>;
 /**
@@ -18,7 +15,7 @@ export declare type CommandReceiver = (time: number, cmd: CommandNS.IAMCPCommand
  * commands. It depends on the DoOnTime class to execute the commands timely or,
  * optionally, uses the CasparCG command scheduling features.
  */
-export declare class CasparCGDevice extends DeviceWithState<TimelineState> {
+export declare class CasparCGDevice extends DeviceWithState<TimelineState> implements IDevice {
     private _ccg;
     private _ccgState;
     private _queue;
@@ -27,14 +24,14 @@ export declare class CasparCGDevice extends DeviceWithState<TimelineState> {
     private _timeBase;
     private _useScheduling?;
     private _doOnTime;
-    private _connectionOptions?;
+    private initOptions?;
     private _connected;
-    constructor(deviceId: string, deviceOptions: CasparCGDeviceOptions, options: any);
+    constructor(deviceId: string, deviceOptions: DeviceOptionsCasparCGInternal, options: any);
     /**
      * Initiates the connection with CasparCG through the ccg-connection lib and
      * initializes CasparCG State library.
      */
-    init(connectionOptions: CasparCGOptions): Promise<boolean>;
+    init(initOptions: CasparCGOptions): Promise<boolean>;
     /**
      * Terminates the device safely such that things can be garbage collected.
      */
@@ -58,6 +55,7 @@ export declare class CasparCGDevice extends DeviceWithState<TimelineState> {
         time: number;
         command: CommandNS.IAMCPCommand;
     })[][];
+    private convertObjectToCasparState;
     /**
      * Takes a timeline state and returns a CasparCG State that will work with the state lib.
      * @param timelineState The timeline state to generate from.

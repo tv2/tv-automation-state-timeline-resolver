@@ -1,13 +1,10 @@
-import { DeviceWithState, DeviceStatus } from './device';
-import { DeviceType, DeviceOptions, TimelineContentTypePanasonicPtz } from '../types/src';
+import { DeviceWithState, DeviceStatus, IDevice } from './device';
+import { DeviceType, TimelineContentTypePanasonicPtz, PanasonicPTZOptions, DeviceOptionsPanasonicPTZ } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
-export interface PanasonicPtzOptions extends DeviceOptions {
-    options?: {
+export interface DeviceOptionsPanasonicPTZInternal extends DeviceOptionsPanasonicPTZ {
+    options: (DeviceOptionsPanasonicPTZ['options'] & {
         commandReceiver?: CommandReceiver;
-        host?: string;
-        port?: number;
-        https?: boolean;
-    };
+    });
 }
 export declare type CommandReceiver = (time: number, cmd: PanasonicPtzCommand, context: CommandContext, timelineObjId: string) => Promise<any>;
 export interface PanasonicPtzState {
@@ -46,16 +43,16 @@ declare type CommandContext = any;
  * executes commands to achieve such states. Depends on PanasonicPTZAPI class for
  * connection with the physical device.
  */
-export declare class PanasonicPtzDevice extends DeviceWithState<TimelineState> {
+export declare class PanasonicPtzDevice extends DeviceWithState<TimelineState> implements IDevice {
     private _doOnTime;
     private _device;
     private _connected;
     private _commandReceiver;
-    constructor(deviceId: string, deviceOptions: PanasonicPtzOptions, options: any);
+    constructor(deviceId: string, deviceOptions: DeviceOptionsPanasonicPTZInternal, options: any);
     /**
      * Initiates the device: set up ping for connection logic.
      */
-    init(): Promise<boolean>;
+    init(_initOptions: PanasonicPTZOptions): Promise<boolean>;
     /**
      * Converts a timeline state into a device state.
      * @param state

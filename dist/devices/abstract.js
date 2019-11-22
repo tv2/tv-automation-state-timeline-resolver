@@ -27,7 +27,7 @@ class AbstractDevice extends device_1.DeviceWithState {
     /**
      * Initiates the connection with CasparCG through the ccg-connection lib.
      */
-    init() {
+    init(_initOptions) {
         return new Promise((resolve /*, reject*/) => {
             // This is where we would do initialization, like connecting to the devices, etc
             resolve(true);

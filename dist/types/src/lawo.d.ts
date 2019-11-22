@@ -12,6 +12,27 @@ export declare enum MappingLawoType {
     FULL_PATH = "fullpath",
     TRIGGER_VALUE = "triggerValue"
 }
+export interface LawoOptions {
+    setValueFn?: SetLawoValueFn;
+    host?: string;
+    port?: number;
+    sourcesPath?: string;
+    rampMotorFunctionPath?: string;
+    dbPropertyName?: string;
+    faderInterval?: number;
+}
+export declare type SetLawoValueFn = (command: LawoCommand, timelineObjId: string, valueType?: EmberTypes) => Promise<any>;
+export interface LawoCommand {
+    path: string;
+    value: EmberValueTypes;
+    valueType: EmberTypes;
+    key: string;
+    identifier: string;
+    type: TimelineContentTypeLawo;
+    transitionDuration?: number;
+    from?: EmberValueTypes;
+    priority: number;
+}
 export declare enum TimelineContentTypeLawo {
     SOURCE = "lawosource",
     EMBER_PROPERTY = "lawofullpathemberproperty",

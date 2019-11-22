@@ -1,25 +1,25 @@
-import { DeviceWithState, DeviceStatus } from './device';
-import { DeviceType, DeviceOptions, VizMSEOptions, TimelineContentTypeVizMSE, ExpectedPlayoutItemContent, ExpectedPlayoutItemContentVizMSE } from '../types/src';
+import { DeviceWithState, DeviceStatus, IDevice } from './device';
+import { DeviceType, VizMSEOptions, TimelineContentTypeVizMSE, ExpectedPlayoutItemContent, ExpectedPlayoutItemContentVizMSE, DeviceOptionsVizMSE } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 export declare function getHash(str: string): string;
-export interface VizMSEDeviceOptions extends DeviceOptions {
-    options?: {
+export interface DeviceOptionsVizMSEInternal extends DeviceOptionsVizMSE {
+    options: (DeviceOptionsVizMSE['options'] & {
         commandReceiver?: CommandReceiver;
-    };
+    });
 }
 export declare type CommandReceiver = (time: number, cmd: VizMSECommand, context: string, timelineObjId: string) => Promise<any>;
 /**
  * This class is used to interface with a vizRT Media Sequence Editor, through the v-connection library
  */
-export declare class VizMSEDevice extends DeviceWithState<VizMSEState> {
+export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevice {
     private _vizMSE?;
     private _vizmseManager?;
     private _commandReceiver;
     private _doOnTime;
-    private _connectionOptions?;
+    private _initOptions?;
     private _vizMSEConnected;
-    constructor(deviceId: string, deviceOptions: VizMSEDeviceOptions, options: any);
-    init(connectionOptions: VizMSEOptions): Promise<boolean>;
+    constructor(deviceId: string, deviceOptions: DeviceOptionsVizMSEInternal, options: any);
+    init(initOptions: VizMSEOptions): Promise<boolean>;
     /**
      * Terminates the device safely such that things can be garbage collected.
      */
@@ -47,6 +47,8 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> {
     }[];
     readonly supportsExpectedPlayoutItems: boolean;
     handleExpectedPlayoutItems(expectedPlayoutItems: Array<ExpectedPlayoutItemContent>): void;
+    getCurrentState(): VizMSEState | undefined;
+    connectionChanged(connected?: boolean): void;
     /**
      * Takes a timeline state and returns a VizMSE State that will work with the state lib.
      * @param timelineState The timeline state to generate from.
@@ -78,7 +80,6 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> {
      * @param cmd Command to execute
      */
     private _defaultCommandReceiver;
-    private _connectionChanged;
 }
 interface VizMSEState {
     time: number;
@@ -86,21 +87,35 @@ interface VizMSEState {
         [layerId: string]: VizMSEStateLayer;
     };
 }
-declare type VizMSEStateLayer = VizMSEStateLayerInternal | VizMSEStateLayerPilot;
+declare type VizMSEStateLayer = VizMSEStateLayerInternal | VizMSEStateLayerPilot | VizMSEStateLayerContinue | VizMSEStateLayerLoadAllElements;
 interface VizMSEStateLayerBase {
     timelineObjId: string;
-    contentType: TimelineContentTypeVizMSE;
-    continueStep?: number;
     lookahead?: boolean;
 }
-interface VizMSEStateLayerInternal extends VizMSEStateLayerBase {
+interface VizMSEStateLayerElementBase extends VizMSEStateLayerBase {
+    contentType: TimelineContentTypeVizMSE;
+    continueStep?: number;
+    cue?: boolean;
+}
+interface VizMSEStateLayerInternal extends VizMSEStateLayerElementBase {
     contentType: TimelineContentTypeVizMSE.ELEMENT_INTERNAL;
     templateName: string;
     templateData: Array<string>;
+    channelName?: string;
 }
-interface VizMSEStateLayerPilot extends VizMSEStateLayerBase {
+interface VizMSEStateLayerPilot extends VizMSEStateLayerElementBase {
     contentType: TimelineContentTypeVizMSE.ELEMENT_PILOT;
     templateVcpId: number;
+    channelName?: string;
+}
+interface VizMSEStateLayerContinue extends VizMSEStateLayerBase {
+    contentType: TimelineContentTypeVizMSE.CONTINUE;
+    direction?: 1 | -1;
+    reference: string;
+    referenceContent?: VizMSEStateLayerInternal | VizMSEStateLayerPilot;
+}
+interface VizMSEStateLayerLoadAllElements extends VizMSEStateLayerBase {
+    contentType: TimelineContentTypeVizMSE.LOAD_ALL_ELEMENTS;
 }
 interface VizMSECommandBase {
     time: number;
@@ -115,7 +130,8 @@ export declare enum VizMSECommandType {
     TAKE_ELEMENT = "take",
     TAKEOUT_ELEMENT = "out",
     CONTINUE_ELEMENT = "continue",
-    CONTINUE_ELEMENT_REVERSE = "continuereverse"
+    CONTINUE_ELEMENT_REVERSE = "continuereverse",
+    LOAD_ALL_ELEMENTS = "load_all_elements"
 }
 interface VizMSECommandElementBase extends VizMSECommandBase, ExpectedPlayoutItemContentVizMSEInternal {
 }
@@ -128,20 +144,19 @@ interface VizMSECommandCue extends VizMSECommandElementBase {
 interface VizMSECommandTake extends VizMSECommandElementBase {
     type: VizMSECommandType.TAKE_ELEMENT;
 }
-interface VizMSECommandTakeOut extends VizMSECommandBase {
+interface VizMSECommandTakeOut extends VizMSECommandElementBase {
     type: VizMSECommandType.TAKEOUT_ELEMENT;
-    elementName: string | number;
 }
-interface VizMSECommandContinue extends VizMSECommandBase {
+interface VizMSECommandContinue extends VizMSECommandElementBase {
     type: VizMSECommandType.CONTINUE_ELEMENT;
-    templateInstance: string | number;
 }
-interface VizMSECommandContinueReverse extends VizMSECommandBase {
+interface VizMSECommandContinueReverse extends VizMSECommandElementBase {
     type: VizMSECommandType.CONTINUE_ELEMENT_REVERSE;
-    templateInstance: string | number;
 }
-declare type VizMSECommand = VizMSECommandPrepare | VizMSECommandCue | VizMSECommandTake | VizMSECommandTakeOut | VizMSECommandContinue | VizMSECommandContinueReverse;
-/** Tracked state of the vizMSE */
+interface VizMSECommandLoadAllElements extends VizMSECommandBase {
+    type: VizMSECommandType.LOAD_ALL_ELEMENTS;
+}
+declare type VizMSECommand = VizMSECommandPrepare | VizMSECommandCue | VizMSECommandTake | VizMSECommandTakeOut | VizMSECommandContinue | VizMSECommandContinueReverse | VizMSECommandLoadAllElements;
 interface ExpectedPlayoutItemContentVizMSEInternal extends ExpectedPlayoutItemContentVizMSE {
     /** Name of the instance of the element in MSE, generated by us */
     templateInstance: string;

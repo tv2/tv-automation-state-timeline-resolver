@@ -50,7 +50,7 @@ class PanasonicPtzDevice extends device_1.DeviceWithState {
     /**
      * Initiates the device: set up ping for connection logic.
      */
-    init() {
+    init(_initOptions) {
         if (this._device) {
             return new Promise((resolve, reject) => {
                 setInterval(() => {

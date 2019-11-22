@@ -7,25 +7,25 @@ const request = require("request");
  * This is a HTTPWatcherDevice, requests a uri on a regular interval and watches
  * it's response.
  */
-class HttpWatcherDevice extends device_1.Device {
+class HTTPWatcherDevice extends device_1.Device {
     constructor(deviceId, deviceOptions, options) {
         super(deviceId, deviceOptions, options);
         this.status = device_1.StatusCode.UNKNOWN;
         const opts = deviceOptions.options || {};
         switch (opts.httpMethod) {
             case 'post':
-                this.httpMethod = src_1.TimelineContentTypeHttp.POST;
+                this.httpMethod = src_1.TimelineContentTypeHTTP.POST;
                 break;
             case 'delete':
-                this.httpMethod = src_1.TimelineContentTypeHttp.DELETE;
+                this.httpMethod = src_1.TimelineContentTypeHTTP.DELETE;
                 break;
             case 'put':
-                this.httpMethod = src_1.TimelineContentTypeHttp.PUT;
+                this.httpMethod = src_1.TimelineContentTypeHTTP.PUT;
                 break;
             case 'get':
             case undefined:
             default:
-                this.httpMethod = src_1.TimelineContentTypeHttp.GET;
+                this.httpMethod = src_1.TimelineContentTypeHTTP.GET;
                 break;
         }
         this.expectedHttpResponse = Number(opts.expectedHttpResponse) || undefined;
@@ -73,7 +73,7 @@ class HttpWatcherDevice extends device_1.Device {
             this._setStatus(device_1.StatusCode.GOOD);
         }
     }
-    init() {
+    init(_initOptions) {
         this.startInterval();
         return Promise.resolve(true);
     }
@@ -120,5 +120,5 @@ class HttpWatcherDevice extends device_1.Device {
         return 'HTTP-Watch ' + this.deviceId;
     }
 }
-exports.HttpWatcherDevice = HttpWatcherDevice;
+exports.HTTPWatcherDevice = HTTPWatcherDevice;
 //# sourceMappingURL=httpWatcher.js.map

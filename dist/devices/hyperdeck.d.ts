@@ -1,11 +1,11 @@
 import { TimelineState } from 'superfly-timeline';
-import { DeviceWithState, DeviceStatus } from './device';
-import { DeviceType, DeviceOptions, HyperdeckOptions } from '../types/src';
+import { DeviceWithState, DeviceStatus, IDevice } from './device';
+import { DeviceType, HyperdeckOptions, DeviceOptionsHyperdeck } from '../types/src';
 import { Commands as HyperdeckCommands, TransportStatus } from 'hyperdeck-connection';
-export interface HyperdeckDeviceOptions extends DeviceOptions {
-    options?: {
+export interface DeviceOptionsHyperdeckInternal extends DeviceOptionsHyperdeck {
+    options: (DeviceOptionsHyperdeck['options'] & {
         commandReceiver?: CommandReceiver;
-    };
+    });
 }
 export declare type CommandReceiver = (time: number, command: HyperdeckCommands.AbstractCommand, context: CommandContext, timelineObjId: string) => Promise<any>;
 export interface HyperdeckCommandWithContext {
@@ -27,7 +27,7 @@ declare type CommandContext = any;
 /**
  * This is a wrapper for the Hyperdeck Device. Commands to any and all hyperdeck devices will be sent through here.
  */
-export declare class HyperdeckDevice extends DeviceWithState<DeviceState> {
+export declare class HyperdeckDevice extends DeviceWithState<DeviceState> implements IDevice {
     private _doOnTime;
     private _hyperdeck;
     private _initialized;
@@ -39,11 +39,11 @@ export declare class HyperdeckDevice extends DeviceWithState<DeviceState> {
     private _slotStatus;
     private _transportStatus;
     private _commandReceiver;
-    constructor(deviceId: string, deviceOptions: HyperdeckDeviceOptions, options: any);
+    constructor(deviceId: string, deviceOptions: DeviceOptionsHyperdeckInternal, options: any);
     /**
      * Initiates the connection with the Hyperdeck through the hyperdeck-connection lib.
      */
-    init(options: HyperdeckOptions): Promise<boolean>;
+    init(initOptions: HyperdeckOptions): Promise<boolean>;
     /**
      * Makes this device ready for garbage collection.
      */

@@ -10,6 +10,7 @@ export declare class SisyfosInterface extends EventEmitter {
     private _pingCounter;
     private _connectivityTimeout;
     private _connected;
+    private _mixerOnline;
     /**
      * Connnects to the OSC server.
      * @param host ip to connect to
@@ -22,8 +23,12 @@ export declare class SisyfosInterface extends EventEmitter {
     isInitialized(): boolean;
     readonly connected: boolean;
     readonly state: SisyfosAPIState;
+    readonly mixerOnline: boolean;
+    setMixerOnline(state: boolean): void;
     private _monitorConnectivity;
+    private _clearPingTimer;
     private receiver;
     private updateIsConnected;
     private parseChannelCommand;
+    private parseSisyfosState;
 }

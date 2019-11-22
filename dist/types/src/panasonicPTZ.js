@@ -14,4 +14,4 @@ var TimelineContentTypePanasonicPtz;
     TimelineContentTypePanasonicPtz["ZOOM_SPEED"] = "zoomSpeed";
     TimelineContentTypePanasonicPtz["ZOOM"] = "zoom";
 })(TimelineContentTypePanasonicPtz = exports.TimelineContentTypePanasonicPtz || (exports.TimelineContentTypePanasonicPtz = {}));
-//# sourceMappingURL=ptz.js.map
+//# sourceMappingURL=panasonicPTZ.js.map

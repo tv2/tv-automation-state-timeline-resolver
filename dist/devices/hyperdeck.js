@@ -30,11 +30,11 @@ class HyperdeckDevice extends device_1.DeviceWithState {
     /**
      * Initiates the connection with the Hyperdeck through the hyperdeck-connection lib.
      */
-    init(options) {
+    init(initOptions) {
         return new Promise((resolve /*, reject*/) => {
             let firstConnect = true;
             this._hyperdeck = new hyperdeck_connection_1.Hyperdeck({ pingPeriod: 1000 });
-            this._hyperdeck.connect(options.host, options.port);
+            this._hyperdeck.connect(initOptions.host, initOptions.port);
             this._hyperdeck.on('connected', () => tslib_1.__awaiter(this, void 0, void 0, function* () {
                 yield this._hyperdeck.sendCommand(new hyperdeck_connection_1.Commands.RemoteCommand(true));
                 this._queryCurrentState()
@@ -51,8 +51,8 @@ class HyperdeckDevice extends device_1.DeviceWithState {
                     this.emit('resetResolver');
                 }))
                     .catch(e => this.emit('error', 'Hyperdeck.on("connected")', e));
-                if (options.minRecordingTime) {
-                    this._minRecordingTime = options.minRecordingTime;
+                if (initOptions.minRecordingTime) {
+                    this._minRecordingTime = initOptions.minRecordingTime;
                     if (this._recTimePollTimer)
                         clearTimeout(this._recTimePollTimer);
                 }
@@ -448,6 +448,9 @@ class HyperdeckDevice extends device_1.DeviceWithState {
     _querySlotNumber() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             const { slots } = yield this._hyperdeck.sendCommand(new hyperdeck_connection_1.Commands.DeviceInfoCommand());
+            // before protocol version 1.9 we do not get slot info, so we assume 2 slots.
+            if (!slots)
+                return 2;
             return slots;
         });
     }

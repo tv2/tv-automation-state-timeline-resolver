@@ -76,7 +76,7 @@ class LawoDevice extends device_1.DeviceWithState {
     /**
      * Initiates the connection with Lawo
      */
-    init() {
+    init(_initOptions) {
         return new Promise((resolve, reject) => {
             let fail = (e) => reject(e);
             try {

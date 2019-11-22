@@ -1,8 +1,9 @@
 /// <reference types="node" />
 import { TimelineState } from 'superfly-timeline';
-import { Mappings, DeviceType, DeviceOptions, ExpectedPlayoutItemContent } from '../types/src';
+import { Mappings, DeviceType, ExpectedPlayoutItemContent } from '../types/src';
 import { EventEmitter } from 'events';
 import { CommandReport, DoOnTime } from '../doOnTime';
+import { DeviceInitOptions, DeviceOptionsAny } from '../types/src/device';
 export interface DeviceCommand {
     time: number;
     deviceId: string;
@@ -33,11 +34,31 @@ export declare function literal<T>(o: T): T;
 export interface DeviceClassOptions {
     getCurrentTime: () => number;
 }
+export interface IDevice {
+    init: (initOptions: DeviceInitOptions) => Promise<boolean>;
+    getCurrentTime: () => number;
+    prepareForHandleState: (newStateTime: number) => void;
+    handleState: (newState: TimelineState) => void;
+    clearFuture: (clearAfterTime: number) => void;
+    canConnect: boolean;
+    connected: boolean;
+    makeReady: (_okToDestroyStuff?: boolean) => Promise<void>;
+    standDown: (_okToDestroyStuff?: boolean) => Promise<void>;
+    getStatus: () => DeviceStatus;
+    getMapping: () => Mappings;
+    setMapping: (mappings: Mappings) => void;
+    deviceId: string;
+    deviceName: string;
+    deviceType: DeviceType;
+    deviceOptions: DeviceOptionsAny;
+    instanceId: number;
+    startTime: number;
+}
 /**
  * Base class for all Devices to inherit from. Defines the API that the conductor
  * class will use.
  */
-export declare abstract class Device extends EventEmitter {
+export declare abstract class Device extends EventEmitter implements IDevice {
     private _getCurrentTime;
     private _deviceId;
     private _mappings;
@@ -46,14 +67,14 @@ export declare abstract class Device extends EventEmitter {
     private _instanceId;
     private _startTime;
     useDirectTime: boolean;
-    protected _deviceOptions: DeviceOptions;
+    protected _deviceOptions: DeviceOptionsAny;
     protected _reportAllCommands: boolean;
-    constructor(deviceId: string, deviceOptions: DeviceOptions, options: DeviceClassOptions);
+    constructor(deviceId: string, deviceOptions: DeviceOptionsAny, options: DeviceClassOptions);
     /**
      * Connect to the device, resolve the promise when ready.
-     * @param connectionOptions Device-specific options
+     * @param initOptions Device-specific options
      */
-    abstract init(connectionOptions: any): Promise<boolean>;
+    abstract init(initOptions: DeviceInitOptions): Promise<boolean>;
     terminate(): Promise<boolean>;
     getCurrentTime(): number;
     /** Called from Conductor when a new state is about to be handled soon */
@@ -89,7 +110,7 @@ export declare abstract class Device extends EventEmitter {
      */
     abstract readonly deviceName: string;
     abstract readonly deviceType: DeviceType;
-    readonly deviceOptions: DeviceOptions;
+    readonly deviceOptions: DeviceOptionsAny;
     readonly supportsExpectedPlayoutItems: boolean;
     handleExpectedPlayoutItems(_expectedPlayoutItems: Array<ExpectedPlayoutItemContent>): void;
     private _updateCurrentTime;
@@ -131,7 +152,7 @@ export declare abstract class DeviceWithState<T> extends Device {
      * diffs.
      * @param time
      */
-    getStateBefore(time: number): {
+    protected getStateBefore(time: number): {
         state: T;
         time: number;
     } | null;
@@ -143,7 +164,7 @@ export declare abstract class DeviceWithState<T> extends Device {
      *
      * @param time
      */
-    getState(time?: number): {
+    protected getState(time?: number): {
         state: T;
         time: number;
     } | null;
@@ -153,15 +174,15 @@ export declare abstract class DeviceWithState<T> extends Device {
      * @param state
      * @param time
      */
-    setState(state: T, time: number): void;
+    protected setState(state: T, time: number): void;
     /**
      * Sets a windows outside of which all states will be removed.
      * @param removeBeforeTime
      * @param removeAfterTime
      */
-    cleanUpStates(removeBeforeTime: number, removeAfterTime: number): void;
+    protected cleanUpStates(removeBeforeTime: number, removeAfterTime: number): void;
     /**
      * Removes all states
      */
-    clearStates(): void;
+    protected clearStates(): void;
 }

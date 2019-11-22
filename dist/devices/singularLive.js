@@ -27,9 +27,9 @@ class SingularLiveDevice extends device_1.DeviceWithState {
         }, doOnTime_1.SendMode.IN_ORDER, this._deviceOptions);
         this.handleDoOnTime(this._doOnTime, 'SingularLive');
     }
-    init(options) {
+    init(initOptions) {
         // this._makeReadyCommands = options.makeReadyCommands || []
-        this._accessToken = options.accessToken || '';
+        this._accessToken = initOptions.accessToken || '';
         if (!this._accessToken)
             throw new Error('Singular.Live bad connection option: accessToken. An accessToken is required.');
         return Promise.resolve(true); // This device doesn't have any initialization procedure
@@ -99,10 +99,11 @@ class SingularLiveDevice extends device_1.DeviceWithState {
             if (mapping && mapping.device === src_1.DeviceType.SINGULAR_LIVE) {
                 let tlObjectSource = tlObject;
                 if (tlObjectSource.content.type === src_1.TimelineContentTypeSingularLive.COMPOSITION) {
-                    singularState.compositions[mapping.compositionName] = Object.assign(singularState.compositions[mapping.compositionName] || {}, {
+                    singularState.compositions[mapping.compositionName] = {
                         timelineObjId: tlObject.id,
-                        controlNode: tlObjectSource.content.controlNode
-                    });
+                        controlNode: tlObjectSource.content.controlNode,
+                        animation: tlObjectSource.content.animation || { action: 'play' }
+                    };
                 }
             }
         });

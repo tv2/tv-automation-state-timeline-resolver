@@ -9,7 +9,7 @@ const request = require("request");
 /**
  * This is a HTTPSendDevice, it sends http commands when it feels like it
  */
-class HttpSendDevice extends device_1.DeviceWithState {
+class HTTPSendDevice extends device_1.DeviceWithState {
     constructor(deviceId, deviceOptions, options) {
         super(deviceId, deviceOptions, options);
         if (deviceOptions.options) {
@@ -23,8 +23,8 @@ class HttpSendDevice extends device_1.DeviceWithState {
         }, doOnTime_1.SendMode.IN_ORDER, this._deviceOptions);
         this.handleDoOnTime(this._doOnTime, 'HTTPSend');
     }
-    init(options) {
-        this._makeReadyCommands = options.makeReadyCommands || [];
+    init(initOptions) {
+        this._makeReadyCommands = initOptions.makeReadyCommands || [];
         return Promise.resolve(true); // This device doesn't have any initialization procedure
     }
     /** Called by the Conductor a bit before a .handleState is called */
@@ -193,5 +193,5 @@ class HttpSendDevice extends device_1.DeviceWithState {
         });
     }
 }
-exports.HttpSendDevice = HttpSendDevice;
+exports.HTTPSendDevice = HTTPSendDevice;
 //# sourceMappingURL=httpSend.js.map

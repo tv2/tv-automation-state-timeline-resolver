@@ -4,14 +4,6 @@ export interface MappingSingularLive extends Mapping {
     device: DeviceType.SINGULAR_LIVE;
     compositionName: string;
 }
-export interface SingularLiveCompositionContent extends SingularLiveContent {
-    type: TimelineContentTypeSingularLive.COMPOSITION;
-    controlNode: {
-        payload: {
-            [key: string]: string;
-        };
-    };
-}
 export interface SingularLiveContent {
     type: TimelineContentTypeSingularLive;
     temporalPriority?: number;
@@ -28,10 +20,22 @@ export declare type TimelineObjSingularLiveAny = TimelineObjSingularLiveComposit
 export interface TimelineObjSingularLiveBase extends TSRTimelineObjBase {
     content: {
         deviceType: DeviceType.SINGULAR_LIVE;
+        type: TimelineContentTypeSingularLive;
     };
 }
 export interface TimelineObjSingularLiveComposition extends TimelineObjSingularLiveBase {
     content: {
         deviceType: DeviceType.SINGULAR_LIVE;
-    } & SingularLiveCompositionContent;
+        type: TimelineContentTypeSingularLive.COMPOSITION;
+        animation?: SingularCompositionAnimation;
+        controlNode: SingularCompositionControlNode;
+    };
+}
+export interface SingularCompositionAnimation {
+    action: 'jump' | 'play';
+}
+export interface SingularCompositionControlNode {
+    payload: {
+        [key: string]: string;
+    };
 }

@@ -1,11 +1,12 @@
-import { DeviceWithState, DeviceStatus } from './device';
-import { DeviceType, DeviceOptions, SingularLiveOptions } from '../types/src';
+import { DeviceWithState, DeviceStatus, IDevice } from './device';
+import { DeviceType, SingularLiveOptions, DeviceOptionsSingularLive, SingularCompositionAnimation, SingularCompositionControlNode } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
-export interface SingularLiveDeviceOptions extends DeviceOptions {
-    options?: {
+export interface DeviceOptionsSingularLiveInternal extends DeviceOptionsSingularLive {
+    options: (DeviceOptionsSingularLive['options'] & {
         commandReceiver?: CommandReceiver;
-    };
+    });
 }
+export declare type CommandReceiver = (time: number, cmd: SingularLiveCommandContent, context: CommandContext, timelineObjId: string) => Promise<any>;
 export interface SingularLiveAnimationCommandContent extends SingularLiveCommandContent {
     animation: {
         action: 'play' | 'jump';
@@ -22,19 +23,11 @@ export interface SingularLiveControlNodeCommandContent extends SingularLiveComma
 export interface SingularLiveCommandContent {
     compositionName: string;
 }
-export declare type CommandReceiver = (time: number, cmd: SingularLiveCommandContent, context: CommandContext, timelineObjId: string) => Promise<any>;
 export declare type CommandContext = string;
 export interface SingularComposition {
     timelineObjId: string;
-    animation: {
-        stage: string;
-        action: 'jump' | 'play';
-    };
-    controlNode: {
-        payload: {
-            [key: string]: string;
-        };
-    };
+    animation: SingularCompositionAnimation;
+    controlNode: SingularCompositionControlNode;
 }
 export interface SingularLiveState {
     compositions: {
@@ -44,13 +37,13 @@ export interface SingularLiveState {
 /**
  * This is a Singular.Live device, it talks to a Singular.Live App Instance using an Access Token
  */
-export declare class SingularLiveDevice extends DeviceWithState<TimelineState> {
+export declare class SingularLiveDevice extends DeviceWithState<TimelineState> implements IDevice {
     private _accessToken;
     private _doOnTime;
     private _deviceStatus;
     private _commandReceiver;
-    constructor(deviceId: string, deviceOptions: SingularLiveDeviceOptions, options: any);
-    init(options: SingularLiveOptions): Promise<boolean>;
+    constructor(deviceId: string, deviceOptions: DeviceOptionsSingularLiveInternal, options: any);
+    init(initOptions: SingularLiveOptions): Promise<boolean>;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime: number): void;
     handleState(newState: TimelineState): void;

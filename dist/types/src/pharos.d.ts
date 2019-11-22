@@ -2,7 +2,7 @@ import { Mapping } from './mapping';
 import { TSRTimelineObjBase, DeviceType } from '.';
 export interface PharosOptions {
     host: string;
-    ssl: boolean;
+    ssl?: boolean;
 }
 export interface MappingPharos extends Mapping {
     device: DeviceType.PHAROS;

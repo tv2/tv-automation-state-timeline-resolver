@@ -1,6 +1,6 @@
 import { Mapping } from './mapping';
 import { DeviceType, TSRTimelineObjBase } from '.';
-export interface SisfyosOptions {
+export interface SisyfosOptions {
     host: string;
     port: number;
 }
@@ -15,29 +15,29 @@ export interface SisyfosCommandContent {
     type: TimelineContentTypeSisyfos.SISYFOS;
     isPgm?: number;
     faderLevel?: number;
-    fadeToBlack?: boolean;
     label?: string;
+    visible?: boolean;
 }
 export declare type TimelineObjSisyfosAny = TimelineObjSisyfosMessage;
 export declare enum Commands {
     TOGGLE_PGM = "togglePgm",
     TOGGLE_PST = "togglePst",
     SET_FADER = "setFader",
-    FADE_TO_BLACK = "fadeToBlack",
     CLEAR_PST_ROW = "clearPstRow",
     LABEL = "label",
-    TAKE = "take"
+    TAKE = "take",
+    VISIBLE = "visible"
 }
 export interface BaseCommand {
     type: Commands;
 }
 export interface ChannelCommand {
-    type: Commands.SET_FADER | Commands.TOGGLE_PGM | Commands.TOGGLE_PST | Commands.FADE_TO_BLACK | Commands.LABEL;
+    type: Commands.SET_FADER | Commands.TOGGLE_PGM | Commands.TOGGLE_PST | Commands.LABEL | Commands.VISIBLE;
     channel: number;
     value: boolean | number | string;
 }
 export interface BoolCommand extends ChannelCommand {
-    type: Commands.FADE_TO_BLACK;
+    type: Commands.VISIBLE;
     value: boolean;
 }
 export interface ValueCommand extends ChannelCommand {
@@ -72,8 +72,8 @@ export interface SisyfosAPIChannel {
     faderLevel: number;
     pgmOn: number;
     pstOn: number;
-    fadeToBlack: boolean;
     label: string;
+    visible: boolean;
 }
 export interface SisyfosAPIState {
     channels: {

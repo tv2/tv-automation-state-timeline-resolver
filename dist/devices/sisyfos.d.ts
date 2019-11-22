@@ -1,23 +1,23 @@
-import { DeviceWithState, DeviceStatus } from './device';
-import { DeviceType, DeviceOptions } from '../types/src';
+import { DeviceWithState, DeviceStatus, IDevice } from './device';
+import { DeviceType, DeviceOptionsSisyfos } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
-import { SisfyosOptions, SisyfosState, SisyfosCommand } from '../types/src/sisyfos';
-export interface SisyfosDeviceOptions extends DeviceOptions {
-    options?: {
-        commandReceiver?: (time: number, cmd: any) => Promise<any>;
-    };
+import { SisyfosOptions, SisyfosState, SisyfosCommand } from '../types/src/sisyfos';
+export interface DeviceOptionsSisyfosInternal extends DeviceOptionsSisyfos {
+    options: (DeviceOptionsSisyfos['options'] & {
+        commandReceiver?: CommandReceiver;
+    });
 }
 export declare type CommandReceiver = (time: number, cmd: SisyfosCommand, context: CommandContext, timelineObjId: string) => Promise<any>;
 declare type CommandContext = string;
 /**
  * This is a generic wrapper for any osc-enabled device.
  */
-export declare class SisyfosMessageDevice extends DeviceWithState<SisyfosState> {
+export declare class SisyfosMessageDevice extends DeviceWithState<SisyfosState> implements IDevice {
     private _doOnTime;
     private _sisyfos;
     private _commandReceiver;
-    constructor(deviceId: string, deviceOptions: SisyfosDeviceOptions, options: any);
-    init(options: SisfyosOptions): Promise<boolean>;
+    constructor(deviceId: string, deviceOptions: DeviceOptionsSisyfosInternal, options: any);
+    init(initOptions: SisyfosOptions): Promise<boolean>;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime: number): void;
     /**

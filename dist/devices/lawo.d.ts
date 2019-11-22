@@ -1,20 +1,12 @@
-import { DeviceWithState, DeviceStatus } from './device';
-import { DeviceType, DeviceOptions, TimelineContentTypeLawo, EmberValueTypes, EmberTypes } from '../types/src';
+import { DeviceWithState, DeviceStatus, IDevice } from './device';
+import { DeviceType, TimelineContentTypeLawo, EmberValueTypes, EmberTypes, DeviceOptionsLawo, LawoCommand, LawoOptions } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
-export interface LawoOptions extends DeviceOptions {
-    options?: {
+export interface DeviceOptionsLawoInternal extends DeviceOptionsLawo {
+    options: (DeviceOptionsLawo['options'] & {
         commandReceiver?: CommandReceiver;
-        setValueFn?: SetValueFn;
-        host?: string;
-        port?: number;
-        sourcesPath?: string;
-        rampMotorFunctionPath?: string;
-        dbPropertyName?: string;
-        faderInterval?: number;
-    };
+    });
 }
 export declare type CommandReceiver = (time: number, cmd: LawoCommand, context: CommandContext, timelineObjId: string) => Promise<any>;
-export declare type SetValueFn = (command: LawoCommand, timelineObjId: string, valueType?: EmberTypes) => Promise<any>;
 export interface LawoState {
     nodes: {
         [path: string]: LawoStateNode;
@@ -32,17 +24,6 @@ export interface LawoStateNode {
     /** Reference to the original timeline object: */
     timelineObjId: string;
 }
-export interface LawoCommand {
-    path: string;
-    value: EmberValueTypes;
-    valueType: EmberTypes;
-    key: string;
-    identifier: string;
-    type: TimelineContentTypeLawo;
-    transitionDuration?: number;
-    from?: EmberValueTypes;
-    priority: number;
-}
 export interface LawoCommandWithContext {
     cmd: LawoCommand;
     context: CommandContext;
@@ -54,7 +35,7 @@ declare type CommandContext = string;
  *
  * It controls mutes and fades over Ember Plus.
  */
-export declare class LawoDevice extends DeviceWithState<TimelineState> {
+export declare class LawoDevice extends DeviceWithState<TimelineState> implements IDevice {
     private _doOnTime;
     private _lawo;
     private _savedNodes;
@@ -68,11 +49,11 @@ export declare class LawoDevice extends DeviceWithState<TimelineState> {
     private _faderIntervalTime;
     private transitions;
     private transitionInterval;
-    constructor(deviceId: string, deviceOptions: LawoOptions, options: any);
+    constructor(deviceId: string, deviceOptions: DeviceOptionsLawoInternal, options: any);
     /**
      * Initiates the connection with Lawo
      */
-    init(): Promise<boolean>;
+    init(_initOptions: LawoOptions): Promise<boolean>;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime: number): void;
     /**

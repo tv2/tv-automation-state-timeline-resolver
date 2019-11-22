@@ -35,10 +35,10 @@ class PharosDevice extends device_1.DeviceWithState {
     /**
      * Initiates the connection with Pharos through the PharosAPI.
      */
-    init(connectionOptions) {
+    init(initOptions) {
         return new Promise((resolve, reject) => {
             // This is where we would do initialization, like connecting to the devices, etc
-            this._pharos.connect(connectionOptions)
+            this._pharos.connect(initOptions)
                 .then(() => {
                 return this._pharos.getProjectInfo();
             })

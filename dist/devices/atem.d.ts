@@ -1,23 +1,24 @@
-import { DeviceWithState, DeviceStatus } from './device';
-import { DeviceType, DeviceOptions, AtemOptions } from '../types/src';
+import { DeviceWithState, DeviceStatus, IDevice } from './device';
+import { DeviceType, AtemOptions, DeviceOptionsAtem } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 import { Commands as AtemCommands } from 'atem-connection';
 import { State as DeviceState } from 'atem-state';
-export interface AtemDeviceOptions extends DeviceOptions {
-    options?: {
-        commandReceiver?: (time: number, cmd: any) => Promise<any>;
-    };
-}
 export interface AtemCommandWithContext {
     command: AtemCommands.AbstractCommand;
     context: CommandContext;
     timelineObjId: string;
 }
 declare type CommandContext = any;
+export interface DeviceOptionsAtemInternal extends DeviceOptionsAtem {
+    options: (DeviceOptionsAtem['options'] & {
+        commandReceiver?: CommandReceiver;
+    });
+}
+export declare type CommandReceiver = (time: number, command: AtemCommands.AbstractCommand, context: CommandContext, timelineObjId: string) => Promise<any>;
 /**
  * This is a wrapper for the Atem Device. Commands to any and all atem devices will be sent through here.
  */
-export declare class AtemDevice extends DeviceWithState<DeviceState> {
+export declare class AtemDevice extends DeviceWithState<DeviceState> implements IDevice {
     private _doOnTime;
     private _atem;
     private _state;
@@ -26,7 +27,7 @@ export declare class AtemDevice extends DeviceWithState<DeviceState> {
     private firstStateAfterMakeReady;
     private _atemStatus;
     private _commandReceiver;
-    constructor(deviceId: string, deviceOptions: AtemDeviceOptions, options: any);
+    constructor(deviceId: string, deviceOptions: DeviceOptionsAtemInternal, options: any);
     /**
      * Initiates the connection with the ATEM through the atem-connection lib
      * and initiates Atem State lib.
