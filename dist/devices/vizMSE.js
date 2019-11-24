@@ -44,6 +44,10 @@ class VizMSEDevice extends device_1.DeviceWithState {
             this._initOptions = initOptions;
             if (!this._initOptions.host)
                 throw new Error('VizMSE bad option: host');
+            if (!this._initOptions.showID)
+                throw new Error('VizMSE bad option: showID');
+            if (!this._initOptions.profile)
+                throw new Error('VizMSE bad option: profile');
             this._vizMSE = v_connection_1.createMSE(this._initOptions.host, this._initOptions.restPort, this._initOptions.wsPort);
             this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements);
             this._vizmseManager.on('connectionChanged', (connected) => this.connectionChanged(connected));
@@ -426,7 +430,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
 }
 exports.VizMSEDevice = VizMSEDevice;
 class VizMSEManager extends events_1.EventEmitter {
-    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements) {
+    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements = false) {
         super();
         this._parentVizMSEDevice = _parentVizMSEDevice;
         this._vizMSE = _vizMSE;
@@ -619,6 +623,10 @@ class VizMSEManager extends events_1.EventEmitter {
         return this._elementCache[hash];
     }
     _cacheElement(hash, element) {
+        if (!hash)
+            throw new Error('_cacheElement: hash not set');
+        if (!element)
+            throw new Error('_cacheElement: element not set (with hash ' + hash + ')');
         if (this._elementCache[hash]) {
             this.emit('error', `There is already an element with hash "${hash}" in cache`);
         }
@@ -668,7 +676,6 @@ class VizMSEManager extends events_1.EventEmitter {
                 throw new Error(`Viz Rundown not initialized!`);
             const elementHash = this.getElementHash(cmd);
             try {
-                console.log(`Creating an element of type ${typeof cmd.templateName}: ${cmd.templateName}, channel="${cmd.channelName}"`);
                 if (_.isNumber(cmd.templateName)) {
                     // Prepare a pilot element
                     const pilotEl = yield this._rundown.createElement(cmd.templateName, cmd.channelName);
