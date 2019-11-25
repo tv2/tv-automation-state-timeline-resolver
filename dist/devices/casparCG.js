@@ -380,7 +380,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 }
                 else if (backgroundStateLayer) {
                     if (mapping.previewWhenNotOnAir) {
-                        channel.layers[mapping.layer] = Object.assign(Object.assign({}, backgroundStateLayer), { playing: false });
+                        channel.layers[mapping.layer] = Object.assign(Object.assign({}, backgroundStateLayer), { playTime: null, playing: false });
                     }
                     else {
                         channel.layers[mapping.layer] = device_1.literal({
