@@ -174,24 +174,24 @@ class CasparCGDevice extends device_1.DeviceWithState {
         }
     }
     convertObjectToCasparState(layer, mapping, isForeground) {
-        const startTime = layer.instance.originalStart || layer.instance.start;
+        let startTime = layer.instance.originalStart || layer.instance.start;
         let stateLayer = null;
         if (layer.content.type === src_1.TimelineContentTypeCasparCg.MEDIA) {
             const mediaObj = layer;
+            const holdOnFirst = !isForeground || mediaObj.isLookahead;
+            if (holdOnFirst) {
+                startTime = 10; // Some value to keep it on the first frame. 0 would be ideal, but doesnt work
+            }
+            const loopingPlayTime = mediaObj.content.loop && !mediaObj.content.seek && !mediaObj.content.inPoint && !mediaObj.content.length;
             stateLayer = device_1.literal({
                 id: layer.id,
                 layerNo: mapping.layer,
                 content: casparcg_state_1.CasparCG.LayerContentType.MEDIA,
                 media: mediaObj.content.file,
-                playTime: (mediaObj.content.noStarttime ||
-                    (mediaObj.content.loop &&
-                        !mediaObj.content.seek &&
-                        !mediaObj.content.inPoint &&
-                        !mediaObj.content.length)
-                    ?
-                        null :
+                playTime: (!holdOnFirst && (mediaObj.content.noStarttime || loopingPlayTime) ?
+                    null :
                     startTime) || null,
-                pauseTime: mediaObj.isLookahead && isForeground ? startTime : (mediaObj.content.pauseTime || null),
+                pauseTime: holdOnFirst ? startTime : (mediaObj.content.pauseTime || null),
                 playing: !mediaObj.isLookahead && (mediaObj.content.playing !== undefined ? mediaObj.content.playing : isForeground),
                 looping: mediaObj.content.loop,
                 seek: mediaObj.content.seek,
@@ -380,7 +380,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 }
                 else if (backgroundStateLayer) {
                     if (mapping.previewWhenNotOnAir) {
-                        channel.layers[mapping.layer] = Object.assign(Object.assign({}, backgroundStateLayer), { playTime: null, playing: false });
+                        channel.layers[mapping.layer] = Object.assign(Object.assign({}, backgroundStateLayer), { playing: false });
                     }
                     else {
                         channel.layers[mapping.layer] = device_1.literal({
