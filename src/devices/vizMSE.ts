@@ -112,6 +112,7 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 
 		this._vizmseManager.on('connectionChanged', (connected) => this.connectionChanged(connected))
 
+		// RIC: what happens if this throws?
 		await this._vizmseManager.initializeRundown(
 			initOptions.showID,
 			initOptions.profile,
@@ -150,7 +151,7 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 	handleState (newState: TimelineState) {
 		// check if initialized:
 		if (!this._vizmseManager || !this._vizmseManager.initialized) {
-			this.emit('warning', 'VizMSE.v-connection not initialized yet')
+			this.emit('warning', 'handleState: VizMSE.v-connection not initialized yet')
 			return
 		}
 
@@ -306,7 +307,7 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 	async makeReady (okToDestroyStuff?: boolean): Promise<void> {
 		if (this._vizmseManager) {
 			await this._vizmseManager.activate()
-		} else throw new Error(`Unable to activate vizMSE, not initialized yet!`)
+		} else throw new Error(`makeReady: Unable to activate vizMSE, not initialized yet!`)
 
 		if (okToDestroyStuff) {
 			// reset our own state(s):
@@ -581,7 +582,7 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 					throw new Error(`Unsupported command type "${cmd.type}"`)
 				}
 			} else {
-				throw new Error(`Not initialized yet`)
+				throw new Error(`_defaultCommandReceiver: Not initialized yet`)
 			}
 		} catch (error) {
 			let errorString = (
@@ -632,15 +633,17 @@ class VizMSEManager extends EventEmitter {
 
 		// Setup the rundown used by this device:
 
+		// RIC: No need to do this ... and if it fails, what then?
 		// Check if the rundown already exists:
-		this._rundown = _.find(await this._vizMSE.getRundowns(), (rundown) => {
-			return (
-				rundown.show === showID &&
-				rundown.profile === profile &&
-				rundown.playlist === playlistID
-			)
-		})
+		// this._rundown = _.find(await this._vizMSE.getRundowns(), (rundown) => {
+		// 	return (
+		// 		rundown.show === showID &&
+		// 		rundown.profile === profile &&
+		// 		rundown.playlist === playlistID
+		// 	)
+		// })
 
+		// RIC: What happens if this fails? Retry a few times
 		if (!this._rundown) {
 			this._rundown = await this._vizMSE.createRundown(
 				showID,
@@ -690,7 +693,7 @@ class VizMSEManager extends EventEmitter {
 	 * Doing this will make MSE start loading things onto the vizEngine etc.
 	 */
 	public async activate (): Promise<void> {
-		if (!this._rundown) throw new Error(`Viz Rundown not initialized!`)
+		if (!this._rundown) throw new Error(`activate: Viz Rundown not initialized!`)
 		this._triggerCommandSent()
 		await this._rundown.activate()
 		this._triggerCommandSent()
@@ -703,7 +706,7 @@ class VizMSEManager extends EventEmitter {
 	 * This causes the MSE to stand down and clear the vizEngines of any loaded graphics.
 	 */
 	public async deactivate (): Promise<void> {
-		if (!this._rundown) throw new Error(`Viz Rundown not initialized!`)
+		if (!this._rundown) throw new Error(`deactivate: Viz Rundown not initialized!`)
 		this._triggerCommandSent()
 		await this._rundown.deactivate()
 		this._triggerCommandSent()
@@ -715,7 +718,7 @@ class VizMSEManager extends EventEmitter {
 	 * This creates the element and is intended to be called a little time ahead of Takeing the element.
 	 */
 	public async prepareElement (cmd: VizMSECommandPrepare): Promise<void> {
-		if (!this._rundown) throw new Error(`Viz Rundown not initialized!`)
+		if (!this._rundown) throw new Error(`prepareElement: Viz Rundown not initialized!`)
 
 		const elementHash = this.getElementHash(cmd)
 		this.emit('debug', `VizMSE: prepare "${elementHash}"`)
@@ -727,7 +730,7 @@ class VizMSEManager extends EventEmitter {
 	 * Cue:ing an element: Load and play the first frame of a graphic
 	 */
 	public async cueElement (cmd: VizMSECommandCue): Promise<void> {
-		if (!this._rundown) throw new Error(`Viz Rundown not initialized!`)
+		if (!this._rundown) throw new Error(`cueElement: Viz Rundown not initialized!`)
 		const rundown = this._rundown
 
 		const elementRef = await this._checkPrepareElement(cmd)
@@ -742,7 +745,7 @@ class VizMSEManager extends EventEmitter {
 	 * Take an element: Load and Play a graphic element, run in-animatinos etc
 	 */
 	public async takeElement (cmd: VizMSECommandTake): Promise<void> {
-		if (!this._rundown) throw new Error(`Viz Rundown not initialized!`)
+		if (!this._rundown) throw new Error(`takeElement: Viz Rundown not initialized!`)
 		const rundown = this._rundown
 
 		const elementRef = await this._checkPrepareElement(cmd)
@@ -758,7 +761,7 @@ class VizMSEManager extends EventEmitter {
 	 * Take out: Animate out a graphic element
 	 */
 	public async takeoutElement (cmd: VizMSECommandTakeOut): Promise<void> {
-		if (!this._rundown) throw new Error(`Viz Rundown not initialized!`)
+		if (!this._rundown) throw new Error(`takeoutElement: Viz Rundown not initialized!`)
 		const rundown = this._rundown
 
 		const elementRef = await this._checkPrepareElement(cmd)
@@ -773,7 +776,7 @@ class VizMSEManager extends EventEmitter {
 	 * Continue: Cause the graphic element to step forward, if it has multiple states
 	 */
 	public async continueElement (cmd: VizMSECommandContinue): Promise<void> {
-		if (!this._rundown) throw new Error(`Viz Rundown not initialized!`)
+		if (!this._rundown) throw new Error(`continueElemeent: Viz Rundown not initialized!`)
 		const rundown = this._rundown
 
 		const elementRef = await this._checkPrepareElement(cmd)
@@ -788,7 +791,7 @@ class VizMSEManager extends EventEmitter {
 	 * Continue-reverse: Cause the graphic element to step backwards, if it has multiple states
 	 */
 	public async continueElementReverse (cmd: VizMSECommandContinueReverse): Promise<void> {
-		if (!this._rundown) throw new Error(`Viz Rundown not initialized!`)
+		if (!this._rundown) throw new Error(`continueElementReverse: Viz Rundown not initialized!`)
 		const rundown = this._rundown
 
 		const elementRef = await this._checkPrepareElement(cmd)
@@ -896,7 +899,7 @@ class VizMSEManager extends EventEmitter {
 	}
 	/** Check that the element exists and if not, throw error */
 	private async _checkElementExists (cmd: ExpectedPlayoutItemContentVizMSEInternal): Promise<void> {
-		if (!this._rundown) throw new Error(`Viz Rundown not initialized!`)
+		if (!this._rundown) throw new Error(`_checkElementExists: Viz Rundown not initialized!`)
 
 		const elementHash = this.getElementHash(cmd)
 		const cachedElement = this._getCachedElement(elementHash)
@@ -918,7 +921,7 @@ class VizMSEManager extends EventEmitter {
 	 * Create a new element in MSE
 	 */
 	private async _prepareNewElement (cmd: ExpectedPlayoutItemContentVizMSEInternal): Promise<VElement> {
-		if (!this._rundown) throw new Error(`Viz Rundown not initialized!`)
+		if (!this._rundown) throw new Error(`_prepareNewElement: Viz Rundown not initialized!`)
 		const elementHash = this.getElementHash(cmd)
 
 		try {
@@ -1045,14 +1048,14 @@ class VizMSEManager extends EventEmitter {
 			)
 
 		} else {
-			throw Error('VizMSE.v-connection not initialized yet')
+			throw Error('updateElementLoadedStatus: VizMSE.v-connection not initialized yet')
 		}
 	}
 	/**
 	 * Trigger a load of all elements that are not yet loaded onto the vizEngine.
 	 */
 	private async _triggerLoadAllElements (): Promise<void> {
-		if (!this._rundown) throw Error('VizMSE.v-connection not initialized yet')
+		if (!this._rundown) throw Error('_triggerLoadAllElements: VizMSE.v-connection not initialized yet')
 		const rundown = this._rundown
 		// First, update the loading-status of all elements:
 		await this.updateElementsLoadedStatus(true)
