@@ -22,7 +22,8 @@ function getHash(str) {
 }
 exports.getHash = getHash;
 /**
- * This class is used to interface with a vizRT Media Sequence Editor, through the v-connection library
+ * This class is used to interface with a vizRT Media Sequence Editor, through the v-connection library.
+ * It features playing both "internal" graphics element and vizPilot elements.
  */
 class VizMSEDevice extends device_1.DeviceWithState {
     constructor(deviceId, deviceOptions, options) {
@@ -250,6 +251,9 @@ class VizMSEDevice extends device_1.DeviceWithState {
             messages: messages
         };
     }
+    /**
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
+     */
     _diffStates(oldState, newState, time) {
         const highPrioCommands = [];
         const lowPrioCommands = [];
@@ -362,10 +366,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
         return this._commandReceiver(time, command, context, timlineObjId);
     }
     /**
-     * Use either AMCP Command Scheduling or the doOnTime to execute commands at
-     * {@code time}.
-     * @param commandsToAchieveState Commands to be added to queue
-     * @param time Point in time to send commands at
+     * Add commands to queue, to be executed at the right time
      */
     _addToQueue(commandsToAchieveState) {
         _.each(commandsToAchieveState, (cmd) => {
@@ -375,7 +376,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
         });
     }
     /**
-     * Sends commands to the VizMSE ISA server
+     * Sends commands to the VizMSE server
      * @param time deprecated
      * @param cmd Command to execute
      */
@@ -445,14 +446,19 @@ class VizMSEManager extends events_1.EventEmitter {
         this._hasActiveRundown = false;
         this._elementsLoaded = {};
     }
+    /**
+     * Initialize the Rundown in MSE.
+     * Our approach is to create a single rundown on initialization, and then use only that for later control.
+     */
     initializeRundown(showID, profile, playlistID) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             this._vizMSE.on('connected', () => this.emit('connectionChanged', true));
             this._vizMSE.on('disconnected', () => this.emit('connectionChanged', false));
+            // Perform a ping, to ensure we are connected properly
             yield this._vizMSE.ping();
             this.emit('connectionChanged', true);
-            // Setup the rundown used by this device
-            // check if it already exists:
+            // Setup the rundown used by this device:
+            // Check if the rundown already exists:
             this._rundown = _.find(yield this._vizMSE.getRundowns(), (rundown) => {
                 return (rundown.show === showID &&
                     rundown.profile === profile &&
@@ -462,7 +468,7 @@ class VizMSEManager extends events_1.EventEmitter {
                 this._rundown = yield this._vizMSE.createRundown(showID, profile, playlistID);
             }
             if (!this._rundown)
-                throw new Error(`VizMSEManager: unable to create rundown!`);
+                throw new Error(`VizMSEManager: Unable to create rundown!`);
             // const profile = await this._vizMSE.getProfile('sofie') // TODO: Figure out if this is needed
             this._updateExpectedPlayoutItems().catch(e => this.emit('error', e));
             if (this._monitorAndLoadElementsInterval) {
@@ -472,6 +478,9 @@ class VizMSEManager extends events_1.EventEmitter {
             this.initialized = true;
         });
     }
+    /**
+     * Close connections and die
+     */
     terminate() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (this._monitorAndLoadElementsInterval) {
@@ -483,12 +492,21 @@ class VizMSEManager extends events_1.EventEmitter {
             }
         });
     }
+    /**
+     * Set the collection of expectedPlayoutItems.
+     * These will be monitored and can be triggered to pre-load.
+     */
     setExpectedPlayoutItems(expectedPlayoutItems) {
         if (this.preloadAllElements) {
             this._expectedPlayoutItems = expectedPlayoutItems;
         }
         this._updateExpectedPlayoutItems().catch(e => this.emit('error', e));
     }
+    /**
+     * Activate the rundown.
+     * This causes the MSE rundown to activate, which must be done before using it.
+     * Doing this will make MSE start loading things onto the vizEngine etc.
+     */
     activate() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
@@ -501,6 +519,10 @@ class VizMSEManager extends events_1.EventEmitter {
             this._hasActiveRundown = true;
         });
     }
+    /**
+     * Deactivate the MSE rundown.
+     * This causes the MSE to stand down and clear the vizEngines of any loaded graphics.
+     */
     deactivate() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
@@ -512,6 +534,10 @@ class VizMSEManager extends events_1.EventEmitter {
             this._hasActiveRundown = false;
         });
     }
+    /**
+     * Prepare an element
+     * This creates the element and is intended to be called a little time ahead of Takeing the element.
+     */
     prepareElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
@@ -523,66 +549,90 @@ class VizMSEManager extends events_1.EventEmitter {
             this._triggerCommandSent();
         });
     }
+    /**
+     * Cue:ing an element: Load and play the first frame of a graphic
+     */
     cueElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
                 throw new Error(`Viz Rundown not initialized!`);
             const rundown = this._rundown;
             const elementRef = yield this._checkPrepareElement(cmd);
+            yield this._checkElementExists(cmd);
             yield this._handleRetry(() => {
                 this.emit('debug', `VizMSE: cue "${elementRef}"`);
                 return rundown.cue(elementRef);
             });
         });
     }
+    /**
+     * Take an element: Load and Play a graphic element, run in-animatinos etc
+     */
     takeElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
                 throw new Error(`Viz Rundown not initialized!`);
             const rundown = this._rundown;
             const elementRef = yield this._checkPrepareElement(cmd);
+            yield this._checkElementExists(cmd);
             yield this._handleRetry(() => {
                 this.emit('debug', `VizMSE: take "${elementRef}"`);
                 return rundown.take(elementRef);
             });
         });
     }
+    /**
+     * Take out: Animate out a graphic element
+     */
     takeoutElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
                 throw new Error(`Viz Rundown not initialized!`);
             const rundown = this._rundown;
             const elementRef = yield this._checkPrepareElement(cmd);
+            yield this._checkElementExists(cmd);
             yield this._handleRetry(() => {
                 this.emit('debug', `VizMSE: out "${elementRef}"`);
                 return rundown.out(elementRef);
             });
         });
     }
+    /**
+     * Continue: Cause the graphic element to step forward, if it has multiple states
+     */
     continueElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
                 throw new Error(`Viz Rundown not initialized!`);
             const rundown = this._rundown;
             const elementRef = yield this._checkPrepareElement(cmd);
+            yield this._checkElementExists(cmd);
             yield this._handleRetry(() => {
                 this.emit('debug', `VizMSE: continue "${elementRef}"`);
                 return rundown.continue(elementRef);
             });
         });
     }
+    /**
+     * Continue-reverse: Cause the graphic element to step backwards, if it has multiple states
+     */
     continueElementReverse(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
                 throw new Error(`Viz Rundown not initialized!`);
             const rundown = this._rundown;
             const elementRef = yield this._checkPrepareElement(cmd);
+            yield this._checkElementExists(cmd);
             yield this._handleRetry(() => {
                 this.emit('debug', `VizMSE: continue reverse "${elementRef}"`);
                 return rundown.continueReverse(elementRef);
             });
         });
     }
+    /**
+     * Load all elements: Trigger a loading of all pilot elements onto the vizEngine.
+     * This might cause the vizEngine to freeze during load, so do not to it while on air!
+     */
     loadAllElements(_cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             this._triggerCommandSent();
@@ -590,6 +640,7 @@ class VizMSEManager extends events_1.EventEmitter {
             this._triggerCommandSent();
         });
     }
+    /** Convenience function for determining the template name/vcpid */
     static getTemplateName(layer) {
         if (layer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL)
             return layer.templateName;
@@ -597,11 +648,13 @@ class VizMSEManager extends events_1.EventEmitter {
             return layer.templateVcpId;
         throw new Error(`Unknown layer.contentType "${layer['contentType']}"`);
     }
+    /** Convenience function to get the data for an element */
     static getTemplateData(layer) {
         if (layer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL)
             return layer.templateData;
         return [];
     }
+    /** Convenience function to get the "instance-id" of an element. This is intended to be unique for each usage/instance of the elemenet */
     static getTemplateInstance(layer) {
         if (layer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL) {
             return 'sofieInt_' + layer.templateName + '_' + getHash(layer.templateData.join(','));
@@ -644,12 +697,17 @@ class VizMSEManager extends events_1.EventEmitter {
             return Number(el.vcpid); // TMP!!
         throw Error('Unknown element type, neither internal nor external');
     }
-    _isInternalElement(el) {
+    _isInternalElement(element) {
+        const el = element;
         return (el && el.name && !el.vcpid);
     }
-    _isExternalElement(el) {
+    _isExternalElement(element) {
+        const el = element;
         return (el && el.vcpid);
     }
+    /**
+     * Check if element is already created, otherwise create it and return it.
+     */
     _checkPrepareElement(cmd, fromPrepare) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             // check if element is prepared
@@ -670,6 +728,29 @@ class VizMSEManager extends events_1.EventEmitter {
             // })
         });
     }
+    /** Check that the element exists and if not, throw error */
+    _checkElementExists(cmd) {
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            if (!this._rundown)
+                throw new Error(`Viz Rundown not initialized!`);
+            const elementHash = this.getElementHash(cmd);
+            const cachedElement = this._getCachedElement(elementHash);
+            if (!cachedElement)
+                throw new Error(`_checkElementExists: cachedElement falsy`);
+            const elementRef = this._getElementReference(cachedElement.element);
+            const elementIsExternal = cachedElement && this._isExternalElement(cachedElement.element);
+            if (elementIsExternal) {
+                const element = yield this._rundown.getElement(elementRef);
+                if (this._isExternalElement(element) &&
+                    element.exists === 'no') {
+                    throw new Error(`Can't take the element "${elementRef}" while it has the property exists="no"`);
+                }
+            }
+        });
+    }
+    /**
+     * Create a new element in MSE
+     */
     _prepareNewElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
@@ -730,6 +811,9 @@ class VizMSEManager extends events_1.EventEmitter {
             }
         });
     }
+    /**
+     * Update the load-statuses of the expectedPlayoutItems -elements from MSE, where needed
+     */
     updateElementsLoadedStatus(forceReloadAll) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             const elementsToLoad = _.compact(_.map(this._expectedPlayoutItemsItems, (item, hash) => {
@@ -763,6 +847,9 @@ class VizMSEManager extends events_1.EventEmitter {
             }
         });
     }
+    /**
+     * Trigger a load of all elements that are not yet loaded onto the vizEngine.
+     */
     _triggerLoadAllElements() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (!this._rundown)
@@ -823,7 +910,7 @@ class VizMSEManager extends events_1.EventEmitter {
     _wait(time) {
         return new Promise(resolve => setTimeout(resolve, time));
     }
-    /** Execute fcn an retry a couple of times until */
+    /** Execute fcn an retry a couple of times until it succeeds */
     _handleRetry(fcn) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             let i = 0;
@@ -869,6 +956,9 @@ class VizMSEManager extends events_1.EventEmitter {
             this._parentVizMSEDevice.connectionChanged();
         }
     }
+    /**
+     * Returns true if the element is successfully loaded (as opposed to "not-loaded" or "loading")
+     */
     _isElementLoaded(el) {
         if (this._isInternalElement(el)) {
             return true; // not implemented / unknown
@@ -882,6 +972,9 @@ class VizMSEManager extends events_1.EventEmitter {
             throw new Error(`vizMSE: _isLoaded: unknown element type: ${el && JSON.stringify(el)}`);
         }
     }
+    /**
+     * Returns true if the element has NOT started loading (is currently not loading, or finished loaded)
+     */
     _isElementNotLoaded(el) {
         if (this._isInternalElement(el)) {
             return false; // not implemented / unknown

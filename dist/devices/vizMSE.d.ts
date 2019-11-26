@@ -9,7 +9,8 @@ export interface DeviceOptionsVizMSEInternal extends DeviceOptionsVizMSE {
 }
 export declare type CommandReceiver = (time: number, cmd: VizMSECommand, context: string, timelineObjId: string) => Promise<any>;
 /**
- * This class is used to interface with a vizRT Media Sequence Editor, through the v-connection library
+ * This class is used to interface with a vizRT Media Sequence Editor, through the v-connection library.
+ * It features playing both "internal" graphics element and vizPilot elements.
  */
 export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevice {
     private _vizMSE?;
@@ -65,17 +66,17 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implement
      */
     standDown(okToDestroyStuff?: boolean): Promise<void>;
     getStatus(): DeviceStatus;
+    /**
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
+     */
     private _diffStates;
     private _doCommand;
     /**
-     * Use either AMCP Command Scheduling or the doOnTime to execute commands at
-     * {@code time}.
-     * @param commandsToAchieveState Commands to be added to queue
-     * @param time Point in time to send commands at
+     * Add commands to queue, to be executed at the right time
      */
     private _addToQueue;
     /**
-     * Sends commands to the VizMSE ISA server
+     * Sends commands to the VizMSE server
      * @param time deprecated
      * @param cmd Command to execute
      */
