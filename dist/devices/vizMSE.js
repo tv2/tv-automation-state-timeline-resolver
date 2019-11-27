@@ -126,7 +126,9 @@ class VizMSEDevice extends device_1.DeviceWithState {
         return true;
     }
     handleExpectedPlayoutItems(expectedPlayoutItems) {
+        this.emit('debug', 'VIZDEBUG: handleExpectedPlayoutItems called');
         if (this._vizmseManager) {
+            this.emit('debug', 'VIZDEBUG: manager exists');
             this._vizmseManager.setExpectedPlayoutItems(expectedPlayoutItems);
         }
     }
@@ -497,7 +499,9 @@ class VizMSEManager extends events_1.EventEmitter {
      * These will be monitored and can be triggered to pre-load.
      */
     setExpectedPlayoutItems(expectedPlayoutItems) {
+        this.emit('debug', 'VIZDEBUG: setExpectedPlayoutItems called');
         if (this.preloadAllElements) {
+            this.emit('debug', 'VIZDEBUG: preload elements allowed');
             this._expectedPlayoutItems = expectedPlayoutItems;
         }
         this._updateExpectedPlayoutItems().catch(e => this.emit('error', e));
@@ -785,8 +789,9 @@ class VizMSEManager extends events_1.EventEmitter {
     }
     _updateExpectedPlayoutItems() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            this.emit('debug', 'VIZDEBUG: _updateExpectedPlayoutItems called');
             if (this.preloadAllElements) {
-                this.emit('debug', `VISMSE: _updateExpectedPlayoutItems (${this._expectedPlayoutItems.length})`);
+                this.emit('debug', `VIZMSE: _updateExpectedPlayoutItems (${this._expectedPlayoutItems.length})`);
                 const hashesAndItems = {};
                 yield Promise.all(_.map(this._expectedPlayoutItems, (expectedPlayoutItem) => tslib_1.__awaiter(this, void 0, void 0, function* () {
                     const stateLayer = (_.isNumber(expectedPlayoutItem.templateName) ?
