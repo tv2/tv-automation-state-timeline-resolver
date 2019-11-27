@@ -17,13 +17,13 @@ export declare class QuantelGateway extends EventEmitter {
     connectToISA(ISAUrl?: string): Promise<any>;
     dispose(): void;
     monitorServerStatus(callbackOnStatusChange: (connected: boolean, errorMessage: string | null) => void): void;
-    readonly connected: boolean;
-    readonly statusMessage: string | null;
-    readonly initialized: boolean;
-    readonly gatewayUrl: string;
-    readonly ISAUrl: string;
-    readonly zoneId: string;
-    readonly serverId: number;
+    get connected(): boolean;
+    get statusMessage(): string | null;
+    get initialized(): boolean;
+    get gatewayUrl(): string;
+    get ISAUrl(): string;
+    get zoneId(): string;
+    get serverId(): number;
     getZones(): Promise<Q.ZoneInfo[]>;
     getServers(zoneId: string): Promise<Q.ServerInfo[]>;
     /** Return the (possibly cached) server */

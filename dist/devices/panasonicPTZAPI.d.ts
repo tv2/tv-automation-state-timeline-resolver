@@ -10,7 +10,7 @@ export declare class PanasonicPtzCamera extends EventEmitter {
     private _commandQueue;
     private _executeQueueTimeout;
     constructor(url: string, commandDelay?: number);
-    readonly url: string;
+    get url(): string;
     sendCommand(command: string): Promise<string>;
     dispose(): void;
     private _dropFromQueue;

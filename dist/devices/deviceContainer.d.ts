@@ -21,13 +21,13 @@ export declare class DeviceContainer {
     create<T extends Device>(orgModule: string, orgClass: Function, deviceId: string, deviceOptions: DeviceOptionsAny, options: DeviceClassOptions, threadConfig?: ThreadedClassConfig): Promise<this>;
     reloadProps(): Promise<void>;
     terminate(): Promise<void>;
-    readonly device: ThreadedClass<Device>;
-    readonly deviceId: string;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly deviceOptions: DeviceOptionsAny;
-    readonly options: DeviceClassOptions;
-    readonly threadConfig: ThreadedClassConfig | undefined;
-    readonly instanceId: number;
-    readonly startTime: number;
+    get device(): ThreadedClass<Device>;
+    get deviceId(): string;
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get deviceOptions(): DeviceOptionsAny;
+    get options(): DeviceClassOptions;
+    get threadConfig(): ThreadedClassConfig | undefined;
+    get instanceId(): number;
+    get startTime(): number;
 }

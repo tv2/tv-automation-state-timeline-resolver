@@ -197,7 +197,7 @@ export declare class Pharos extends EventEmitter {
     private _connected;
     private _webSocketKeepAliveTimeout;
     connect(options: Options): Promise<void>;
-    readonly connected: boolean;
+    get connected(): boolean;
     dispose(): Promise<void>;
     getSystemInfo(): Promise<SystemInfo>;
     getProjectInfo(): Promise<ProjectInfo>;

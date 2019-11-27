@@ -83,11 +83,11 @@ export declare class PanasonicPtzDevice extends DeviceWithState<TimelineState> i
      * @param newOscSendState The desired state of the device
      */
     private _diffStates;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get canConnect(): boolean;
+    get connected(): boolean;
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;

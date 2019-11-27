@@ -51,13 +51,13 @@ export declare class SingularLiveDevice extends DeviceWithState<TimelineState> i
     terminate(): Promise<boolean>;
     getStatus(): DeviceStatus;
     makeReady(_okToDestroyStuff?: boolean): Promise<void>;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
+    get canConnect(): boolean;
+    get connected(): boolean;
     private _getDefaultState;
     convertStateToSingularLive(state: TimelineState): SingularLiveState;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;

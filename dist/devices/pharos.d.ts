@@ -46,12 +46,12 @@ export declare class PharosDevice extends DeviceWithState<TimelineState> impleme
     handleState(newState: TimelineState): void;
     clearFuture(clearAfterTime: number): void;
     terminate(): Promise<boolean>;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
+    get canConnect(): boolean;
+    get connected(): boolean;
     convertStateToPharos(state: TimelineState): PharosState;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;

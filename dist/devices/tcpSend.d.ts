@@ -30,12 +30,12 @@ export declare class TCPSendDevice extends DeviceWithState<TimelineState> implem
     clearFuture(clearAfterTime: number): void;
     makeReady(okToDestroyStuff?: boolean): Promise<void>;
     terminate(): Promise<boolean>;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
+    get canConnect(): boolean;
+    get connected(): boolean;
     convertStateToTCPSend(state: TimelineState): TimelineState;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;
