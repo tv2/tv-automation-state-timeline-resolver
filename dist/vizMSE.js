@@ -6,5 +6,6 @@ var TimelineContentTypeVizMSE;
     TimelineContentTypeVizMSE["ELEMENT_PILOT"] = "element_pilot";
     TimelineContentTypeVizMSE["CONTINUE"] = "continue";
     TimelineContentTypeVizMSE["LOAD_ALL_ELEMENTS"] = "load_all_elements";
+    TimelineContentTypeVizMSE["CLEAR_ALL_ELEMENTS"] = "clear_all_elements";
 })(TimelineContentTypeVizMSE = exports.TimelineContentTypeVizMSE || (exports.TimelineContentTypeVizMSE = {}));
 //# sourceMappingURL=vizMSE.js.map
