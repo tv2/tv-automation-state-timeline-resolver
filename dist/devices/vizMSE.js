@@ -860,22 +860,27 @@ class VizMSEManager extends events_1.EventEmitter {
             this.emit('debug', `VISMSE: _getExpectedPlayoutItems (${this._expectedPlayoutItems.length})`);
             const hashesAndItems = {};
             yield Promise.all(_.map(this._expectedPlayoutItems, (expectedPlayoutItem) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                const stateLayer = (_.isNumber(expectedPlayoutItem.templateName) ?
-                    content2StateLayer('', {
-                        deviceType: src_1.DeviceType.VIZMSE,
-                        type: src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT,
-                        templateVcpId: expectedPlayoutItem.templateName
-                    }) :
-                    content2StateLayer('', {
-                        deviceType: src_1.DeviceType.VIZMSE,
-                        type: src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL,
-                        templateName: expectedPlayoutItem.templateName,
-                        templateData: expectedPlayoutItem.templateData
-                    }));
-                if (stateLayer) {
-                    const item = Object.assign(Object.assign({}, expectedPlayoutItem), { templateInstance: VizMSEManager.getTemplateInstance(stateLayer) });
-                    hashesAndItems[this.getElementHash(item)] = item;
-                    yield this._checkPrepareElement(item, true);
+                try {
+                    const stateLayer = (_.isNumber(expectedPlayoutItem.templateName) ?
+                        content2StateLayer('', {
+                            deviceType: src_1.DeviceType.VIZMSE,
+                            type: src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT,
+                            templateVcpId: expectedPlayoutItem.templateName
+                        }) :
+                        content2StateLayer('', {
+                            deviceType: src_1.DeviceType.VIZMSE,
+                            type: src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL,
+                            templateName: expectedPlayoutItem.templateName,
+                            templateData: expectedPlayoutItem.templateData
+                        }));
+                    if (stateLayer) {
+                        const item = Object.assign(Object.assign({}, expectedPlayoutItem), { templateInstance: VizMSEManager.getTemplateInstance(stateLayer) });
+                        yield this._checkPrepareElement(item, true);
+                        hashesAndItems[this.getElementHash(item)] = item;
+                    }
+                }
+                catch (e) {
+                    this.emit('error', `Error in _getExpectedPlayoutItems: ${e.toString()}`);
                 }
             })));
             return hashesAndItems;
@@ -903,15 +908,20 @@ class VizMSEManager extends events_1.EventEmitter {
                 yield Promise.all(_.map(elementsToLoad, (e) => tslib_1.__awaiter(this, void 0, void 0, function* () {
                     const cachedEl = this._elementsLoaded[e.hash];
                     if (!cachedEl || !cachedEl.isLoaded) {
-                        const elementRef = yield this._checkPrepareElement(e.item);
-                        this.emit('debug', `Updating status of element ${elementRef}`);
-                        // Update cached status of the element:
-                        const newEl = yield rundown.getElement(elementRef);
-                        this._elementsLoaded[e.hash] = {
-                            element: newEl,
-                            isLoaded: this._isElementLoaded(newEl),
-                            isNotLoaded: this._isElementNotLoaded(newEl)
-                        };
+                        try {
+                            const elementRef = yield this._checkPrepareElement(e.item);
+                            this.emit('debug', `Updating status of element ${elementRef}`);
+                            // Update cached status of the element:
+                            const newEl = yield rundown.getElement(elementRef);
+                            this._elementsLoaded[e.hash] = {
+                                element: newEl,
+                                isLoaded: this._isElementLoaded(newEl),
+                                isNotLoaded: this._isElementNotLoaded(newEl)
+                            };
+                        }
+                        catch (e) {
+                            this.emit('error', `Error in updateElementsLoadedStatus: ${e.toString()}`);
+                        }
                     }
                 })));
                 this.emit('debug', `Updating status of elements done, this._elementsLoaded.length=${_.keys(this._elementsLoaded).length}`);
