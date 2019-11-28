@@ -39,26 +39,28 @@ export declare class AbstractDevice extends DeviceWithState<TimelineState> imple
      * Dispose of the device so it can be garbage collected.
      */
     terminate(): Promise<boolean>;
-    get canConnect(): boolean;
-    get connected(): boolean;
+    readonly canConnect: boolean;
+    readonly connected: boolean;
     /**
      * converts the timeline state into something we can use
      * @param state
      */
     convertStateToAbstract(state: TimelineState): TimelineState;
-    get deviceType(): DeviceType;
-    get deviceName(): string;
-    get queue(): {
+    readonly deviceType: DeviceType;
+    readonly deviceName: string;
+    readonly queue: {
         id: string;
         queueId: string;
         time: number;
         args: any[];
     }[];
     getStatus(): DeviceStatus;
+    /**
+     * Add commands to queue, to be executed at the right time
+     */
     private _addToQueue;
     /**
-     * Generates commands based such that we will transition from the old state
-     * to the new state.
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
      * @param oldAbstractState
      * @param newAbstractState
      */

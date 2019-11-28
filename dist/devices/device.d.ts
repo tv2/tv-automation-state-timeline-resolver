@@ -86,8 +86,8 @@ export declare abstract class Device extends EventEmitter implements IDevice {
      * @param clearAfterTime
      */
     abstract clearFuture(clearAfterTime: number): any;
-    abstract get canConnect(): boolean;
-    abstract get connected(): boolean;
+    abstract readonly canConnect: boolean;
+    abstract readonly connected: boolean;
     /**
      * The makeReady method could be triggered at a time before broadcast
      * Whenever we know that the user want's to make sure things are ready for broadcast
@@ -104,14 +104,14 @@ export declare abstract class Device extends EventEmitter implements IDevice {
     abstract getStatus(): DeviceStatus;
     getMapping(): Mappings;
     setMapping(mappings: Mappings): void;
-    get deviceId(): string;
+    readonly deviceId: string;
     /**
      * A human-readable name for this device
      */
-    abstract get deviceName(): string;
-    abstract get deviceType(): DeviceType;
-    get deviceOptions(): DeviceOptionsAny;
-    get supportsExpectedPlayoutItems(): boolean;
+    abstract readonly deviceName: string;
+    abstract readonly deviceType: DeviceType;
+    readonly deviceOptions: DeviceOptionsAny;
+    readonly supportsExpectedPlayoutItems: boolean;
     handleExpectedPlayoutItems(_expectedPlayoutItems: Array<ExpectedPlayoutItemContent>): void;
     private _updateCurrentTime;
     on(event: 'info', listener: (info: string) => void): this;
@@ -135,8 +135,8 @@ export declare abstract class Device extends EventEmitter implements IDevice {
     emit(event: 'slowCommand', commandInfo: string): boolean;
     emit(event: 'commandReport', commandReport: CommandReport): boolean;
     emit(event: 'commandError', error: Error, context: CommandWithContext): boolean;
-    get instanceId(): number;
-    get startTime(): number;
+    readonly instanceId: number;
+    readonly startTime: number;
     protected handleDoOnTime(doOnTime: DoOnTime, deviceType: string): void;
 }
 /**

@@ -46,12 +46,12 @@ export declare class PharosDevice extends DeviceWithState<TimelineState> impleme
     handleState(newState: TimelineState): void;
     clearFuture(clearAfterTime: number): void;
     terminate(): Promise<boolean>;
-    get canConnect(): boolean;
-    get connected(): boolean;
+    readonly canConnect: boolean;
+    readonly connected: boolean;
     convertStateToPharos(state: TimelineState): PharosState;
-    get deviceType(): DeviceType;
-    get deviceName(): string;
-    get queue(): {
+    readonly deviceType: DeviceType;
+    readonly deviceName: string;
+    readonly queue: {
         id: string;
         queueId: string;
         time: number;
@@ -59,11 +59,12 @@ export declare class PharosDevice extends DeviceWithState<TimelineState> impleme
     }[];
     makeReady(okToDestroyStuff?: boolean): Promise<void>;
     getStatus(): DeviceStatus;
+    /**
+     * Add commands to queue, to be executed at the right time
+     */
     private _addToQueue;
     /**
-     * Generates commands to transition from old to new state.
-     * @param oldOscSendState The assumed current state
-     * @param newOscSendState The desired state of the device
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
      */
     private _diffStates;
     private _defaultCommandReceiver;

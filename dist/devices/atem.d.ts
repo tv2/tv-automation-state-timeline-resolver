@@ -56,16 +56,16 @@ export declare class AtemDevice extends DeviceWithState<DeviceState> implements 
      * @param clearAfterTime
      */
     clearFuture(clearAfterTime: number): void;
-    get canConnect(): boolean;
-    get connected(): boolean;
+    readonly canConnect: boolean;
+    readonly connected: boolean;
     /**
      * Convert a timeline state into an Atem state.
      * @param state The state to be converted
      */
     convertStateToAtem(state: TimelineState): DeviceState;
-    get deviceType(): DeviceType;
-    get deviceName(): string;
-    get queue(): {
+    readonly deviceType: DeviceType;
+    readonly deviceName: string;
+    readonly queue: {
         id: string;
         queueId: string;
         time: number;
@@ -76,13 +76,11 @@ export declare class AtemDevice extends DeviceWithState<DeviceState> implements 
      */
     getStatus(): DeviceStatus;
     /**
-     * Execute `commandsToAchieveState` at `time` using the doOnTime class
-     * @param commandsToAchieveState
-     * @param time
+     * Add commands to queue, to be executed at the right time
      */
     private _addToQueue;
     /**
-     * Diffs two states and generate commands based on the diff.
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
      * @param oldAtemState
      * @param newAtemState
      */

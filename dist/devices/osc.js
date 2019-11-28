@@ -120,9 +120,7 @@ class OSCMessageDevice extends device_1.DeviceWithState {
         return this._doOnTime.getQueue();
     }
     /**
-     * add the new commands to the queue:
-     * @param commandsToAchieveState
-     * @param time
+     * Add commands to queue, to be executed at the right time
      */
     _addToQueue(commandsToAchieveState, time) {
         _.each(commandsToAchieveState, (cmd) => {
@@ -138,7 +136,7 @@ class OSCMessageDevice extends device_1.DeviceWithState {
         });
     }
     /**
-     * Generates commands to transition from old to new state.
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
      * @param oldOscSendState The assumed current state
      * @param newOscSendState The desired state of the device
      */

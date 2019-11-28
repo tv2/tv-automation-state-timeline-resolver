@@ -183,9 +183,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
         });
     }
     /**
-     * Generates commands to transition from old to new state.
-     * @param oldOscSendState The assumed current state
-     * @param newOscSendState The desired state of the device
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
      */
     _diffStates(oldOscSendState, newOscSendState) {
         const commands = [];

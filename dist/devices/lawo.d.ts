@@ -71,16 +71,16 @@ export declare class LawoDevice extends DeviceWithState<TimelineState> implement
      * can be garbage collected.
      */
     terminate(): Promise<boolean>;
-    get canConnect(): boolean;
-    get connected(): boolean;
+    readonly canConnect: boolean;
+    readonly connected: boolean;
     /**
      * Converts a timeline state into a device state.
      * @param state
      */
     convertStateToLawo(state: TimelineState): LawoState;
-    get deviceType(): DeviceType;
-    get deviceName(): string;
-    get queue(): {
+    readonly deviceType: DeviceType;
+    readonly deviceName: string;
+    readonly queue: {
         id: string;
         queueId: string;
         time: number;
@@ -88,9 +88,12 @@ export declare class LawoDevice extends DeviceWithState<TimelineState> implement
     }[];
     getStatus(): DeviceStatus;
     private _setConnected;
+    /**
+     * Add commands to queue, to be executed at the right time
+     */
     private _addToQueue;
     /**
-     * Generates commands to transition from one device state to another.
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
      * @param oldLawoState The assumed device state
      * @param newLawoState The desired device state
      */

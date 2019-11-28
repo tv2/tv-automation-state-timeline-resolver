@@ -33,6 +33,7 @@ const RESOLVE_LIMIT_TIME = 10000;
 exports.DEFAULT_PREPARATION_TIME = 20; // When resolving "now", move this far into the future, to account for computation times
 var device_1 = require("./devices/device");
 exports.Device = device_1.Device;
+const CALLBACK_WAIT_TIME = 50;
 /**
  * The Conductor class serves as the main class for interacting. It contains
  * methods for setting mappings, timelines and adding/removing devices. It keeps
@@ -52,7 +53,7 @@ class Conductor extends events_1.EventEmitter {
         };
         this._isInitialized = false;
         this._multiThreadedResolver = false;
-        this._queuedCallbacks = [];
+        this._callbackInstances = {};
         this._triggerSendStartStopCallbacksTimeout = null;
         this._sentCallbacks = {};
         this._statMeasureStart = 0;
@@ -314,6 +315,8 @@ class Conductor extends events_1.EventEmitter {
     destroy() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             clearTimeout(this._interval);
+            if (this._triggerSendStartStopCallbacksTimeout)
+                clearTimeout(this._triggerSendStartStopCallbacksTimeout);
             yield Promise.all(_.map(_.keys(this.devices), (deviceId) => {
                 return this.removeDevice(deviceId);
             }));
@@ -583,10 +586,10 @@ class Conductor extends events_1.EventEmitter {
                                 this._doOnTime.queue(instance.instance.start, undefined, () => {
                                     if (!sentCallbacksOld[callBackId]) {
                                         // Object has started playing
-                                        this._queueCallback({
+                                        this._queueCallback(true, {
                                             type: 'start',
                                             time: instance.instance.start,
-                                            id: instance.id,
+                                            instanceId: instance.id,
                                             callBack: instance.content.callBack,
                                             callBackData: instance.content.callBackData
                                         });
@@ -608,10 +611,10 @@ class Conductor extends events_1.EventEmitter {
                         const callBackData = cb.callBackData;
                         this._doOnTime.queue(tlState.time, undefined, () => {
                             // Object has stopped playing
-                            this._queueCallback({
+                            this._queueCallback(false, {
                                 type: 'stop',
                                 time: tlState.time,
-                                id: cb.id,
+                                instanceId: cb.id,
                                 callBack: callBackStopped,
                                 callBackData: callBackData
                             });
@@ -658,51 +661,103 @@ class Conductor extends events_1.EventEmitter {
             return 0;
         }
     }
-    _queueCallback(cb) {
-        this._queuedCallbacks.push(cb);
+    _queueCallback(playing, cb) {
+        let o;
+        if (this._callbackInstances[cb.instanceId]) {
+            o = this._callbackInstances[cb.instanceId];
+        }
+        else {
+            o = {
+                playing: undefined,
+                playChanged: false,
+                endChanged: false
+            };
+            this._callbackInstances[cb.instanceId] = o;
+        }
+        if (o.playing !== playing) {
+            this.emit('debug', `_queueCallback ${playing ? 'playing' : 'stopping'} instance ${cb.instanceId}`);
+            if (playing) {
+                if (o.endChanged &&
+                    o.endTime &&
+                    Math.abs(cb.time - o.endTime) < CALLBACK_WAIT_TIME) {
+                    // Too little time has passed since last time. Annihilate that event instead:
+                    o.playing = playing;
+                    o.endTime = undefined;
+                    o.endCallback = undefined;
+                    o.endChanged = false;
+                }
+                else {
+                    o.playing = playing;
+                    o.playChanged = true;
+                    o.playTime = cb.time;
+                    o.playCallback = cb;
+                }
+            }
+            else {
+                if (o.playChanged &&
+                    o.playTime &&
+                    Math.abs(cb.time - o.playTime) < CALLBACK_WAIT_TIME) {
+                    // Too little time has passed since last time. Annihilate that event instead:
+                    o.playing = playing;
+                    o.playTime = undefined;
+                    o.playCallback = undefined;
+                    o.playChanged = false;
+                }
+                else {
+                    o.playing = playing;
+                    o.endChanged = true;
+                    o.endTime = cb.time;
+                    o.endCallback = cb;
+                }
+            }
+        }
+        else {
+            this.emit('warning', `_queueCallback ${playing ? 'playing' : 'stopping'} instance ${cb.instanceId} already playing/stopped`);
+        }
         this._triggerSendStartStopCallbacks();
     }
     _triggerSendStartStopCallbacks() {
-        if (this._triggerSendStartStopCallbacksTimeout) {
-            clearTimeout(this._triggerSendStartStopCallbacksTimeout);
+        if (!this._triggerSendStartStopCallbacksTimeout) {
+            this._triggerSendStartStopCallbacksTimeout = setTimeout(() => {
+                this._triggerSendStartStopCallbacksTimeout = null;
+                this._sendStartStopCallbacks();
+            }, CALLBACK_WAIT_TIME);
         }
-        this._triggerSendStartStopCallbacksTimeout = setTimeout(() => {
-            this._triggerSendStartStopCallbacksTimeout = null;
-            this._sendStartStopCallbacks();
-        }, 100);
     }
     _sendStartStopCallbacks() {
-        // Go through the queue and filter out any stops that are immediately followed by a start:
-        const startTimes = {};
-        const stopTimes = {};
-        const callbacks = {};
-        _.each(this._queuedCallbacks, cb => {
-            callbacks[cb.id] = cb;
-            if (cb.time) {
-                if (cb.type === 'start') {
-                    let prevTime = stopTimes[cb.id];
-                    if (prevTime) {
-                        if (Math.abs(prevTime - cb.time) < 50) {
-                            // Too little time has passed, remove that stop/start
-                            delete callbacks[cb.id];
-                        }
-                    }
-                    startTimes[cb.id] = cb.time;
+        const now = this.getCurrentTime();
+        let haveThingsToSendLater = false;
+        const callbacks = [];
+        _.each(this._callbackInstances, (o, instanceId) => {
+            if (o.endChanged &&
+                o.endTime &&
+                o.endCallback) {
+                if (o.endTime < now - CALLBACK_WAIT_TIME) {
+                    callbacks.push(o.endCallback);
+                    o.endChanged = false;
                 }
-                else if (cb.type === 'stop') {
-                    let prevTime = startTimes[cb.id];
-                    if (prevTime) {
-                        if (Math.abs(prevTime - cb.time) < 50) {
-                            // Too little time has passed, remove that stop/start
-                            delete callbacks[cb.id];
-                        }
-                    }
-                    stopTimes[cb.id] = cb.time;
+                else {
+                    haveThingsToSendLater = true;
                 }
             }
+            if (o.playChanged &&
+                o.playTime &&
+                o.playCallback) {
+                if (o.playTime < now - CALLBACK_WAIT_TIME) {
+                    callbacks.push(o.playCallback);
+                    o.playChanged = false;
+                }
+                else {
+                    haveThingsToSendLater = true;
+                }
+            }
+            if (!haveThingsToSendLater &&
+                !o.playChanged &&
+                !o.endChanged) {
+                delete this._callbackInstances[instanceId];
+            }
         });
-        this._queuedCallbacks = [];
-        // sort the callbacks
+        // Sort the callbacks:
         let callbacksArray = _.values(callbacks).sort((a, b) => {
             if (a.type === 'start' && b.type !== 'start')
                 return 1;
@@ -716,8 +771,11 @@ class Conductor extends events_1.EventEmitter {
         });
         // emit callbacks
         _.each(callbacksArray, cb => {
-            this.emit('timelineCallback', cb.time, cb.id, cb.callBack, cb.callBackData);
+            this.emit('timelineCallback', cb.time, cb.instanceId, cb.callBack, cb.callBackData);
         });
+        if (haveThingsToSendLater) {
+            this._triggerSendStartStopCallbacks();
+        }
     }
     statStartMeasure(reason) {
         // Start a measure of response times

@@ -44,11 +44,11 @@ export declare class QuantelDevice extends DeviceWithState<QuantelState> impleme
      * @param clearAfterTime
      */
     clearFuture(clearAfterTime: number): void;
-    get canConnect(): boolean;
-    get connected(): boolean;
-    get deviceType(): DeviceType;
-    get deviceName(): string;
-    get queue(): {
+    readonly canConnect: boolean;
+    readonly connected: boolean;
+    readonly deviceType: DeviceType;
+    readonly deviceName: string;
+    readonly queue: {
         id: string;
         queueId: string;
         time: number;
@@ -66,13 +66,13 @@ export declare class QuantelDevice extends DeviceWithState<QuantelState> impleme
      */
     makeReady(okToDestroyStuff?: boolean): Promise<void>;
     getStatus(): DeviceStatus;
+    /**
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
+     */
     private _diffStates;
     private _doCommand;
     /**
-     * Use either AMCP Command Scheduling or the doOnTime to execute commands at
-     * {@code time}.
-     * @param commandsToAchieveState Commands to be added to queue
-     * @param time Point in time to send commands at
+     * Add commands to queue, to be executed at the right time
      */
     private _addToQueue;
     /**

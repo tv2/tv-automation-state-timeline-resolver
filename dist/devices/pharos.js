@@ -122,6 +122,9 @@ class PharosDevice extends device_1.DeviceWithState {
             messages: messages
         };
     }
+    /**
+     * Add commands to queue, to be executed at the right time
+     */
     _addToQueue(commandsToAchieveState, time) {
         _.each(commandsToAchieveState, (cmd) => {
             // add the new commands to the queue:
@@ -131,9 +134,7 @@ class PharosDevice extends device_1.DeviceWithState {
         });
     }
     /**
-     * Generates commands to transition from old to new state.
-     * @param oldOscSendState The assumed current state
-     * @param newOscSendState The desired state of the device
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
      */
     _diffStates(oldPharosState, newPharosState) {
         let commands = [];

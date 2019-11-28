@@ -97,6 +97,9 @@ class AbstractDevice extends device_1.DeviceWithState {
             statusCode: device_1.StatusCode.GOOD
         };
     }
+    /**
+     * Add commands to queue, to be executed at the right time
+     */
     _addToQueue(commandsToAchieveState, time) {
         _.each(commandsToAchieveState, (cmd) => {
             // add the new commands to the queue:
@@ -106,8 +109,7 @@ class AbstractDevice extends device_1.DeviceWithState {
         });
     }
     /**
-     * Generates commands based such that we will transition from the old state
-     * to the new state.
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
      * @param oldAbstractState
      * @param newAbstractState
      */

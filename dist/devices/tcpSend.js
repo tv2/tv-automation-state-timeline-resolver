@@ -135,6 +135,9 @@ class TCPSendDevice extends device_1.DeviceWithState {
             });
         }
     }
+    /**
+     * Add commands to queue, to be executed at the right time
+     */
     _addToQueue(commandsToAchieveState, time) {
         _.each(commandsToAchieveState, (cmd) => {
             // add the new commands to the queue:
@@ -149,6 +152,9 @@ class TCPSendDevice extends device_1.DeviceWithState {
             }, cmd);
         });
     }
+    /**
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
+     */
     _diffStates(oldTCPSendState, newTCPSendState) {
         // in this TCPSend class, let's just cheat:
         let commands = [];

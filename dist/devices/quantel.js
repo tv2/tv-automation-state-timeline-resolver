@@ -254,6 +254,9 @@ class QuantelDevice extends device_1.DeviceWithState {
             messages: messages
         };
     }
+    /**
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
+     */
     _diffStates(oldState, newState, time) {
         const highPrioCommands = [];
         const lowPrioCommands = [];
@@ -360,10 +363,7 @@ class QuantelDevice extends device_1.DeviceWithState {
         return this._commandReceiver(time, command, context, timlineObjId);
     }
     /**
-     * Use either AMCP Command Scheduling or the doOnTime to execute commands at
-     * {@code time}.
-     * @param commandsToAchieveState Commands to be added to queue
-     * @param time Point in time to send commands at
+     * Add commands to queue, to be executed at the right time
      */
     _addToQueue(commandsToAchieveState) {
         _.each(commandsToAchieveState, (cmd) => {

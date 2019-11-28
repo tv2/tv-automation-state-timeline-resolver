@@ -17,7 +17,7 @@ export interface CasparCGOptions {
         [channel: string]: number;
     } | number;
     launcherHost?: string;
-    launcherPort?: string;
+    launcherPort?: number;
 }
 export declare enum TimelineContentTypeCasparCg {
     MEDIA = "media",
@@ -28,14 +28,23 @@ export declare enum TimelineContentTypeCasparCg {
     ROUTE = "route",
     RECORD = "record"
 }
-export interface TimelineTransition {
+export declare type TimelineTransition = TimelineTransitionBase & (RegularTimelineTransition | TimelineStingTransition);
+export interface TimelineTransitionBase {
     type: Transition;
+}
+export interface RegularTimelineTransition extends TimelineTransitionBase {
+    type: Exclude<Transition, Transition.STING>;
     duration?: number;
     easing?: Ease;
     direction?: Direction;
-    maskFile?: string;
+}
+export interface TimelineStingTransition extends TimelineTransitionBase {
+    type: Transition.STING;
+    maskFile: string;
     delay?: number;
     overlayFile?: string;
+    audioFadeStart?: number;
+    audioFadeDuration?: number;
 }
 export interface TimelineObjCCGProducerContentBase {
     /** The type of CasparCG content  */
@@ -139,6 +148,8 @@ export interface TimelineObjCCGRoute extends TimelineObjCasparCGBase {
         mode?: 'BACKGROUND' | 'NEXT';
         /** Audio channel layout (example 'stereo') */
         channelLayout?: string;
+        /** The amount of milliseconds to delay the signal on this route. This value is downsampled to channel frames upon execution. */
+        delay?: number;
     } & TimelineObjCCGProducerContentBase;
 }
 export interface TimelineObjCCGRecord extends TimelineObjCasparCGBase {

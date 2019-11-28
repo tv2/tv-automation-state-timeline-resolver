@@ -277,9 +277,7 @@ class AtemDevice extends device_1.DeviceWithState {
         return deviceStatus;
     }
     /**
-     * Execute `commandsToAchieveState` at `time` using the doOnTime class
-     * @param commandsToAchieveState
-     * @param time
+     * Add commands to queue, to be executed at the right time
      */
     _addToQueue(commandsToAchieveState, time) {
         _.each(commandsToAchieveState, (cmd) => {
@@ -290,7 +288,7 @@ class AtemDevice extends device_1.DeviceWithState {
         });
     }
     /**
-     * Diffs two states and generate commands based on the diff.
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
      * @param oldAtemState
      * @param newAtemState
      */

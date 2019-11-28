@@ -229,6 +229,9 @@ class LawoDevice extends device_1.DeviceWithState {
             this._connectionChanged();
         }
     }
+    /**
+     * Add commands to queue, to be executed at the right time
+     */
     _addToQueue(commandsToAchieveState, time) {
         _.each(commandsToAchieveState, (cmd) => {
             // add the new commands to the queue:
@@ -238,7 +241,7 @@ class LawoDevice extends device_1.DeviceWithState {
         });
     }
     /**
-     * Generates commands to transition from one device state to another.
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
      * @param oldLawoState The assumed device state
      * @param newLawoState The desired device state
      */
@@ -323,6 +326,7 @@ class LawoDevice extends device_1.DeviceWithState {
                 timelineObjId: timelineObjId
             };
             this.emit('debug', cwc);
+            // save start time of command
             const startSend = this.getCurrentTime();
             this._lastSentValue[command.path] = startSend;
             try {
@@ -356,7 +360,7 @@ class LawoDevice extends device_1.DeviceWithState {
                             this.emit('debug', `Ember function result (${timelineObjId}): ${JSON.stringify(res)}`);
                         }
                         catch (e) {
-                            if (e.result && e.result.indexOf(6) > -1 && this._lastSentValue[command.path] < startSend) {
+                            if (e.result && e.result.indexOf(6) > -1 && this._lastSentValue[command.path] <= startSend) { // result 6 and no new command fired for this path in meantime
                                 // Lawo rejected the command, so ensure the value gets set
                                 this.emit('info', `Ember function result (${timelineObjId}) was 6, running a direct setValue now`);
                                 yield this._setValueFn(command, timelineObjId, src_1.EmberTypes.REAL);

@@ -36,17 +36,17 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implement
      * @param clearAfterTime
      */
     clearFuture(clearAfterTime: number): void;
-    get canConnect(): boolean;
-    get connected(): boolean;
-    get deviceType(): DeviceType;
-    get deviceName(): string;
-    get queue(): {
+    readonly canConnect: boolean;
+    readonly connected: boolean;
+    readonly deviceType: DeviceType;
+    readonly deviceName: string;
+    readonly queue: {
         id: string;
         queueId: string;
         time: number;
         args: any[];
     }[];
-    get supportsExpectedPlayoutItems(): boolean;
+    readonly supportsExpectedPlayoutItems: boolean;
     handleExpectedPlayoutItems(expectedPlayoutItems: Array<ExpectedPlayoutItemContent>): void;
     getCurrentState(): VizMSEState | undefined;
     connectionChanged(connected?: boolean): void;

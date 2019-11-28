@@ -288,6 +288,9 @@ class HyperdeckDevice extends device_1.DeviceWithState {
             messages
         };
     }
+    /**
+     * Add commands to queue, to be executed at the right time
+     */
     _addToQueue(commandsToAchieveState, time) {
         _.each(commandsToAchieveState, (cmd) => {
             // add the new commands to the queue:
@@ -297,7 +300,7 @@ class HyperdeckDevice extends device_1.DeviceWithState {
         });
     }
     /**
-     * Generates commands to transition from old to new state.
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
      * @param oldHyperdeckState The assumed current state
      * @param newHyperdeckState The desired state of the device
      */

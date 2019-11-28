@@ -24,18 +24,24 @@ export declare class HTTPSendDevice extends DeviceWithState<TimelineState> imple
     terminate(): Promise<boolean>;
     getStatus(): DeviceStatus;
     makeReady(okToDestroyStuff?: boolean): Promise<void>;
-    get canConnect(): boolean;
-    get connected(): boolean;
+    readonly canConnect: boolean;
+    readonly connected: boolean;
     convertStateToHttpSend(state: TimelineState): TimelineState;
-    get deviceType(): DeviceType;
-    get deviceName(): string;
-    get queue(): {
+    readonly deviceType: DeviceType;
+    readonly deviceName: string;
+    readonly queue: {
         id: string;
         queueId: string;
         time: number;
         args: any[];
     }[];
+    /**
+     * Add commands to queue, to be executed at the right time
+     */
     private _addToQueue;
+    /**
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
+     */
     private _diffStates;
     private _defaultCommandReceiver;
 }

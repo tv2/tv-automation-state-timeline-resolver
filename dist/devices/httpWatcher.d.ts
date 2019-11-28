@@ -31,8 +31,8 @@ export declare class HTTPWatcherDevice extends Device implements IDevice {
     getStatus(): DeviceStatus;
     terminate(): Promise<boolean>;
     private _setStatus;
-    get canConnect(): boolean;
-    get connected(): boolean;
-    get deviceType(): DeviceType;
-    get deviceName(): string;
+    readonly canConnect: boolean;
+    readonly connected: boolean;
+    readonly deviceType: DeviceType;
+    readonly deviceName: string;
 }

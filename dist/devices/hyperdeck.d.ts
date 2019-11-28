@@ -70,25 +70,28 @@ export declare class HyperdeckDevice extends DeviceWithState<DeviceState> implem
      * @param clearAfterTime
      */
     clearFuture(clearAfterTime: number): void;
-    get canConnect(): boolean;
-    get connected(): boolean;
+    readonly canConnect: boolean;
+    readonly connected: boolean;
     /**
      * Converts a timeline state to a device state.
      * @param state
      */
     convertStateToHyperdeck(state: TimelineState): DeviceState;
-    get deviceType(): DeviceType;
-    get deviceName(): string;
-    get queue(): {
+    readonly deviceType: DeviceType;
+    readonly deviceName: string;
+    readonly queue: {
         id: string;
         queueId: string;
         time: number;
         args: any[];
     }[];
     getStatus(): DeviceStatus;
+    /**
+     * Add commands to queue, to be executed at the right time
+     */
     private _addToQueue;
     /**
-     * Generates commands to transition from old to new state.
+     * Compares the new timeline-state with the old one, and generates commands to account for the difference
      * @param oldHyperdeckState The assumed current state
      * @param newHyperdeckState The desired state of the device
      */
