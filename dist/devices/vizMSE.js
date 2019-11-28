@@ -50,9 +50,9 @@ class VizMSEDevice extends device_1.DeviceWithState {
             if (!this._initOptions.profile)
                 throw new Error('VizMSE bad option: profile');
             this._vizMSE = v_connection_1.createMSE(this._initOptions.host, this._initOptions.restPort, this._initOptions.wsPort);
-            this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements);
+            this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements, initOptions.showID, initOptions.profile, initOptions.playlistID);
             this._vizmseManager.on('connectionChanged', (connected) => this.connectionChanged(connected));
-            yield this._vizmseManager.initializeRundown(initOptions.showID, initOptions.profile, initOptions.playlistID);
+            yield this._vizmseManager.initializeRundown();
             this._vizmseManager.on('info', str => this.emit('info', 'VizMSE: ' + str));
             this._vizmseManager.on('warning', str => this.emit('warning', 'VizMSE' + str));
             this._vizmseManager.on('error', e => this.emit('error', 'VizMSE', e));
@@ -168,6 +168,12 @@ class VizMSEDevice extends device_1.DeviceWithState {
                             contentType: src_1.TimelineContentTypeVizMSE.LOAD_ALL_ELEMENTS
                         });
                     }
+                    else if (l.content.type === src_1.TimelineContentTypeVizMSE.CLEAR_ALL_ELEMENTS) {
+                        // Special case: clear all graphics:
+                        state.isClearAll = {
+                            timelineObjId: l.id
+                        };
+                    }
                     else if (l.content.type === src_1.TimelineContentTypeVizMSE.CONTINUE) {
                         state.layer[layerName] = device_1.literal({
                             timelineObjId: l.id,
@@ -187,6 +193,10 @@ class VizMSEDevice extends device_1.DeviceWithState {
                 }
             }
         });
+        if (state.isClearAll) {
+            // clear rest of state:
+            state.layer = {};
+        }
         // Fix references:
         _.each(state.layer, (layer) => {
             if (layer.contentType === src_1.TimelineContentTypeVizMSE.CONTINUE) {
@@ -219,6 +229,20 @@ class VizMSEDevice extends device_1.DeviceWithState {
             if (okToDestroyStuff) {
                 // reset our own state(s):
                 this.clearStates();
+                if (this._vizmseManager) {
+                    if (this._initOptions &&
+                        this._initOptions.clearAllOnMakeReady &&
+                        this._initOptions.clearAllTemplateName) {
+                        yield this._vizmseManager.clearAll({
+                            type: VizMSECommandType.CLEAR_ALL_ELEMENTS,
+                            time: this.getCurrentTime(),
+                            timelineObjId: 'makeReady',
+                            templateName: this._initOptions.clearAllTemplateName
+                        });
+                    }
+                }
+                else
+                    throw new Error(`Unable to activate vizMSE, not initialized yet!`);
             }
         });
     }
@@ -361,6 +385,24 @@ class VizMSEDevice extends device_1.DeviceWithState {
                 }
             }
         });
+        if (newState.isClearAll) {
+            // Special: clear all graphics
+            const templateName = this._initOptions && this._initOptions.clearAllTemplateName;
+            if (!templateName) {
+                this.emit('warning', `vizMSE: initOptions.clearAllTemplateName is not set!`);
+            }
+            else {
+                // Start playing special element:
+                return [
+                    device_1.literal({
+                        timelineObjId: newState.isClearAll.timelineObjId,
+                        time: time,
+                        type: VizMSECommandType.CLEAR_ALL_ELEMENTS,
+                        templateName: templateName
+                    })
+                ];
+            }
+        }
         return highPrioCommands.concat(lowPrioCommands);
     }
     _doCommand(command, context, timlineObjId) {
@@ -413,6 +455,9 @@ class VizMSEDevice extends device_1.DeviceWithState {
                     else if (cmd.type === VizMSECommandType.LOAD_ALL_ELEMENTS) {
                         yield this._vizmseManager.loadAllElements(cmd);
                     }
+                    else if (cmd.type === VizMSECommandType.CLEAR_ALL_ELEMENTS) {
+                        yield this._vizmseManager.clearAll(cmd);
+                    }
                     else {
                         // @ts-ignore never
                         throw new Error(`Unsupported command type "${cmd.type}"`);
@@ -433,50 +478,55 @@ class VizMSEDevice extends device_1.DeviceWithState {
 }
 exports.VizMSEDevice = VizMSEDevice;
 class VizMSEManager extends events_1.EventEmitter {
-    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements = false) {
+    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements = false, _showID, _profile, _playlistID) {
         super();
         this._parentVizMSEDevice = _parentVizMSEDevice;
         this._vizMSE = _vizMSE;
         this.preloadAllElements = preloadAllElements;
+        this._showID = _showID;
+        this._profile = _profile;
+        this._playlistID = _playlistID;
         this.initialized = false;
         this.notLoadedCount = 0;
         this.loadingCount = 0;
         this._elementCache = {};
         this._expectedPlayoutItems = [];
-        this._expectedPlayoutItemsItems = {};
         this._lastTimeCommandSent = 0;
         this._hasActiveRundown = false;
         this._elementsLoaded = {};
+        this._mseConnected = false;
+        this._msePingConnected = false;
     }
     /**
      * Initialize the Rundown in MSE.
      * Our approach is to create a single rundown on initialization, and then use only that for later control.
      */
-    initializeRundown(showID, profile, playlistID) {
+    initializeRundown() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            this._vizMSE.on('connected', () => this.emit('connectionChanged', true));
-            this._vizMSE.on('disconnected', () => this.emit('connectionChanged', false));
+            this._vizMSE.on('connected', () => this.mseConnectionChanged(true));
+            this._vizMSE.on('disconnected', () => this.mseConnectionChanged(false));
             // Perform a ping, to ensure we are connected properly
             yield this._vizMSE.ping();
-            this.emit('connectionChanged', true);
+            this._msePingConnected = true;
+            this.mseConnectionChanged(true);
             // Setup the rundown used by this device:
-            // Check if the rundown already exists:
-            this._rundown = _.find(yield this._vizMSE.getRundowns(), (rundown) => {
-                return (rundown.show === showID &&
-                    rundown.profile === profile &&
-                    rundown.playlist === playlistID);
-            });
-            if (!this._rundown) {
-                this._rundown = yield this._vizMSE.createRundown(showID, profile, playlistID);
-            }
-            if (!this._rundown)
+            const rundown = yield this._getRundown();
+            if (!rundown)
                 throw new Error(`VizMSEManager: Unable to create rundown!`);
             // const profile = await this._vizMSE.getProfile('sofie') // TODO: Figure out if this is needed
-            this._updateExpectedPlayoutItems().catch(e => this.emit('error', e));
             if (this._monitorAndLoadElementsInterval) {
                 clearInterval(this._monitorAndLoadElementsInterval);
             }
-            this._monitorAndLoadElementsInterval = setInterval(() => this._monitorLoadedElements(), MONITOR_INTERVAL);
+            this._monitorAndLoadElementsInterval = setInterval(() => {
+                this._monitorLoadedElements()
+                    .catch((...args) => {
+                    this.emit('error', ...args);
+                });
+            }, MONITOR_INTERVAL);
+            if (this._monitorMSEConnection) {
+                clearInterval(this._monitorMSEConnection);
+            }
+            this._monitorMSEConnection = setInterval(() => this._monitorConnection(), MONITOR_INTERVAL);
             this.initialized = true;
         });
     }
@@ -487,6 +537,9 @@ class VizMSEManager extends events_1.EventEmitter {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (this._monitorAndLoadElementsInterval) {
                 clearInterval(this._monitorAndLoadElementsInterval);
+            }
+            if (this._monitorMSEConnection) {
+                clearInterval(this._monitorMSEConnection);
             }
             if (this._vizMSE) {
                 yield this._vizMSE.close();
@@ -503,8 +556,8 @@ class VizMSEManager extends events_1.EventEmitter {
         if (this.preloadAllElements) {
             this.emit('debug', 'VIZDEBUG: preload elements allowed');
             this._expectedPlayoutItems = expectedPlayoutItems;
+            this._getExpectedPlayoutItems().catch((...args) => this.emit('error', ...args));
         }
-        this._updateExpectedPlayoutItems().catch(e => this.emit('error', e));
     }
     /**
      * Activate the rundown.
@@ -513,10 +566,13 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     activate() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._rundown)
-                throw new Error(`Viz Rundown not initialized!`);
             this._triggerCommandSent();
-            yield this._rundown.activate();
+            const rundown = yield this._getRundown();
+            // clear any existing elements from the existing rundown
+            yield rundown.purge();
+            this._clearCache();
+            this._triggerCommandSent();
+            yield rundown.activate();
             this._triggerCommandSent();
             yield this._triggerLoadAllElements();
             this._triggerCommandSent();
@@ -529,12 +585,10 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     deactivate() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._rundown)
-                throw new Error(`Viz Rundown not initialized!`);
+            const rundown = yield this._getRundown();
             this._triggerCommandSent();
-            yield this._rundown.deactivate();
+            yield rundown.deactivate();
             this._triggerCommandSent();
-            this._clearCache();
             this._hasActiveRundown = false;
         });
     }
@@ -544,8 +598,6 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     prepareElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._rundown)
-                throw new Error(`Viz Rundown not initialized!`);
             const elementHash = this.getElementHash(cmd);
             this.emit('debug', `VizMSE: prepare "${elementHash}"`);
             this._triggerCommandSent();
@@ -558,9 +610,7 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     cueElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._rundown)
-                throw new Error(`Viz Rundown not initialized!`);
-            const rundown = this._rundown;
+            const rundown = yield this._getRundown();
             const elementRef = yield this._checkPrepareElement(cmd);
             yield this._checkElementExists(cmd);
             yield this._handleRetry(() => {
@@ -574,9 +624,7 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     takeElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._rundown)
-                throw new Error(`Viz Rundown not initialized!`);
-            const rundown = this._rundown;
+            const rundown = yield this._getRundown();
             const elementRef = yield this._checkPrepareElement(cmd);
             yield this._checkElementExists(cmd);
             yield this._handleRetry(() => {
@@ -590,9 +638,7 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     takeoutElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._rundown)
-                throw new Error(`Viz Rundown not initialized!`);
-            const rundown = this._rundown;
+            const rundown = yield this._getRundown();
             const elementRef = yield this._checkPrepareElement(cmd);
             yield this._checkElementExists(cmd);
             yield this._handleRetry(() => {
@@ -606,9 +652,7 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     continueElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._rundown)
-                throw new Error(`Viz Rundown not initialized!`);
-            const rundown = this._rundown;
+            const rundown = yield this._getRundown();
             const elementRef = yield this._checkPrepareElement(cmd);
             yield this._checkElementExists(cmd);
             yield this._handleRetry(() => {
@@ -622,14 +666,40 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     continueElementReverse(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._rundown)
-                throw new Error(`Viz Rundown not initialized!`);
-            const rundown = this._rundown;
+            const rundown = yield this._getRundown();
             const elementRef = yield this._checkPrepareElement(cmd);
             yield this._checkElementExists(cmd);
             yield this._handleRetry(() => {
                 this.emit('debug', `VizMSE: continue reverse "${elementRef}"`);
                 return rundown.continueReverse(elementRef);
+            });
+        });
+    }
+    /**
+     * Special: trigger a template which clears all templates on the output
+     */
+    clearAll(cmd) {
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            const rundown = yield this._getRundown();
+            const template = {
+                timelineObjId: cmd.timelineObjId,
+                contentType: src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL,
+                templateName: cmd.templateName,
+                templateData: []
+            };
+            // Start playing special element:
+            const cmdTake = {
+                time: cmd.time,
+                type: VizMSECommandType.TAKE_ELEMENT,
+                timelineObjId: template.timelineObjId,
+                templateInstance: VizMSEManager.getTemplateInstance(template),
+                templateName: VizMSEManager.getTemplateName(template)
+            };
+            const elementRef = yield this._checkPrepareElement(cmdTake);
+            yield this._checkElementExists(cmdTake);
+            yield this._handleRetry(() => {
+                this.emit('debug', `VizMSE: clearAll take "${elementRef}"`);
+                return rundown.take(elementRef);
             });
         });
     }
@@ -735,8 +805,7 @@ class VizMSEManager extends events_1.EventEmitter {
     /** Check that the element exists and if not, throw error */
     _checkElementExists(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._rundown)
-                throw new Error(`Viz Rundown not initialized!`);
+            const rundown = yield this._getRundown();
             const elementHash = this.getElementHash(cmd);
             const cachedElement = this._getCachedElement(elementHash);
             if (!cachedElement)
@@ -744,7 +813,7 @@ class VizMSEManager extends events_1.EventEmitter {
             const elementRef = this._getElementReference(cachedElement.element);
             const elementIsExternal = cachedElement && this._isExternalElement(cachedElement.element);
             if (elementIsExternal) {
-                const element = yield this._rundown.getElement(elementRef);
+                const element = yield rundown.getElement(elementRef);
                 if (this._isExternalElement(element) &&
                     element.exists === 'no') {
                     throw new Error(`Can't take the element "${elementRef}" while it has the property exists="no"`);
@@ -757,19 +826,18 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     _prepareNewElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._rundown)
-                throw new Error(`Viz Rundown not initialized!`);
+            const rundown = yield this._getRundown();
             const elementHash = this.getElementHash(cmd);
             try {
                 if (_.isNumber(cmd.templateName)) {
                     // Prepare a pilot element
-                    const pilotEl = yield this._rundown.createElement(cmd.templateName, cmd.channelName);
+                    const pilotEl = yield rundown.createElement(cmd.templateName, cmd.channelName);
                     this._cacheElement(elementHash, pilotEl);
                     return pilotEl;
                 }
                 else {
                     // Prepare an internal element
-                    const internalEl = yield this._rundown.createElement(cmd.templateName, cmd.templateInstance, cmd.templateData || [], cmd.channelName);
+                    const internalEl = yield rundown.createElement(cmd.templateName, cmd.templateInstance, cmd.templateData || [], cmd.channelName);
                     this._cacheElement(elementHash, internalEl);
                     return internalEl;
                 }
@@ -777,7 +845,7 @@ class VizMSEManager extends events_1.EventEmitter {
             catch (e) {
                 if (e.toString().match(/already exist/i)) { // "An internal graphics element with name 'xxxxxxxxxxxxxxx' already exists."
                     // If the object already exists, it's not an error, fetch and use the element instead
-                    const element = yield this._rundown.getElement(cmd.templateInstance);
+                    const element = yield rundown.getElement(cmd.templateInstance);
                     this._cacheElement(elementHash, element);
                     return element;
                 }
@@ -787,33 +855,30 @@ class VizMSEManager extends events_1.EventEmitter {
             }
         });
     }
-    _updateExpectedPlayoutItems() {
+    _getExpectedPlayoutItems() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            this.emit('debug', 'VIZDEBUG: _updateExpectedPlayoutItems called');
-            if (this.preloadAllElements) {
-                this.emit('debug', `VIZMSE: _updateExpectedPlayoutItems (${this._expectedPlayoutItems.length})`);
-                const hashesAndItems = {};
-                yield Promise.all(_.map(this._expectedPlayoutItems, (expectedPlayoutItem) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                    const stateLayer = (_.isNumber(expectedPlayoutItem.templateName) ?
-                        content2StateLayer('', {
-                            deviceType: src_1.DeviceType.VIZMSE,
-                            type: src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT,
-                            templateVcpId: expectedPlayoutItem.templateName
-                        }) :
-                        content2StateLayer('', {
-                            deviceType: src_1.DeviceType.VIZMSE,
-                            type: src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL,
-                            templateName: expectedPlayoutItem.templateName,
-                            templateData: expectedPlayoutItem.templateData
-                        }));
-                    if (stateLayer) {
-                        const item = Object.assign(Object.assign({}, expectedPlayoutItem), { templateInstance: VizMSEManager.getTemplateInstance(stateLayer) });
-                        hashesAndItems[this.getElementHash(item)] = item;
-                        yield this._checkPrepareElement(item, true);
-                    }
-                })));
-                this._expectedPlayoutItemsItems = hashesAndItems;
-            }
+            this.emit('debug', `VISMSE: _getExpectedPlayoutItems (${this._expectedPlayoutItems.length})`);
+            const hashesAndItems = {};
+            yield Promise.all(_.map(this._expectedPlayoutItems, (expectedPlayoutItem) => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                const stateLayer = (_.isNumber(expectedPlayoutItem.templateName) ?
+                    content2StateLayer('', {
+                        deviceType: src_1.DeviceType.VIZMSE,
+                        type: src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT,
+                        templateVcpId: expectedPlayoutItem.templateName
+                    }) :
+                    content2StateLayer('', {
+                        deviceType: src_1.DeviceType.VIZMSE,
+                        type: src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL,
+                        templateName: expectedPlayoutItem.templateName,
+                        templateData: expectedPlayoutItem.templateData
+                    }));
+                if (stateLayer) {
+                    const item = Object.assign(Object.assign({}, expectedPlayoutItem), { templateInstance: VizMSEManager.getTemplateInstance(stateLayer) });
+                    hashesAndItems[this.getElementHash(item)] = item;
+                    yield this._checkPrepareElement(item, true);
+                }
+            })));
+            return hashesAndItems;
         });
     }
     /**
@@ -821,7 +886,8 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     updateElementsLoadedStatus(forceReloadAll) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            const elementsToLoad = _.compact(_.map(this._expectedPlayoutItemsItems, (item, hash) => {
+            const hashesAndItems = yield this._getExpectedPlayoutItems();
+            const elementsToLoad = _.compact(_.map(hashesAndItems, (item, hash) => {
                 const el = this._getCachedElement(hash);
                 if (!item.noAutoPreloading && el) {
                     return Object.assign(Object.assign({}, el), { item: item, hash: hash });
@@ -829,7 +895,8 @@ class VizMSEManager extends events_1.EventEmitter {
                 return undefined;
             }));
             if (this._rundown) {
-                const rundown = this._rundown;
+                this.emit('debug', `Updating status of elements starting, elementsToLoad.length=${elementsToLoad.length} (${_.keys(hashesAndItems).length})`);
+                const rundown = yield this._getRundown();
                 if (forceReloadAll) {
                     this._elementsLoaded = {};
                 }
@@ -837,6 +904,7 @@ class VizMSEManager extends events_1.EventEmitter {
                     const cachedEl = this._elementsLoaded[e.hash];
                     if (!cachedEl || !cachedEl.isLoaded) {
                         const elementRef = yield this._checkPrepareElement(e.item);
+                        this.emit('debug', `Updating status of element ${elementRef}`);
                         // Update cached status of the element:
                         const newEl = yield rundown.getElement(elementRef);
                         this._elementsLoaded[e.hash] = {
@@ -846,6 +914,7 @@ class VizMSEManager extends events_1.EventEmitter {
                         };
                     }
                 })));
+                this.emit('debug', `Updating status of elements done, this._elementsLoaded.length=${_.keys(this._elementsLoaded).length}`);
             }
             else {
                 throw Error('VizMSE.v-connection not initialized yet');
@@ -857,9 +926,8 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     _triggerLoadAllElements() {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._rundown)
-                throw Error('VizMSE.v-connection not initialized yet');
-            const rundown = this._rundown;
+            const rundown = yield this._getRundown();
+            this.emit('debug', '_triggerLoadAllElements starting');
             // First, update the loading-status of all elements:
             yield this.updateElementsLoadedStatus(true);
             // Then, load all elements that needs loading:
@@ -882,8 +950,31 @@ class VizMSEManager extends events_1.EventEmitter {
                         this.emit('debug', `Element "${this._getElementReference(e.element)}" is loading`);
                     }
                 }
+                else {
+                    this.emit('error', `Element "${this._getElementReference(e.element)}" type `);
+                }
             })));
+            this.emit('debug', '_triggerLoadAllElements done');
         });
+    }
+    _monitorConnection() {
+        // (the ping will throuw on a timeout if ping doesn't return in time)
+        if (this.initialized) {
+            this._vizMSE.ping()
+                .then(() => {
+                // ok!
+                if (!this._msePingConnected) {
+                    this._msePingConnected = true;
+                    this.onConnectionChanged();
+                }
+            }, () => {
+                // not ok!
+                if (this._msePingConnected) {
+                    this._msePingConnected = false;
+                    this.onConnectionChanged();
+                }
+            });
+        }
     }
     /** Monitor loading status of expected elements */
     _monitorLoadedElements() {
@@ -992,6 +1083,52 @@ class VizMSEManager extends events_1.EventEmitter {
             throw new Error(`vizMSE: _isLoaded: unknown element type: ${el && JSON.stringify(el)}`);
         }
     }
+    /**
+     * Return the current MSE rundown, create it if it doesn't exists
+     */
+    _getRundown() {
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            if (!this._rundown) {
+                // Only allow for one rundown fetch at the same time:
+                if (this._getRundownPromise) {
+                    return this._getRundownPromise;
+                }
+                const getRundownPromise = (() => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                    // Check if the rundown already exists:
+                    // let rundown: VRundown | undefined = _.find(await this._vizMSE.getRundowns(), (rundown) => {
+                    // 	return (
+                    // 		rundown.show === this._showID &&
+                    // 		rundown.profile === this._profile &&
+                    // 		rundown.playlist === this._playlistID
+                    // 	)
+                    // })
+                    this.emit('debug', `Creating new rundown ${[this._showID, this._profile, this._playlistID]}`);
+                    let rundown = yield this._vizMSE.createRundown(this._showID, this._profile, this._playlistID);
+                    this._rundown = rundown;
+                    if (!this._rundown)
+                        throw new Error(`_getRundown: this._rundown is not set!`);
+                    return this._rundown;
+                }))();
+                this._getRundownPromise = getRundownPromise;
+                const rundown = yield this._getRundownPromise;
+                this._rundown = rundown;
+                return rundown;
+            }
+            else {
+                return this._rundown;
+            }
+        });
+    }
+    mseConnectionChanged(connected) {
+        if (connected !== this._mseConnected) {
+            this._mseConnected = connected;
+            this.onConnectionChanged();
+        }
+    }
+    onConnectionChanged() {
+        this.emit('connectionChanged', (this._mseConnected &&
+            this._msePingConnected));
+    }
 }
 var VizMSECommandType;
 (function (VizMSECommandType) {
@@ -1002,6 +1139,7 @@ var VizMSECommandType;
     VizMSECommandType["CONTINUE_ELEMENT"] = "continue";
     VizMSECommandType["CONTINUE_ELEMENT_REVERSE"] = "continuereverse";
     VizMSECommandType["LOAD_ALL_ELEMENTS"] = "load_all_elements";
+    VizMSECommandType["CLEAR_ALL_ELEMENTS"] = "clear_all_elements";
 })(VizMSECommandType = exports.VizMSECommandType || (exports.VizMSECommandType = {}));
 function content2StateLayer(timelineObjId, content) {
     if (content.type === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL) {
