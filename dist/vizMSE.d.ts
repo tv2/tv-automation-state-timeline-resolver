@@ -17,7 +17,7 @@ export interface VizMSEOptions {
     /** Identifier of the "playlist" to send commands to */
     playlistID?: string;
     /** Whether all elements should be preloaded or not */
-    preloadAllElements: boolean;
+    preloadAllElements?: boolean;
 }
 export declare enum TimelineContentTypeVizMSE {
     ELEMENT_INTERNAL = "element_internal",
