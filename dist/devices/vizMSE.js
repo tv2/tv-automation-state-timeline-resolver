@@ -39,6 +39,10 @@ class VizMSEDevice extends device_1.DeviceWithState {
             return this.getCurrentTime();
         }, doOnTime_1.SendMode.IN_ORDER, this._deviceOptions);
         this.handleDoOnTime(this._doOnTime, 'VizMSE');
+        this._doOnTimeBurst = new doOnTime_1.DoOnTime(() => {
+            return this.getCurrentTime();
+        }, doOnTime_1.SendMode.BURST, this._deviceOptions);
+        this.handleDoOnTime(this._doOnTimeBurst, 'VizMSE.burst');
     }
     init(initOptions) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
@@ -254,7 +258,13 @@ class VizMSEDevice extends device_1.DeviceWithState {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (okToDestroyStuff) {
                 if (this._vizmseManager) {
-                    yield this._vizmseManager.deactivate();
+                    if (!this._initOptions ||
+                        !this._initOptions.dontDeactivateOnStandDown) {
+                        yield this._vizmseManager.deactivate();
+                    }
+                    else {
+                        this._vizmseManager.standDownActiveRundown(); // because we still want to stop monitoring expectedPlayoutItems
+                    }
                 }
             }
         });
@@ -302,6 +312,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
                     addCommand(device_1.literal({
                         timelineObjId: newLayer.timelineObjId,
                         fromLookahead: newLayer.lookahead,
+                        layerId: layerId,
                         type: VizMSECommandType.LOAD_ALL_ELEMENTS,
                         time: time
                     }), newLayer.lookahead);
@@ -314,6 +325,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
                     const props = {
                         timelineObjId: newLayer.timelineObjId,
                         fromLookahead: newLayer.lookahead,
+                        layerId: layerId,
                         templateInstance: VizMSEManager.getTemplateInstance(newLayer.referenceContent),
                         templateName: VizMSEManager.getTemplateName(newLayer.referenceContent),
                         templateData: VizMSEManager.getTemplateData(newLayer.referenceContent),
@@ -331,6 +343,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
                 const props = {
                     timelineObjId: newLayer.timelineObjId,
                     fromLookahead: newLayer.lookahead,
+                    layerId: layerId,
                     templateInstance: VizMSEManager.getTemplateInstance(newLayer),
                     templateName: VizMSEManager.getTemplateName(newLayer),
                     templateData: VizMSEManager.getTemplateData(newLayer),
@@ -377,6 +390,8 @@ class VizMSEDevice extends device_1.DeviceWithState {
                         time: time,
                         timelineObjId: oldLayer.timelineObjId,
                         fromLookahead: oldLayer.lookahead,
+                        layerId: layerId,
+                        transition: oldLayer && oldLayer.outTransition,
                         templateInstance: VizMSEManager.getTemplateInstance(oldLayer),
                         templateName: VizMSEManager.getTemplateName(oldLayer),
                         templateData: VizMSEManager.getTemplateData(oldLayer),
@@ -416,6 +431,15 @@ class VizMSEDevice extends device_1.DeviceWithState {
         _.each(commandsToAchieveState, (cmd) => {
             this._doOnTime.queue(cmd.time, cmd.layerId, (c) => {
                 return this._doCommand(c.cmd, c.cmd.type + '_' + c.cmd.timelineObjId, c.cmd.timelineObjId);
+            }, { cmd: cmd });
+            this._doOnTimeBurst.queue(cmd.time, undefined, (c) => {
+                if ((c.cmd.type === VizMSECommandType.TAKE_ELEMENT) &&
+                    !c.cmd.fromLookahead) {
+                    if (this._vizmseManager && c.cmd.layerId) {
+                        this._vizmseManager.clearAllWaitWithLayer(c.cmd.layerId);
+                    }
+                }
+                return Promise.resolve();
             }, { cmd: cmd });
         });
     }
@@ -496,6 +520,7 @@ class VizMSEManager extends events_1.EventEmitter {
         this._elementsLoaded = {};
         this._mseConnected = false;
         this._msePingConnected = false;
+        this._waitWithLayers = {};
     }
     /**
      * Initialize the Rundown in MSE.
@@ -589,8 +614,11 @@ class VizMSEManager extends events_1.EventEmitter {
             this._triggerCommandSent();
             yield rundown.deactivate();
             this._triggerCommandSent();
-            this._hasActiveRundown = false;
+            this.standDownActiveRundown();
         });
+    }
+    standDownActiveRundown() {
+        this._hasActiveRundown = false;
     }
     /**
      * Prepare an element
@@ -639,6 +667,14 @@ class VizMSEManager extends events_1.EventEmitter {
     takeoutElement(cmd) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             const rundown = yield this._getRundown();
+            if (cmd.transition) {
+                if (cmd.transition.type === src_1.VIZMSETransitionType.DELAY) {
+                    if (yield this.waitWithLayer(cmd.layerId || '__default', cmd.transition.delay)) {
+                        // at this point, the wait aws aborted by someone else. Do nothing then.
+                        return;
+                    }
+                }
+            }
             const elementRef = yield this._checkPrepareElement(cmd);
             yield this._checkElementExists(cmd);
             yield this._handleRetry(() => {
@@ -1143,6 +1179,26 @@ class VizMSEManager extends events_1.EventEmitter {
         this.emit('connectionChanged', (this._mseConnected &&
             this._msePingConnected));
     }
+    clearAllWaitWithLayer(portId) {
+        if (!this._waitWithLayers[portId]) {
+            _.each(this._waitWithLayers[portId], fcn => {
+                fcn(true);
+            });
+        }
+    }
+    /**
+     * Returns true if the wait was cleared from someone else
+     */
+    waitWithLayer(layerId, delay) {
+        return new Promise(resolve => {
+            if (!this._waitWithLayers[layerId])
+                this._waitWithLayers[layerId] = [];
+            this._waitWithLayers[layerId].push(resolve);
+            setTimeout(() => {
+                resolve(false);
+            }, delay || 0);
+        });
+    }
 }
 var VizMSECommandType;
 (function (VizMSECommandType) {
@@ -1162,6 +1218,7 @@ function content2StateLayer(timelineObjId, content) {
             contentType: src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL,
             continueStep: content.continueStep,
             cue: content.cue,
+            outTransition: content.outTransition,
             templateName: content.templateName,
             templateData: content.templateData,
             channelName: content.channelName
@@ -1174,6 +1231,7 @@ function content2StateLayer(timelineObjId, content) {
             contentType: src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT,
             continueStep: content.continueStep,
             cue: content.cue,
+            outTransition: content.outTransition,
             templateVcpId: content.templateVcpId,
             channelName: content.channelName
         };

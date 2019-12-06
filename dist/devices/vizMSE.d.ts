@@ -1,5 +1,5 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, VizMSEOptions, TimelineContentTypeVizMSE, ExpectedPlayoutItemContent, ExpectedPlayoutItemContentVizMSE, DeviceOptionsVizMSE } from '../types/src';
+import { DeviceType, VizMSEOptions, TimelineContentTypeVizMSE, ExpectedPlayoutItemContent, ExpectedPlayoutItemContentVizMSE, DeviceOptionsVizMSE, VIZMSEOutTransition } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 export declare function getHash(str: string): string;
 export interface DeviceOptionsVizMSEInternal extends DeviceOptionsVizMSE {
@@ -17,6 +17,7 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implement
     private _vizmseManager?;
     private _commandReceiver;
     private _doOnTime;
+    private _doOnTimeBurst;
     private _initOptions?;
     private _vizMSEConnected;
     constructor(deviceId: string, deviceOptions: DeviceOptionsVizMSEInternal, options: any);
@@ -101,6 +102,7 @@ interface VizMSEStateLayerElementBase extends VizMSEStateLayerBase {
     contentType: TimelineContentTypeVizMSE;
     continueStep?: number;
     cue?: boolean;
+    outTransition?: VIZMSEOutTransition;
 }
 interface VizMSEStateLayerInternal extends VizMSEStateLayerElementBase {
     contentType: TimelineContentTypeVizMSE.ELEMENT_INTERNAL;
@@ -152,6 +154,7 @@ interface VizMSECommandTake extends VizMSECommandElementBase {
 }
 interface VizMSECommandTakeOut extends VizMSECommandElementBase {
     type: VizMSECommandType.TAKEOUT_ELEMENT;
+    transition?: VIZMSEOutTransition;
 }
 interface VizMSECommandContinue extends VizMSECommandElementBase {
     type: VizMSECommandType.CONTINUE_ELEMENT;

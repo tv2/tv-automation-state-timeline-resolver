@@ -101,6 +101,10 @@ class SisyfosInterface extends events_1.EventEmitter {
     isInitialized() {
         return !!this._state;
     }
+    reInitialize() {
+        delete this._state;
+        this._oscClient.send({ address: '/state/full', args: [] });
+    }
     get connected() {
         return this._connected;
     }
@@ -192,7 +196,8 @@ class SisyfosInterface extends events_1.EventEmitter {
     parseSisyfosState(message) {
         const extState = JSON.parse(message.args[0].value);
         const deviceState = { channels: {} };
-        Object.keys(extState.channel).forEach((ch, index) => {
+        Object.keys(extState.channel).forEach((index) => {
+            const ch = extState.channel[index];
             let pgmOn = 0;
             if (ch.pgmOn === true) {
                 pgmOn = 1;

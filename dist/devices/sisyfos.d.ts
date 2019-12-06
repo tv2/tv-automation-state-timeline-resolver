@@ -36,7 +36,7 @@ export declare class SisyfosMessageDevice extends DeviceWithState<SisyfosState> 
     makeReady(okToDestroyStuff?: boolean): Promise<void>;
     readonly canConnect: boolean;
     readonly connected: boolean;
-    getDeviceState(): SisyfosState;
+    getDeviceState(isDefaultState?: boolean): SisyfosState;
     /**
      * Transform the timeline state into a device state, which is in this case also
      * a timeline state.

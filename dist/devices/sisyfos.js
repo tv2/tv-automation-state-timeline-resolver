@@ -37,7 +37,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
     }
     init(initOptions) {
         this._sisyfos.once('initialized', () => {
-            this.setState(this.getDeviceState(), this.getCurrentTime());
+            this.setState(this.getDeviceState(false), this.getCurrentTime());
             this.emit('resetResolver');
         });
         return this._sisyfos.connect(initOptions.host, initOptions.port)
@@ -106,7 +106,11 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
     makeReady(okToDestroyStuff) {
         if (okToDestroyStuff) {
             this._doOnTime.clearQueueNowAndAfter(this.getCurrentTime());
-            this.setState(this.getDeviceState(), this.getCurrentTime());
+            this._sisyfos.reInitialize();
+            this._sisyfos.once('initialized', () => {
+                this.setState(this.getDeviceState(false), this.getCurrentTime());
+                this.emit('resetResolver');
+            });
         }
         return Promise.resolve();
     }
@@ -116,12 +120,15 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
     get connected() {
         return this._sisyfos.connected;
     }
-    getDeviceState() {
+    getDeviceState(isDefaultState = true) {
         const deviceStateFromAPI = this._sisyfos.state;
         const deviceState = { channels: {} };
         for (const ch of Object.keys(deviceStateFromAPI.channels)) {
             const channelFromAPI = deviceStateFromAPI.channels[ch];
-            const channel = Object.assign(Object.assign({}, channelFromAPI), { faderLevel: 0.75, pgmOn: 0, pstOn: 0, label: '', visible: true, tlObjIds: [] });
+            let channel = Object.assign(Object.assign({}, channelFromAPI), { tlObjIds: [] });
+            if (isDefaultState) { // reset values for default state
+                channel = Object.assign(Object.assign({}, channel), { faderLevel: 0.75, pgmOn: 0, pstOn: 0, label: '', visible: true });
+            }
             deviceState.channels[ch] = channel;
         }
         return deviceState;
@@ -191,7 +198,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             const oldChannel = oldOscSendState.channels[index];
             if (oldChannel && oldChannel.pgmOn !== newChannel.pgmOn) {
                 commands.push({
-                    context: `Channel ${index} goes from "${oldChannel.pgmOn}" to "${newChannel.pgmOn}"`,
+                    context: `Channel ${index} pgm goes from "${oldChannel.pgmOn}" to "${newChannel.pgmOn}"`,
                     content: {
                         type: sisyfos_1.Commands.TOGGLE_PGM,
                         channel: Number(index),
@@ -202,7 +209,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             }
             if (oldChannel && oldChannel.pstOn !== newChannel.pstOn) {
                 commands.push({
-                    context: `Channel ${index} goes from "${oldChannel.pgmOn}" to "${newChannel.pgmOn}"`,
+                    context: `Channel ${index} pst goes from "${oldChannel.pstOn}" to "${newChannel.pstOn}"`,
                     content: {
                         type: sisyfos_1.Commands.TOGGLE_PST,
                         channel: Number(index),
