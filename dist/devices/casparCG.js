@@ -175,6 +175,8 @@ class CasparCGDevice extends device_1.DeviceWithState {
     }
     convertObjectToCasparState(layer, mapping, isForeground) {
         let startTime = layer.instance.originalStart || layer.instance.start;
+        if (startTime === 0)
+            startTime = 1; // @todo: startTime === 0 will make ccg-state seek to the current time
         let stateLayer = null;
         if (layer.content.type === src_1.TimelineContentTypeCasparCg.MEDIA) {
             const mediaObj = layer;
@@ -187,7 +189,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 media: mediaObj.content.file,
                 playTime: (!holdOnFirstFrame && (mediaObj.content.noStarttime || loopingPlayTime) ?
                     null :
-                    startTime) || null,
+                    startTime),
                 pauseTime: holdOnFirstFrame ? startTime : (mediaObj.content.pauseTime || null),
                 playing: !mediaObj.isLookahead && (mediaObj.content.playing !== undefined ? mediaObj.content.playing : isForeground),
                 looping: mediaObj.content.loop,
