@@ -25,6 +25,8 @@ export interface VizMSEOptions {
     clearAllTemplateName?: string;
     /** Whether to trigger a clear all templates upon makeReady */
     clearAllOnMakeReady?: boolean;
+    /** If true, the rundown won't be deactivated on standdown */
+    dontDeactivateOnStandDown?: boolean;
 }
 export declare enum TimelineContentTypeVizMSE {
     ELEMENT_INTERNAL = "element_internal",
@@ -46,6 +48,7 @@ export interface TimelineObjVIZMSEBase extends TSRTimelineObjBase {
         cue?: boolean;
         /** If true, won't be preloaded automatically */
         noAutoPreloading?: boolean;
+        outTransition?: VIZMSEOutTransition;
     };
 }
 export interface TimelineObjVIZMSEElementInternal extends TimelineObjVIZMSEBase {
@@ -60,6 +63,7 @@ export interface TimelineObjVIZMSEElementInternal extends TimelineObjVIZMSEBase 
         cue?: boolean;
         /** If true, won't be preloaded (cued) automatically */
         noAutoPreloading?: boolean;
+        outTransition?: VIZMSEOutTransition;
         /** Name of the template to be played */
         templateName: string;
         /** Data to be fed into the template */
@@ -78,6 +82,7 @@ export interface TimelineObjVIZMSEElementPilot extends TimelineObjVIZMSEBase {
         cue?: boolean;
         /** If true, won't be preloaded (cued) automatically */
         noAutoPreloading?: boolean;
+        outTransition?: VIZMSEOutTransition;
         /** Viz-Pilot id of the template to be played */
         templateVcpId: number;
     };
@@ -103,4 +108,15 @@ export interface TimelineObjVIZMSEClearAllElements extends TSRTimelineObjBase {
         deviceType: DeviceType.VIZMSE;
         type: TimelineContentTypeVizMSE.CLEAR_ALL_ELEMENTS;
     };
+}
+export declare type VIZMSEOutTransition = VIZMSETransitionDelay;
+export interface VIZMSETransitionBase {
+    type: VIZMSETransitionType;
+}
+export declare enum VIZMSETransitionType {
+    DELAY = 0
+}
+export interface VIZMSETransitionDelay {
+    type: VIZMSETransitionType.DELAY;
+    delay: number;
 }
