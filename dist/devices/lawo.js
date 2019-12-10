@@ -391,7 +391,7 @@ class LawoDevice extends device_1.DeviceWithState {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             try {
                 const node = yield this._getNodeByPath(command.path);
-                if (valueType === src_1.EmberTypes.REAL && command.value % 1 === 0) {
+                if ((valueType || command.valueType) === src_1.EmberTypes.REAL && command.value % 1 === 0) {
                     command.value += .01;
                 }
                 const res = yield this._lawo.setValueWithHacksaw(node, new emberplus_1.Ember.ParameterContents(command.value, valueType || command.valueType));

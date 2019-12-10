@@ -145,6 +145,7 @@ export declare class Conductor extends EventEmitter {
      * returns 0.
      */
     estimateResolveTime(): any;
+    private _diffStateForCallbacks;
     private _queueCallback;
     private _triggerSendStartStopCallbacks;
     private _sendStartStopCallbacks;
