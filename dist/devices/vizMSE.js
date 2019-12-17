@@ -581,7 +581,7 @@ class VizMSEManager extends events_1.EventEmitter {
         if (this.preloadAllElements) {
             this.emit('debug', 'VIZDEBUG: preload elements allowed');
             this._expectedPlayoutItems = expectedPlayoutItems;
-            this._getExpectedPlayoutItems().catch((...args) => this.emit('error', ...args));
+            this._getExpectedPlayoutItems().catch((error) => this.emit('error', error));
         }
     }
     /**
@@ -598,7 +598,7 @@ class VizMSEManager extends events_1.EventEmitter {
                 yield rundown.purge();
             }
             catch (error) {
-                this.emit('error', 'Error in rundown.purge()', error);
+                this.emit('error', error);
             }
             this._clearCache();
             this._triggerCommandSent();
