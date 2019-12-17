@@ -957,7 +957,7 @@ class VizMSEManager extends events_1.EventEmitter {
                             this._elementsLoaded[e.hash] = {
                                 element: newEl,
                                 isLoaded: this._isElementLoaded(newEl),
-                                isNotLoaded: this._isElementNotLoaded(newEl)
+                                isLoading: this._isElementLoading(newEl)
                             };
                         }
                         catch (e) {
@@ -991,14 +991,14 @@ class VizMSEManager extends events_1.EventEmitter {
                         // The element is loaded fine, no need to do anything
                         this.emit('debug', `Element "${this._getElementReference(e.element)}" is loaded`);
                     }
-                    else if (e.isNotLoaded) {
+                    else if (e.isLoading) {
+                        // The element is currently loading, do nothing
+                        this.emit('debug', `Element "${this._getElementReference(e.element)}" is loading`);
+                    }
+                    else {
                         // The element has not started loading, load it:
                         this.emit('debug', `Element "${this._getElementReference(e.element)}" is not loaded, initializing`);
                         yield rundown.initialize(this._getElementReference(e.element));
-                    }
-                    else {
-                        // The element is currently loading, do nothing
-                        this.emit('debug', `Element "${this._getElementReference(e.element)}" is loading`);
                     }
                 }
                 else {
@@ -1042,10 +1042,10 @@ class VizMSEManager extends events_1.EventEmitter {
                     _.each(this._elementsLoaded, (e) => {
                         if (e.isLoaded)
                             loaded++;
-                        else if (e.isNotLoaded)
-                            notLoaded++;
-                        else
+                        else if (e.isLoading)
                             loading++;
+                        else
+                            notLoaded++;
                     });
                     loaded = loaded; // loaded isn't really used anywhere
                     this._setLoadedStatus(notLoaded, loading);
@@ -1126,13 +1126,13 @@ class VizMSEManager extends events_1.EventEmitter {
     /**
      * Returns true if the element has NOT started loading (is currently not loading, or finished loaded)
      */
-    _isElementNotLoaded(el) {
+    _isElementLoading(el) {
         if (this._isInternalElement(el)) {
             return false; // not implemented / unknown
         }
         else if (this._isExternalElement(el)) {
-            return ((el.loaded === '0.00' || el.loaded === '0' || !el.loaded) &&
-                el.is_loading !== 'yes');
+            return ((el.loaded !== '1.00' && el.loaded !== '1') &&
+                el.is_loading === 'yes');
         }
         else {
             throw new Error(`vizMSE: _isLoaded: unknown element type: ${el && JSON.stringify(el)}`);
