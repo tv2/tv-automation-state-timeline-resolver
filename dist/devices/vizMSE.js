@@ -597,12 +597,8 @@ class VizMSEManager extends events_1.EventEmitter {
             try {
                 yield rundown.purge();
             }
-            catch (e) {
-                if (((e && e.toString()) + '').match(/active profile/i)) { // "Cannot purge an active profile."
-                    // That's okay
-                }
-                else
-                    throw e;
+            catch (error) {
+                this.emit('error', 'Error in rundown.purge()', error);
             }
             this._clearCache();
             this._triggerCommandSent();
