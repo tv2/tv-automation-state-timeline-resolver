@@ -223,9 +223,12 @@ class VizMSEDevice extends device_1.DeviceWithState {
      * Prepares the physical device for playout.
      * @param okToDestroyStuff Whether it is OK to do things that affects playout visibly
      */
-    makeReady(okToDestroyStuff) {
+    makeReady(okToDestroyStuff, activeRundownId) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             if (this._vizmseManager) {
+                this._vizmseManager.activeRundownId = ((this._initOptions && this._initOptions.onlyPreloadActiveRundown) ?
+                    activeRundownId :
+                    undefined);
                 yield this._vizmseManager.activate();
             }
             else
@@ -900,7 +903,11 @@ class VizMSEManager extends events_1.EventEmitter {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             this.emit('debug', `VISMSE: _getExpectedPlayoutItems (${this._expectedPlayoutItems.length})`);
             const hashesAndItems = {};
-            yield Promise.all(_.map(this._expectedPlayoutItems, (expectedPlayoutItem) => tslib_1.__awaiter(this, void 0, void 0, function* () {
+            const expectedPlayoutItems = _.filter(this._expectedPlayoutItems, expectedPlayoutItem => {
+                return (!this.activeRundownId ||
+                    this.activeRundownId !== expectedPlayoutItem.rundownId);
+            });
+            yield Promise.all(_.map(expectedPlayoutItems, (expectedPlayoutItem) => tslib_1.__awaiter(this, void 0, void 0, function* () {
                 try {
                     const stateLayer = (_.isNumber(expectedPlayoutItem.templateName) ?
                         content2StateLayer('', {
@@ -941,7 +948,7 @@ class VizMSEManager extends events_1.EventEmitter {
                 return undefined;
             }));
             if (this._rundown) {
-                this.emit('debug', `Updating status of elements starting, elementsToLoad.length=${elementsToLoad.length} (${_.keys(hashesAndItems).length})`);
+                this.emit('debug', `Updating status of elements starting, activeRundownId="${this.activeRundownId}", elementsToLoad.length=${elementsToLoad.length} (${_.keys(hashesAndItems).length})`);
                 const rundown = yield this._getRundown();
                 if (forceReloadAll) {
                     this._elementsLoaded = {};
@@ -959,7 +966,7 @@ class VizMSEManager extends events_1.EventEmitter {
                                 isLoaded: this._isElementLoaded(newEl),
                                 isLoading: this._isElementLoading(newEl)
                             };
-                            this.emit('error', `Element ${elementRef}: ${JSON.stringify(newEl)}`);
+                            this.emit('debug', `Element ${elementRef}: ${JSON.stringify(newEl)}`);
                         }
                         catch (e) {
                             this.emit('error', `Error in updateElementsLoadedStatus: ${e.toString()}`);

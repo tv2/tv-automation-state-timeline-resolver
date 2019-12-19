@@ -42,7 +42,7 @@ export interface IDevice {
     clearFuture: (clearAfterTime: number) => void;
     canConnect: boolean;
     connected: boolean;
-    makeReady: (_okToDestroyStuff?: boolean) => Promise<void>;
+    makeReady: (_okToDestroyStuff?: boolean, activeRundownId?: string) => Promise<void>;
     standDown: (_okToDestroyStuff?: boolean) => Promise<void>;
     getStatus: () => DeviceStatus;
     getMapping: () => Mappings;
