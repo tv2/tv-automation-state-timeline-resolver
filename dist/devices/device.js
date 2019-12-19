@@ -61,7 +61,7 @@ class Device extends events_1.EventEmitter {
      * The exact implementation differ between different devices
      * @param okToDestroyStuff If true, the device may do things that might affect the output (temporarily)
      */
-    makeReady(_okToDestroyStuff) {
+    makeReady(_okToDestroyStuff, _activeRundownId) {
         // This method should be overwritten by child
         return Promise.resolve();
     }

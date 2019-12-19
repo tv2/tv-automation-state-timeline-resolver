@@ -94,7 +94,7 @@ export declare abstract class Device extends EventEmitter implements IDevice {
      * The exact implementation differ between different devices
      * @param okToDestroyStuff If true, the device may do things that might affect the output (temporarily)
      */
-    makeReady(_okToDestroyStuff?: boolean): Promise<void>;
+    makeReady(_okToDestroyStuff?: boolean, _activeRundownId?: string): Promise<void>;
     /**
      * The standDown event could be triggered at a time after broadcast
      * The exact implementation differ between different devices

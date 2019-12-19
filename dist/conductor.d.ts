@@ -125,7 +125,7 @@ export declare class Conductor extends EventEmitter {
     /**
      * Send a makeReady-trigger to all devices
      */
-    devicesMakeReady(okToDestroyStuff?: boolean): Promise<void>;
+    devicesMakeReady(okToDestroyStuff?: boolean, activeRundownId?: string): Promise<void>;
     /**
      * Send a standDown-trigger to all devices
      */

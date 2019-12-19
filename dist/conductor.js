@@ -337,11 +337,11 @@ class Conductor extends events_1.EventEmitter {
     /**
      * Send a makeReady-trigger to all devices
      */
-    devicesMakeReady(okToDestroyStuff) {
+    devicesMakeReady(okToDestroyStuff, activeRundownId) {
         let p = Promise.resolve();
         _.each(this.devices, (d) => {
             p = p.then(() => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                return d.device.makeReady(okToDestroyStuff);
+                return d.device.makeReady(okToDestroyStuff, activeRundownId);
             }));
         });
         this._resolveTimeline();
