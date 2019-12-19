@@ -905,7 +905,7 @@ class VizMSEManager extends events_1.EventEmitter {
             const hashesAndItems = {};
             const expectedPlayoutItems = _.filter(this._expectedPlayoutItems, expectedPlayoutItem => {
                 return (!this.activeRundownId ||
-                    this.activeRundownId !== expectedPlayoutItem.rundownId);
+                    this.activeRundownId === expectedPlayoutItem.rundownId);
             });
             yield Promise.all(_.map(expectedPlayoutItems, (expectedPlayoutItem) => tslib_1.__awaiter(this, void 0, void 0, function* () {
                 try {
