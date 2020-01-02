@@ -229,7 +229,8 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                     timelineObjId: newChannel.tlObjIds[0] || ''
                 });
             }
-            if (newChannel.label !== '' && oldChannel.label !== newChannel.label) {
+            newChannel.label = newChannel.label || (oldChannel ? oldChannel.label : '');
+            if (oldChannel && newChannel.label !== '' && oldChannel.label !== newChannel.label) {
                 commands.push({
                     context: 'set label on fader',
                     content: {
