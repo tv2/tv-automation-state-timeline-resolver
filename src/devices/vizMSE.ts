@@ -683,6 +683,10 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 			this.emit('commandError', new Error(errorString), cwc)
 		}
 	}
+	public ignoreWaitsInTests () {
+		if (!this._vizmseManager) throw new Error('_vizmseManager not set')
+		this._vizmseManager.ignoreAllWaits = true
+	}
 }
 class VizMSEManager extends EventEmitter {
 	public initialized: boolean = false
@@ -704,6 +708,7 @@ class VizMSEManager extends EventEmitter {
 	private _waitWithLayers: {
 		[portId: string]: Function[]
 	} = {}
+	public ignoreAllWaits: boolean = false // Only to be used in tests
 
 	constructor (
 		private _parentVizMSEDevice: VizMSEDevice,
@@ -800,6 +805,8 @@ class VizMSEManager extends EventEmitter {
 
 		this._triggerCommandSent()
 		await rundown.activate()
+		this._triggerCommandSent()
+		await this._wait(3000)
 		this._triggerCommandSent()
 		await this._triggerLoadAllElements()
 		this._triggerCommandSent()
@@ -1104,9 +1111,13 @@ class VizMSEManager extends EventEmitter {
 		const hashesAndItems: {[hash: string]: VizMSEPlayoutItemContentInternal} = {}
 
 		const expectedPlayoutItems = _.filter(this._expectedPlayoutItems, expectedPlayoutItem => {
+			const templateName = typeof expectedPlayoutItem.templateName as string | number | undefined
 			return (
-				!this.activeRundownId ||
-				this.activeRundownId === expectedPlayoutItem.rundownId
+				(
+					!this.activeRundownId ||
+					this.activeRundownId === expectedPlayoutItem.rundownId
+				) &&
+				typeof templateName !== 'undefined'
 			)
 		})
 
@@ -1226,31 +1237,37 @@ class VizMSEManager extends EventEmitter {
 				this.emit('warning', `Ignored error for rundown.activate(): ${error}`)
 			}
 		}
-
 		// Then, load all elements that needs loading:
-		await Promise.all(
-			_.map(this._elementsLoaded, async (e) => {
-				if (this._isInternalElement(e.element)) {
-					// TODO: what?
-
-				} else if (this._isExternalElement(e.element)) {
-
-					if (e.isLoaded) {
-						// The element is loaded fine, no need to do anything
-						this.emit('debug', `Element "${this._getElementReference(e.element)}" is loaded`)
-					} else if (e.isLoading) {
-						// The element is currently loading, do nothing
-						this.emit('debug', `Element "${this._getElementReference(e.element)}" is loading`)
+		const loadAllElementsThatNeedsLoading = async () => {
+			await Promise.all(
+				_.map(this._elementsLoaded, async (e) => {
+					if (this._isInternalElement(e.element)) {
+						// TODO: what?
+					} else if (this._isExternalElement(e.element)) {
+						if (e.isLoaded) {
+							// The element is loaded fine, no need to do anything
+							this.emit('debug', `Element "${this._getElementReference(e.element)}" is loaded`)
+						} else if (e.isLoading) {
+							// The element is currently loading, do nothing
+							this.emit('debug', `Element "${this._getElementReference(e.element)}" is loading`)
+						} else {
+							// The element has not started loading, load it:
+							this.emit('debug', `Element "${this._getElementReference(e.element)}" is not loaded, initializing`)
+							await rundown.initialize(this._getElementReference(e.element))
+						}
 					} else {
-						// The element has not started loading, load it:
-						this.emit('debug', `Element "${this._getElementReference(e.element)}" is not loaded, initializing`)
-						await rundown.initialize(this._getElementReference(e.element))
+						this.emit('error', `Element "${this._getElementReference(e.element)}" type `)
 					}
-				} else {
-					this.emit('error', `Element "${this._getElementReference(e.element)}" type `)
-				}
-			})
-		)
+				})
+			)
+		}
+
+		// He's making a list, he's checking it twice:
+		await loadAllElementsThatNeedsLoading()
+		await this._wait(2000)
+		await this.updateElementsLoadedStatus()
+		await loadAllElementsThatNeedsLoading()
+		// ^ Gonna find out what's loaded or nice
 
 		this.emit('debug', '_triggerLoadAllElements done')
 	}
@@ -1298,6 +1315,18 @@ class VizMSEManager extends EventEmitter {
 
 				loaded = loaded // loaded isn't really used anywhere
 
+				if (notLoaded > 0 || loading > 0) {
+					// emit debug data
+					this.emit('debug', `Items on queue: notLoaded: ${notLoaded} loading: ${loading}, loaded: ${loaded}`)
+
+					this.emit('debug', `_elementsLoaded: ${_.map(
+						_.filter(this._elementsLoaded, e => !e.isLoaded).slice(0, 10),
+						e => {
+							return JSON.stringify(e.element)
+						}
+					)}`)
+				}
+
 				this._setLoadedStatus(notLoaded, loading)
 
 			} else this._setLoadedStatus(0, 0)
@@ -1307,6 +1336,7 @@ class VizMSEManager extends EventEmitter {
 
 	}
 	private _wait (time: number): Promise<void> {
+		if (this.ignoreAllWaits) return Promise.resolve()
 		return new Promise(resolve => setTimeout(resolve, time))
 	}
 	/** Execute fcn an retry a couple of times until it succeeds */
