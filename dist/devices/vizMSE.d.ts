@@ -82,6 +82,7 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implement
      * @param cmd Command to execute
      */
     private _defaultCommandReceiver;
+    ignoreWaitsInTests(): void;
 }
 interface VizMSEState {
     time: number;

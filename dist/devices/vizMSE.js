@@ -502,6 +502,11 @@ class VizMSEDevice extends device_1.DeviceWithState {
             }
         });
     }
+    ignoreWaitsInTests() {
+        if (!this._vizmseManager)
+            throw new Error('_vizmseManager not set');
+        this._vizmseManager.ignoreAllWaits = true;
+    }
 }
 exports.VizMSEDevice = VizMSEDevice;
 class VizMSEManager extends events_1.EventEmitter {
@@ -525,6 +530,7 @@ class VizMSEManager extends events_1.EventEmitter {
         this._mseConnected = false;
         this._msePingConnected = false;
         this._waitWithLayers = {};
+        this.ignoreAllWaits = false; // Only to be used in tests
     }
     /**
      * Initialize the Rundown in MSE.
@@ -607,6 +613,8 @@ class VizMSEManager extends events_1.EventEmitter {
             this._clearCache();
             this._triggerCommandSent();
             yield rundown.activate();
+            this._triggerCommandSent();
+            yield this._wait(3000);
             this._triggerCommandSent();
             yield this._triggerLoadAllElements();
             this._triggerCommandSent();
@@ -905,8 +913,10 @@ class VizMSEManager extends events_1.EventEmitter {
             this.emit('debug', `VISMSE: _getExpectedPlayoutItems (${this._expectedPlayoutItems.length})`);
             const hashesAndItems = {};
             const expectedPlayoutItems = _.filter(this._expectedPlayoutItems, expectedPlayoutItem => {
-                return (!this.activeRundownId ||
-                    this.activeRundownId === expectedPlayoutItem.rundownId);
+                const templateName = typeof expectedPlayoutItem.templateName;
+                return ((!this.activeRundownId ||
+                    this.activeRundownId === expectedPlayoutItem.rundownId) &&
+                    typeof templateName !== 'undefined');
             });
             yield Promise.all(_.map(expectedPlayoutItems, (expectedPlayoutItem) => tslib_1.__awaiter(this, void 0, void 0, function* () {
                 try {
@@ -999,29 +1009,37 @@ class VizMSEManager extends events_1.EventEmitter {
                 }
             }
             // Then, load all elements that needs loading:
-            yield Promise.all(_.map(this._elementsLoaded, (e) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                if (this._isInternalElement(e.element)) {
-                    // TODO: what?
-                }
-                else if (this._isExternalElement(e.element)) {
-                    if (e.isLoaded) {
-                        // The element is loaded fine, no need to do anything
-                        this.emit('debug', `Element "${this._getElementReference(e.element)}" is loaded`);
+            const loadAllElementsThatNeedsLoading = () => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                yield Promise.all(_.map(this._elementsLoaded, (e) => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                    if (this._isInternalElement(e.element)) {
+                        // TODO: what?
                     }
-                    else if (e.isLoading) {
-                        // The element is currently loading, do nothing
-                        this.emit('debug', `Element "${this._getElementReference(e.element)}" is loading`);
+                    else if (this._isExternalElement(e.element)) {
+                        if (e.isLoaded) {
+                            // The element is loaded fine, no need to do anything
+                            this.emit('debug', `Element "${this._getElementReference(e.element)}" is loaded`);
+                        }
+                        else if (e.isLoading) {
+                            // The element is currently loading, do nothing
+                            this.emit('debug', `Element "${this._getElementReference(e.element)}" is loading`);
+                        }
+                        else {
+                            // The element has not started loading, load it:
+                            this.emit('debug', `Element "${this._getElementReference(e.element)}" is not loaded, initializing`);
+                            yield rundown.initialize(this._getElementReference(e.element));
+                        }
                     }
                     else {
-                        // The element has not started loading, load it:
-                        this.emit('debug', `Element "${this._getElementReference(e.element)}" is not loaded, initializing`);
-                        yield rundown.initialize(this._getElementReference(e.element));
+                        this.emit('error', `Element "${this._getElementReference(e.element)}" type `);
                     }
-                }
-                else {
-                    this.emit('error', `Element "${this._getElementReference(e.element)}" type `);
-                }
-            })));
+                })));
+            });
+            // He's making a list, he's checking it twice:
+            yield loadAllElementsThatNeedsLoading();
+            yield this._wait(2000);
+            yield this.updateElementsLoadedStatus();
+            yield loadAllElementsThatNeedsLoading();
+            // ^ Gonna find out what's loaded or nice
             this.emit('debug', '_triggerLoadAllElements done');
         });
     }
@@ -1065,6 +1083,13 @@ class VizMSEManager extends events_1.EventEmitter {
                             notLoaded++;
                     });
                     loaded = loaded; // loaded isn't really used anywhere
+                    if (notLoaded > 0 || loading > 0) {
+                        // emit debug data
+                        this.emit('debug', `Items on queue: notLoaded: ${notLoaded} loading: ${loading}, loaded: ${loaded}`);
+                        this.emit('debug', `_elementsLoaded: ${_.map(_.filter(this._elementsLoaded, e => !e.isLoaded).slice(0, 10), e => {
+                            return JSON.stringify(e.element);
+                        })}`);
+                    }
                     this._setLoadedStatus(notLoaded, loading);
                 }
                 else
@@ -1076,6 +1101,8 @@ class VizMSEManager extends events_1.EventEmitter {
         });
     }
     _wait(time) {
+        if (this.ignoreAllWaits)
+            return Promise.resolve();
         return new Promise(resolve => setTimeout(resolve, time));
     }
     /** Execute fcn an retry a couple of times until it succeeds */
