@@ -54,7 +54,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
             if (!this._initOptions.profile)
                 throw new Error('VizMSE bad option: profile');
             this._vizMSE = v_connection_1.createMSE(this._initOptions.host, this._initOptions.restPort, this._initOptions.wsPort);
-            this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements, this._initOptions.initializeRundownOnLoadAll, initOptions.showID, initOptions.profile, initOptions.playlistID);
+            this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements, initOptions.showID, initOptions.profile, initOptions.playlistID);
             this._vizmseManager.on('connectionChanged', (connected) => this.connectionChanged(connected));
             yield this._vizmseManager.initializeRundown();
             this._vizmseManager.on('info', str => this.emit('info', 'VizMSE: ' + str));
@@ -510,12 +510,11 @@ class VizMSEDevice extends device_1.DeviceWithState {
 }
 exports.VizMSEDevice = VizMSEDevice;
 class VizMSEManager extends events_1.EventEmitter {
-    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements = false, _initializeRundownOnLoadAll = false, _showID, _profile, _playlistID) {
+    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements = false, _showID, _profile, _playlistID) {
         super();
         this._parentVizMSEDevice = _parentVizMSEDevice;
         this._vizMSE = _vizMSE;
         this.preloadAllElements = preloadAllElements;
-        this._initializeRundownOnLoadAll = _initializeRundownOnLoadAll;
         this._showID = _showID;
         this._profile = _profile;
         this._playlistID = _playlistID;
@@ -612,11 +611,7 @@ class VizMSEManager extends events_1.EventEmitter {
             }
             this._clearCache();
             this._triggerCommandSent();
-            yield rundown.activate();
-            this._triggerCommandSent();
-            yield this._wait(3000);
-            this._triggerCommandSent();
-            yield this._triggerLoadAllElements();
+            yield this._triggerLoadAllElements(true);
             this._triggerCommandSent();
             this._hasActiveRundown = true;
         });
@@ -994,22 +989,26 @@ class VizMSEManager extends events_1.EventEmitter {
     /**
      * Trigger a load of all elements that are not yet loaded onto the vizEngine.
      */
-    _triggerLoadAllElements() {
+    _triggerLoadAllElements(loadTwice = false) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             const rundown = yield this._getRundown();
             this.emit('debug', '_triggerLoadAllElements starting');
             // First, update the loading-status of all elements:
             yield this.updateElementsLoadedStatus(true);
-            if (this._initializeRundownOnLoadAll) {
+            // if (this._initializeRundownOnLoadAll) {
+            // Then, load all elements that needs loading:
+            const loadAllElementsThatNeedsLoading = () => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                this._triggerCommandSent();
                 try {
+                    this.emit('debug', 'rundown.activate triggered');
                     yield rundown.activate(); // Our theory: an extra initialization of the rundown playlist loads all internal elements
                 }
                 catch (error) {
                     this.emit('warning', `Ignored error for rundown.activate(): ${error}`);
                 }
-            }
-            // Then, load all elements that needs loading:
-            const loadAllElementsThatNeedsLoading = () => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                this._triggerCommandSent();
+                yield this._wait(1000);
+                this._triggerCommandSent();
                 yield Promise.all(_.map(this._elementsLoaded, (e) => tslib_1.__awaiter(this, void 0, void 0, function* () {
                     if (this._isInternalElement(e.element)) {
                         // TODO: what?
@@ -1034,12 +1033,15 @@ class VizMSEManager extends events_1.EventEmitter {
                     }
                 })));
             });
-            // He's making a list, he's checking it twice:
+            // He's making a list:
             yield loadAllElementsThatNeedsLoading();
             yield this._wait(2000);
-            yield this.updateElementsLoadedStatus();
-            yield loadAllElementsThatNeedsLoading();
-            // ^ Gonna find out what's loaded or nice
+            if (loadTwice) {
+                // He's checking it twice:
+                yield this.updateElementsLoadedStatus();
+                // Gonna find out what's loaded and nice:
+                yield loadAllElementsThatNeedsLoading();
+            }
             this.emit('debug', '_triggerLoadAllElements done');
         });
     }
