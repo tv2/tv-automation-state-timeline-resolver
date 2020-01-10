@@ -403,7 +403,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
                 }
             }
         });
-        if (newState.isClearAll) {
+        if (newState.isClearAll && !oldState.isClearAll) {
             // Special: clear all graphics
             const templateName = this._initOptions && this._initOptions.clearAllTemplateName;
             if (!templateName) {
@@ -610,6 +610,13 @@ class VizMSEManager extends events_1.EventEmitter {
                 this.emit('error', error);
             }
             this._clearCache();
+            this._triggerCommandSent();
+            try {
+                yield rundown.activate();
+            }
+            catch (error) {
+                this.emit('warning', `Ignored error for rundown.activate(): ${error}`);
+            }
             this._triggerCommandSent();
             yield this._triggerLoadAllElements(true);
             this._triggerCommandSent();
@@ -999,14 +1006,6 @@ class VizMSEManager extends events_1.EventEmitter {
             // Then, load all elements that needs loading:
             const loadAllElementsThatNeedsLoading = () => tslib_1.__awaiter(this, void 0, void 0, function* () {
                 this._triggerCommandSent();
-                try {
-                    this.emit('debug', 'rundown.activate triggered');
-                    yield rundown.activate(); // Our theory: an extra initialization of the rundown playlist loads all internal elements
-                }
-                catch (error) {
-                    this.emit('warning', `Ignored error for rundown.activate(): ${error}`);
-                }
-                this._triggerCommandSent();
                 yield this._wait(1000);
                 this._triggerCommandSent();
                 yield Promise.all(_.map(this._elementsLoaded, (e) => tslib_1.__awaiter(this, void 0, void 0, function* () {
@@ -1033,13 +1032,33 @@ class VizMSEManager extends events_1.EventEmitter {
                     }
                 })));
             });
-            // He's making a list:
-            yield loadAllElementsThatNeedsLoading();
-            yield this._wait(2000);
             if (loadTwice) {
+                // He's making a list:
+                yield loadAllElementsThatNeedsLoading();
+                yield this._wait(2000);
                 // He's checking it twice:
+                try {
+                    this.emit('debug', 'rundown.activate triggered');
+                    yield rundown.activate(false, false, true); // Our theory: an extra initialization of the rundown playlist loads all internal elements
+                }
+                catch (error) {
+                    this.emit('warning', `Ignored error for rundown.activate(): ${error}`);
+                }
+                yield this._wait(1000);
                 yield this.updateElementsLoadedStatus();
                 // Gonna find out what's loaded and nice:
+                yield loadAllElementsThatNeedsLoading();
+            }
+            else {
+                this._triggerCommandSent();
+                try {
+                    this.emit('debug', 'rundown.activate triggered');
+                    yield rundown.activate(false, false, true); // Our theory: an extra initialization of the rundown playlist loads all internal elements
+                }
+                catch (error) {
+                    this.emit('warning', `Ignored error for rundown.activate(): ${error}`);
+                }
+                yield this._wait(1000);
                 yield loadAllElementsThatNeedsLoading();
             }
             this.emit('debug', '_triggerLoadAllElements done');
