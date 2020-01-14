@@ -116,6 +116,7 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 			this,
 			this._vizMSE,
 			this._initOptions.preloadAllElements,
+			this._initOptions.autoLoadInternalElements,
 			initOptions.showID,
 			initOptions.profile,
 			initOptions.playlistID
@@ -708,11 +709,13 @@ class VizMSEManager extends EventEmitter {
 		[portId: string]: Function[]
 	} = {}
 	public ignoreAllWaits: boolean = false // Only to be used in tests
+	private _cacheInternalElementsSentLoaded: {[hash: string]: true} = {}
 
 	constructor (
 		private _parentVizMSEDevice: VizMSEDevice,
 		private _vizMSE: MSE,
 		public preloadAllElements: boolean = false,
+		public autoLoadInternalElements: boolean = false,
 		private _showID: string,
 		private _profile: string,
 		private _playlistID?: string
@@ -781,7 +784,32 @@ class VizMSEManager extends EventEmitter {
 			this.emit('debug', 'VIZDEBUG: preload elements allowed')
 			this._expectedPlayoutItems = expectedPlayoutItems
 
-			this._getExpectedPlayoutItems().catch((error) => this.emit('error', error))
+			this._getExpectedPlayoutItems() // Calling this in order to trigger creation of all elements
+			.then(async () => {
+				if (this._rundown && this._hasActiveRundown && this.autoLoadInternalElements) {
+					this.emit('debug', 'VIZDEBUG: auto load internal elements...')
+					await this.updateElementsLoadedStatus()
+
+					// When a new element is added, we'll trigger a show init:
+					let triggerShowInit = false
+					_.each(this._elementsLoaded, async (e, hash: string) => {
+						if (this._isInternalElement(e.element)) {
+							if (!e.isLoaded) {
+								if (!this._cacheInternalElementsSentLoaded[hash]) {
+									triggerShowInit = true
+									this.emit('debug', `Element "${this._getElementReference(e.element)}" is not loaded`)
+								}
+								this._cacheInternalElementsSentLoaded[hash] = true
+							}
+						}
+					})
+					if (triggerShowInit) {
+						this.emit('debug', `Triggering show init`)
+						await this._rundown.activate(false, true, false) // Init show will trigger a load of the internal elements
+					}
+				}
+			})
+			.catch((error) => this.emit('error', error))
 		}
 	}
 	/**
@@ -801,12 +829,6 @@ class VizMSEManager extends EventEmitter {
 		}
 		this._clearCache()
 
-		this._triggerCommandSent()
-		try {
-			await rundown.activate()
-		} catch (error) {
-			this.emit('warning', `Ignored error for rundown.activate(): ${error}`)
-		}
 		this._triggerCommandSent()
 		await this._triggerLoadAllElements(true)
 		this._triggerCommandSent()
@@ -1002,6 +1024,7 @@ class VizMSEManager extends EventEmitter {
 		_.each(_.keys(this._elementCache), hash => {
 			delete this._elementCache[hash]
 		})
+		this._cacheInternalElementsSentLoaded = {}
 	}
 	private _getElementReference (el: InternalElement): string
 	private _getElementReference (el: ExternalElement): number
@@ -1235,12 +1258,19 @@ class VizMSEManager extends EventEmitter {
 		// Then, load all elements that needs loading:
 		const loadAllElementsThatNeedsLoading = async () => {
 			this._triggerCommandSent()
+			try {
+				this.emit('debug', 'rundown.activate triggered')
+				await rundown.activate() // Our theory: an extra initialization of the rundown playlist loads all internal elements
+			} catch (error) {
+				this.emit('warning', `Ignored error for rundown.activate(): ${error}`)
+			}
+			this._triggerCommandSent()
 			await this._wait(1000)
 			this._triggerCommandSent()
 			await Promise.all(
 				_.map(this._elementsLoaded, async (e) => {
 					if (this._isInternalElement(e.element)) {
-						// TODO: what?
+						// Not loading individual internal elements, since a show.initialization loads them good enough
 					} else if (this._isExternalElement(e.element)) {
 						if (e.isLoaded) {
 							// The element is loaded fine, no need to do anything
@@ -1260,30 +1290,13 @@ class VizMSEManager extends EventEmitter {
 			)
 		}
 
+		// He's making a list:
+		await loadAllElementsThatNeedsLoading()
+		await this._wait(2000)
 		if (loadTwice) {
-			// He's making a list:
-			await loadAllElementsThatNeedsLoading()
-			await this._wait(2000)
 			// He's checking it twice:
-			try {
-				this.emit('debug', 'rundown.activate triggered')
-				await rundown.activate(false, false, true) // Our theory: an extra initialization of the rundown playlist loads all internal elements
-			} catch (error) {
-				this.emit('warning', `Ignored error for rundown.activate(): ${error}`)
-			}
-			await this._wait(1000)
 			await this.updateElementsLoadedStatus()
 			// Gonna find out what's loaded and nice:
-			await loadAllElementsThatNeedsLoading()
-		} else {
-			this._triggerCommandSent()
-			try {
-				this.emit('debug', 'rundown.activate triggered')
-				await rundown.activate(false, false, true) // Our theory: an extra initialization of the rundown playlist loads all internal elements
-			} catch (error) {
-				this.emit('warning', `Ignored error for rundown.activate(): ${error}`)
-			}
-			await this._wait(1000)
 			await loadAllElementsThatNeedsLoading()
 		}
 
@@ -1407,7 +1420,11 @@ class VizMSEManager extends EventEmitter {
 	 */
 	private _isElementLoaded (el: VElement): boolean {
 		if (this._isInternalElement(el)) {
-			return true // not implemented / unknown
+			return (
+				(el.available === '1.00' || el.available === '1' || el.available === undefined) &&
+				(el.loaded === '1.00' || el.loaded === '1') &&
+				el.is_loading !== 'yes'
+			)
 
 		} else if (this._isExternalElement(el)) {
 			return (
@@ -1424,8 +1441,10 @@ class VizMSEManager extends EventEmitter {
 	 */
 	private _isElementLoading (el: VElement) {
 		if (this._isInternalElement(el)) {
-			return false // not implemented / unknown
-
+			return (
+				(el.loaded !== '1.00' && el.loaded !== '1') &&
+				el.is_loading === 'yes'
+			)
 		} else if (this._isExternalElement(el)) {
 			return (
 				(el.loaded !== '1.00' && el.loaded !== '1') &&
