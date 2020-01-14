@@ -18,6 +18,8 @@ export interface VizMSEOptions {
     playlistID?: string;
     /** Whether all elements should be preloaded or not */
     preloadAllElements?: boolean;
+    /** Whether internal elements should automatically be loaded when added to expectedPlayoutItems */
+    autoLoadInternalElements?: boolean;
     /**
      * It is a common practice to have an element which only purpose is to "clear all graphics" on the vizEngine.
      * To use this in TSR, set a reference to that here:
@@ -27,6 +29,8 @@ export interface VizMSEOptions {
     clearAllOnMakeReady?: boolean;
     /** If true, the rundown won't be deactivated on standdown */
     dontDeactivateOnStandDown?: boolean;
+    /** If true, only elements in the currently active rundown will be loaded */
+    onlyPreloadActiveRundown?: boolean;
 }
 export declare enum TimelineContentTypeVizMSE {
     ELEMENT_INTERNAL = "element_internal",
@@ -119,4 +123,14 @@ export declare enum VIZMSETransitionType {
 export interface VIZMSETransitionDelay {
     type: VIZMSETransitionType.DELAY;
     delay: number;
+}
+export interface VIZMSEPlayoutItemContent {
+    /** Name of the element, or Pilot Element */
+    templateName: string | number;
+    /** Data fields of the element (for internal elements only) */
+    templateData?: string[];
+    /** What channel to use for the element */
+    channelName?: string;
+    /** If true, won't be preloaded (cued) automatically */
+    noAutoPreloading?: boolean;
 }
