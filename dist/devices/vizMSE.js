@@ -54,7 +54,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
             if (!this._initOptions.profile)
                 throw new Error('VizMSE bad option: profile');
             this._vizMSE = v_connection_1.createMSE(this._initOptions.host, this._initOptions.restPort, this._initOptions.wsPort);
-            this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements, initOptions.showID, initOptions.profile, initOptions.playlistID);
+            this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements, this._initOptions.autoLoadInternalElements, initOptions.showID, initOptions.profile, initOptions.playlistID);
             this._vizmseManager.on('connectionChanged', (connected) => this.connectionChanged(connected));
             yield this._vizmseManager.initializeRundown();
             this._vizmseManager.on('info', str => this.emit('info', 'VizMSE: ' + str));
@@ -510,11 +510,12 @@ class VizMSEDevice extends device_1.DeviceWithState {
 }
 exports.VizMSEDevice = VizMSEDevice;
 class VizMSEManager extends events_1.EventEmitter {
-    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements = false, _showID, _profile, _playlistID) {
+    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements = false, autoLoadInternalElements = false, _showID, _profile, _playlistID) {
         super();
         this._parentVizMSEDevice = _parentVizMSEDevice;
         this._vizMSE = _vizMSE;
         this.preloadAllElements = preloadAllElements;
+        this.autoLoadInternalElements = autoLoadInternalElements;
         this._showID = _showID;
         this._profile = _profile;
         this._playlistID = _playlistID;
@@ -530,6 +531,7 @@ class VizMSEManager extends events_1.EventEmitter {
         this._msePingConnected = false;
         this._waitWithLayers = {};
         this.ignoreAllWaits = false; // Only to be used in tests
+        this._cacheInternalElementsSentLoaded = {};
     }
     /**
      * Initialize the Rundown in MSE.
@@ -590,7 +592,31 @@ class VizMSEManager extends events_1.EventEmitter {
         if (this.preloadAllElements) {
             this.emit('debug', 'VIZDEBUG: preload elements allowed');
             this._expectedPlayoutItems = expectedPlayoutItems;
-            this._getExpectedPlayoutItems().catch((error) => this.emit('error', error));
+            this._getExpectedPlayoutItems() // Calling this in order to trigger creation of all elements
+                .then(() => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                if (this._rundown && this._hasActiveRundown && this.autoLoadInternalElements) {
+                    this.emit('debug', 'VIZDEBUG: auto load internal elements...');
+                    yield this.updateElementsLoadedStatus();
+                    // When a new element is added, we'll trigger a show init:
+                    let triggerShowInit = false;
+                    _.each(this._elementsLoaded, (e, hash) => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                        if (this._isInternalElement(e.element)) {
+                            if (!e.isLoaded) {
+                                if (!this._cacheInternalElementsSentLoaded[hash]) {
+                                    triggerShowInit = true;
+                                    this.emit('debug', `Element "${this._getElementReference(e.element)}" is not loaded`);
+                                }
+                                this._cacheInternalElementsSentLoaded[hash] = true;
+                            }
+                        }
+                    }));
+                    if (triggerShowInit) {
+                        this.emit('debug', `Triggering show init`);
+                        yield this._rundown.activate(false, true, false); // Init show will trigger a load of the internal elements
+                    }
+                }
+            }))
+                .catch((error) => this.emit('error', error));
         }
     }
     /**
@@ -610,13 +636,6 @@ class VizMSEManager extends events_1.EventEmitter {
                 this.emit('error', error);
             }
             this._clearCache();
-            this._triggerCommandSent();
-            try {
-                yield rundown.activate();
-            }
-            catch (error) {
-                this.emit('warning', `Ignored error for rundown.activate(): ${error}`);
-            }
             this._triggerCommandSent();
             yield this._triggerLoadAllElements(true);
             this._triggerCommandSent();
@@ -818,6 +837,7 @@ class VizMSEManager extends events_1.EventEmitter {
         _.each(_.keys(this._elementCache), hash => {
             delete this._elementCache[hash];
         });
+        this._cacheInternalElementsSentLoaded = {};
     }
     _getElementReference(el) {
         if (this._isInternalElement(el))
@@ -1006,11 +1026,19 @@ class VizMSEManager extends events_1.EventEmitter {
             // Then, load all elements that needs loading:
             const loadAllElementsThatNeedsLoading = () => tslib_1.__awaiter(this, void 0, void 0, function* () {
                 this._triggerCommandSent();
+                try {
+                    this.emit('debug', 'rundown.activate triggered');
+                    yield rundown.activate(); // Our theory: an extra initialization of the rundown playlist loads all internal elements
+                }
+                catch (error) {
+                    this.emit('warning', `Ignored error for rundown.activate(): ${error}`);
+                }
+                this._triggerCommandSent();
                 yield this._wait(1000);
                 this._triggerCommandSent();
                 yield Promise.all(_.map(this._elementsLoaded, (e) => tslib_1.__awaiter(this, void 0, void 0, function* () {
                     if (this._isInternalElement(e.element)) {
-                        // TODO: what?
+                        // Not loading individual internal elements, since a show.initialization loads them good enough
                     }
                     else if (this._isExternalElement(e.element)) {
                         if (e.isLoaded) {
@@ -1032,33 +1060,13 @@ class VizMSEManager extends events_1.EventEmitter {
                     }
                 })));
             });
+            // He's making a list:
+            yield loadAllElementsThatNeedsLoading();
+            yield this._wait(2000);
             if (loadTwice) {
-                // He's making a list:
-                yield loadAllElementsThatNeedsLoading();
-                yield this._wait(2000);
                 // He's checking it twice:
-                try {
-                    this.emit('debug', 'rundown.activate triggered');
-                    yield rundown.activate(false, false, true); // Our theory: an extra initialization of the rundown playlist loads all internal elements
-                }
-                catch (error) {
-                    this.emit('warning', `Ignored error for rundown.activate(): ${error}`);
-                }
-                yield this._wait(1000);
                 yield this.updateElementsLoadedStatus();
                 // Gonna find out what's loaded and nice:
-                yield loadAllElementsThatNeedsLoading();
-            }
-            else {
-                this._triggerCommandSent();
-                try {
-                    this.emit('debug', 'rundown.activate triggered');
-                    yield rundown.activate(false, false, true); // Our theory: an extra initialization of the rundown playlist loads all internal elements
-                }
-                catch (error) {
-                    this.emit('warning', `Ignored error for rundown.activate(): ${error}`);
-                }
-                yield this._wait(1000);
                 yield loadAllElementsThatNeedsLoading();
             }
             this.emit('debug', '_triggerLoadAllElements done');
@@ -1177,7 +1185,9 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     _isElementLoaded(el) {
         if (this._isInternalElement(el)) {
-            return true; // not implemented / unknown
+            return ((el.available === '1.00' || el.available === '1' || el.available === undefined) &&
+                (el.loaded === '1.00' || el.loaded === '1') &&
+                el.is_loading !== 'yes');
         }
         else if (this._isExternalElement(el)) {
             return ((el.available === '1.00' || el.available === '1') &&
@@ -1193,7 +1203,8 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     _isElementLoading(el) {
         if (this._isInternalElement(el)) {
-            return false; // not implemented / unknown
+            return ((el.loaded !== '1.00' && el.loaded !== '1') &&
+                el.is_loading === 'yes');
         }
         else if (this._isExternalElement(el)) {
             return ((el.loaded !== '1.00' && el.loaded !== '1') &&

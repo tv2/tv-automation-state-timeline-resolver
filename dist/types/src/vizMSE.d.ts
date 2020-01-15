@@ -18,6 +18,8 @@ export interface VizMSEOptions {
     playlistID?: string;
     /** Whether all elements should be preloaded or not */
     preloadAllElements?: boolean;
+    /** Whether internal elements should automatically be loaded when added to expectedPlayoutItems */
+    autoLoadInternalElements?: boolean;
     /**
      * It is a common practice to have an element which only purpose is to "clear all graphics" on the vizEngine.
      * To use this in TSR, set a reference to that here:
