@@ -10,6 +10,8 @@ const doOnTime_1 = require("../doOnTime");
 const request = require("request");
 const MAX_TIMESYNC_TRIES = 5;
 const MAX_TIMESYNC_DURATION = 40;
+const MEDIA_RETRY_INTERVAL = 10 * 1000; // default time in ms between checking whether a file needs to be retried loading
+const MEDIA_RETRY_DEBOUNCE = 500; // how long to wait after a command has sent before checking for retries
 /**
  * This class is used to interface with CasparCG installations. It creates
  * device states from timeline states and then diffs these states to generate
@@ -23,6 +25,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
         this._timeToTimecodeMap = { time: 0, timecode: 0 };
         this._timeBase = {};
         this._connected = false;
+        this._retryTime = MEDIA_RETRY_INTERVAL;
         if (deviceOptions.options) {
             if (deviceOptions.options.commandReceiver)
                 this._commandReceiver = deviceOptions.options.commandReceiver;
@@ -78,6 +81,11 @@ class CasparCGDevice extends device_1.DeviceWithState {
                     fps: obj.frameRate
                 };
             }), this.getCurrentTime());
+            if (initOptions.retryInterval !== false) {
+                if (typeof initOptions.retryInterval === 'number')
+                    this._retryTime = initOptions.retryInterval || MEDIA_RETRY_INTERVAL;
+                this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime);
+            }
             return true;
         });
     }
@@ -86,6 +94,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
      */
     terminate() {
         this._doOnTime.dispose();
+        clearTimeout(this._retryTimeout);
         return new Promise((resolve) => {
             this._ccg.disconnect();
             this._ccg.onDisconnected = () => {
@@ -584,7 +593,12 @@ class CasparCGDevice extends device_1.DeviceWithState {
      * @param time deprecated
      * @param cmd Command to execute
      */
-    _defaultCommandReceiver(_time, cmd, context, timelineObjId) {
+    _defaultCommandReceiver(time, cmd, context, timelineObjId) {
+        // do no retry while we are sending commands, instead always retry closely after:
+        if (!context.match(/\[RETRY\]/i)) {
+            clearTimeout(this._retryTimeout);
+            this._retryTimeout = setTimeout(() => this._assertIntendedState(), MEDIA_RETRY_DEBOUNCE);
+        }
         let cwc = {
             context: context,
             timelineObjId: timelineObjId,
@@ -596,6 +610,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
             if (this._queue[resCommand.token]) {
                 delete this._queue[resCommand.token];
             }
+            this._ccgState.applyCommands([{ cmd: resCommand.serialize() }], time);
         }).catch((error) => {
             let errorString = '';
             if (error && error.response && error.response.code === 404) {
@@ -622,6 +637,36 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 delete this._queue[cmd.token];
             }
         });
+    }
+    /**
+     * This function takes the current timeline-state, and diffs it with the known
+     * CasparCG state. If any media has failed to load, it will create a diff with
+     * the intended (timeline) state and that command will be executed.
+     */
+    _assertIntendedState() {
+        this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime);
+        const tlState = this.getState(this.getCurrentTime());
+        if (!tlState)
+            return; // no state implies any state is correct
+        const ccgState = this.convertStateToCaspar(tlState.state);
+        const diff = this._ccgState.getDiff(ccgState, this.getCurrentTime());
+        const cmd = [];
+        for (const layer of diff) {
+            // filter out media commands
+            for (let i = 0; i < layer.cmds.length; i++) {
+                if (layer.cmds[i]._commandName === 'LoadbgCommand'
+                    ||
+                        (layer.cmds[i]._commandName === 'PlayCommand' && layer.cmds[i]._objectParams.clip)
+                    ||
+                        layer.cmds[i]._commandName === 'LoadCommand') {
+                    layer.cmds[i].context.context += ' [RETRY]';
+                    cmd.push(layer.cmds[i]);
+                }
+            }
+        }
+        if (cmd.length > 0) {
+            this._addToQueue(cmd, this.getCurrentTime());
+        }
     }
     /**
      * Converts ms to timecode.

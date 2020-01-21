@@ -26,6 +26,8 @@ export declare class CasparCGDevice extends DeviceWithState<TimelineState> imple
     private _doOnTime;
     private initOptions?;
     private _connected;
+    private _retryTimeout;
+    private _retryTime;
     constructor(deviceId: string, deviceOptions: DeviceOptionsCasparCGInternal, options: any);
     /**
      * Initiates the connection with CasparCG through the ccg-connection lib and
@@ -95,6 +97,12 @@ export declare class CasparCGDevice extends DeviceWithState<TimelineState> imple
      * @param cmd Command to execute
      */
     private _defaultCommandReceiver;
+    /**
+     * This function takes the current timeline-state, and diffs it with the known
+     * CasparCG state. If any media has failed to load, it will create a diff with
+     * the intended (timeline) state and that command will be executed.
+     */
+    private _assertIntendedState;
     /**
      * Converts ms to timecode.
      * @param time Time to convert
