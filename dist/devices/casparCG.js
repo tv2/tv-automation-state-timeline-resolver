@@ -597,7 +597,8 @@ class CasparCGDevice extends device_1.DeviceWithState {
         // do no retry while we are sending commands, instead always retry closely after:
         if (!context.match(/\[RETRY\]/i)) {
             clearTimeout(this._retryTimeout);
-            this._retryTimeout = setTimeout(() => this._assertIntendedState(), MEDIA_RETRY_DEBOUNCE);
+            if (!this.initOptions || this.initOptions.retryInterval !== false)
+                this._retryTimeout = setTimeout(() => this._assertIntendedState(), MEDIA_RETRY_DEBOUNCE);
         }
         let cwc = {
             context: context,
