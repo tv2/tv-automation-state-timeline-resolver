@@ -433,6 +433,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
         };
         sortCommands(highPrioCommands);
         sortCommands(lowPrioCommands);
+        console.log(`VIZMSE: COMMANDS: ${JSON.stringify(sortCommands(highPrioCommands.concat(lowPrioCommands)))}`);
         return sortCommands(highPrioCommands.concat(lowPrioCommands));
     }
     _doCommand(command, context, timlineObjId) {
