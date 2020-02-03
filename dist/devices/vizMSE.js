@@ -444,14 +444,16 @@ class VizMSEDevice extends device_1.DeviceWithState {
                 }
             }
         });
-        concatCommands.forEach((command, index) => {
-            if (command.type === VizMSECommandType.TAKE_ELEMENT) {
-                this[index].transition = {
-                    type: src_1.VIZMSETransitionType.DELAY,
-                    delay: highestDelay
-                };
-            }
-        }, concatCommands);
+        if (highestDelay > 0) {
+            concatCommands.forEach((command, index) => {
+                if (command.type === VizMSECommandType.TAKE_ELEMENT) {
+                    concatCommands[index].transition = {
+                        type: src_1.VIZMSETransitionType.DELAY,
+                        delay: highestDelay
+                    };
+                }
+            });
+        }
         console.log(`VIZMSE: COMMANDS: ${JSON.stringify(sortCommands(concatCommands))}`);
         return sortCommands(concatCommands);
     }
