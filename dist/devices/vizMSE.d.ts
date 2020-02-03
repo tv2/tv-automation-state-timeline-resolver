@@ -152,6 +152,7 @@ interface VizMSECommandCue extends VizMSECommandElementBase {
 }
 interface VizMSECommandTake extends VizMSECommandElementBase {
     type: VizMSECommandType.TAKE_ELEMENT;
+    transition?: VIZMSEOutTransition;
 }
 interface VizMSECommandTakeOut extends VizMSECommandElementBase {
     type: VizMSECommandType.TAKEOUT_ELEMENT;

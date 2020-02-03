@@ -433,8 +433,27 @@ class VizMSEDevice extends device_1.DeviceWithState {
         };
         sortCommands(highPrioCommands);
         sortCommands(lowPrioCommands);
-        console.log(`VIZMSE: COMMANDS: ${JSON.stringify(sortCommands(highPrioCommands.concat(lowPrioCommands)))}`);
-        return sortCommands(highPrioCommands.concat(lowPrioCommands));
+        const concatCommands = sortCommands(highPrioCommands.concat(lowPrioCommands));
+        let highestDelay = 0;
+        concatCommands.forEach((command) => {
+            if (command.type === VizMSECommandType.TAKEOUT_ELEMENT) {
+                if (command.transition && command.transition.delay) {
+                    if (command.transition.delay > highestDelay) {
+                        highestDelay = command.transition.delay;
+                    }
+                }
+            }
+        });
+        concatCommands.forEach((command, index) => {
+            if (command.type === VizMSECommandType.TAKE_ELEMENT) {
+                this[index].transition = {
+                    type: src_1.VIZMSETransitionType.DELAY,
+                    delay: highestDelay
+                };
+            }
+        }, concatCommands);
+        console.log(`VIZMSE: COMMANDS: ${JSON.stringify(sortCommands(concatCommands))}`);
+        return sortCommands(concatCommands);
     }
     _doCommand(command, context, timlineObjId) {
         let time = this.getCurrentTime();
@@ -705,6 +724,14 @@ class VizMSEManager extends events_1.EventEmitter {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             const rundown = yield this._getRundown();
             const elementRef = yield this._checkPrepareElement(cmd);
+            if (cmd.transition) {
+                if (cmd.transition.type === src_1.VIZMSETransitionType.DELAY) {
+                    if (yield this.waitWithLayer(cmd.layerId || '__default', cmd.transition.delay)) {
+                        // at this point, the wait aws aborted by someone else. Do nothing then.
+                        return;
+                    }
+                }
+            }
             yield this._checkElementExists(cmd);
             yield this._handleRetry(() => {
                 this.emit('debug', `VizMSE: take "${elementRef}"`);
