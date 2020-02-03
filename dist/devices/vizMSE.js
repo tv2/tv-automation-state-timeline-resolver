@@ -449,7 +449,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
                 if (command.type === VizMSECommandType.TAKE_ELEMENT) {
                     concatCommands[index].transition = {
                         type: src_1.VIZMSETransitionType.DELAY,
-                        delay: highestDelay + 0.1
+                        delay: highestDelay + 20
                     };
                 }
             });
