@@ -433,7 +433,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
         };
         sortCommands(highPrioCommands);
         sortCommands(lowPrioCommands);
-        return highPrioCommands.reverse().concat(lowPrioCommands.reverse());
+        return highPrioCommands.concat(lowPrioCommands);
     }
     _doCommand(command, context, timlineObjId) {
         let time = this.getCurrentTime();
