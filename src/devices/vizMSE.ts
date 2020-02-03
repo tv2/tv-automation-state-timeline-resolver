@@ -606,8 +606,8 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 		const sortCommands = (commands: VizMSECommand[]) => {
 			// Sort the commands so that take out:s are run first
 			return commands.sort((a, b) => {
-				if (a.type === VizMSECommandType.TAKEOUT_ELEMENT && b.type !== VizMSECommandType.TAKEOUT_ELEMENT) return -1
-				if (a.type !== VizMSECommandType.TAKEOUT_ELEMENT && b.type === VizMSECommandType.TAKEOUT_ELEMENT) return 1
+				if (a.type === VizMSECommandType.TAKEOUT_ELEMENT && b.type !== VizMSECommandType.TAKEOUT_ELEMENT) return 1
+				if (a.type !== VizMSECommandType.TAKEOUT_ELEMENT && b.type === VizMSECommandType.TAKEOUT_ELEMENT) return -1
 				return 0
 			})
 		}
