@@ -378,7 +378,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 const channel = caspar.channels[mapping.channel] ? caspar.channels[mapping.channel] : new casparcg_state_1.CasparCG.Channel();
                 channel.channelNo = Number(mapping.channel) || 1;
                 // @todo: check if we need to get fps.
-                channel.fps = 25 / 1000; // 25 fps over 1000ms
+                channel.fps = 1 / 25; // 25 / 1000 // 25 fps over 1000ms
                 caspar.channels[channel.channelNo] = channel;
                 // create layer of appropriate type
                 const foregroundStateLayer = foregroundObj ? this.convertObjectToCasparState(foregroundObj, mapping, true) : undefined;
