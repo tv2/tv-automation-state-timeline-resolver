@@ -448,7 +448,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
             concatCommands.forEach((command, index) => {
                 if (command.type === VizMSECommandType.TAKE_ELEMENT
                     && command.layerId
-                    && newState.layer[command.layerId].contentType !== src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT) {
+                    && newState.layer[command.layerId].contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL) {
                     concatCommands[index].transition = {
                         type: src_1.VIZMSETransitionType.DELAY,
                         delay: highestDelay + 20
