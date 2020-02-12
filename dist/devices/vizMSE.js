@@ -353,7 +353,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
                     channelName: newLayer.channelName
                 };
                 if (!oldLayer ||
-                    !_.isEqual(_.omit(newLayer, ['continueStep']), _.omit(oldLayer, ['continueStep']))) {
+                    !_.isEqual(_.omit(newLayer, ['continueStep', 'timelineObjId', 'outTransition']), _.omit(oldLayer, ['continueStep', 'timelineObjId', 'outTransition']))) {
                     if (newLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL ||
                         newLayer.contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_PILOT) {
                         // Maybe prepare the element first:
