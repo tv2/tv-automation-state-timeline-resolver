@@ -279,7 +279,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
             statusCode = device_1.StatusCode.BAD;
             messages.push('Not connected');
         }
-        if (this._vizmseManager &&
+        else if (this._vizmseManager &&
             (this._vizmseManager.notLoadedCount > 0 ||
                 this._vizmseManager.loadingCount > 0)) {
             statusCode = device_1.StatusCode.WARNING_MINOR;
