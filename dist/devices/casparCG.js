@@ -614,7 +614,10 @@ class CasparCGDevice extends device_1.DeviceWithState {
             // This is later used in _assertIntendedState
             if ((resCommand.name === 'LoadbgCommand' ||
                 resCommand.name === 'PlayCommand' ||
-                resCommand.name === 'LoadCommand') &&
+                resCommand.name === 'LoadCommand' ||
+                resCommand.name === 'ClearCommand' ||
+                resCommand.name === 'StopCommand' ||
+                resCommand.name === 'ResumeCommand') &&
                 resCommand.channel &&
                 resCommand.layer) {
                 const currentState = this.getState(time);
@@ -682,7 +685,9 @@ class CasparCGDevice extends device_1.DeviceWithState {
                     ||
                         (layer.cmds[i]._commandName === 'PlayCommand' && layer.cmds[i]._objectParams.clip)
                     ||
-                        layer.cmds[i]._commandName === 'LoadCommand') {
+                        layer.cmds[i]._commandName === 'LoadCommand'
+                    ||
+                        layer.cmds[i]._commandName === 'ResumeCommand') {
                     layer.cmds[i].context.context += ' [RETRY]';
                     cmd.push(layer.cmds[i]);
                 }
