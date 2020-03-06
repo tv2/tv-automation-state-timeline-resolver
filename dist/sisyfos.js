@@ -13,6 +13,7 @@ var Commands;
     Commands["LABEL"] = "label";
     Commands["TAKE"] = "take";
     Commands["VISIBLE"] = "visible";
+    Commands["RESYNC"] = "resync";
 })(Commands = exports.Commands || (exports.Commands = {}));
 // ------------------------------------------------------
 //# sourceMappingURL=sisyfos.js.map

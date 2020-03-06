@@ -13,6 +13,7 @@ export interface CasparCGOptions {
     port?: number;
     /** whether to use the CasparCG-SCHEDULE command to run future commands, or the internal (backwards-compatible) command queue */
     useScheduling?: boolean;
+    retryInterval?: number | boolean;
     timeBase?: {
         [channel: string]: number;
     } | number;
