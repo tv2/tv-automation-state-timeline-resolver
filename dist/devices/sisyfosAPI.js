@@ -102,7 +102,7 @@ class SisyfosInterface extends events_1.EventEmitter {
         return !!this._state;
     }
     reInitialize() {
-        delete this._state;
+        this._state = undefined;
         this._oscClient.send({ address: '/state/full', args: [] });
     }
     get connected() {
@@ -149,7 +149,7 @@ class SisyfosInterface extends events_1.EventEmitter {
                 this._state = this.parseSisyfosState(message);
                 this.emit('initialized');
             }
-            else if (address[1] === 'ch') {
+            else if (address[1] === 'ch' && this._state) {
                 const ch = address[2];
                 this._state.channels[ch] = Object.assign(Object.assign({}, this._state.channels[ch]), this.parseChannelCommand(message, address.slice(3)));
             }
@@ -195,7 +195,7 @@ class SisyfosInterface extends events_1.EventEmitter {
     }
     parseSisyfosState(message) {
         const extState = JSON.parse(message.args[0].value);
-        const deviceState = { channels: {} };
+        const deviceState = { channels: {}, resync: false };
         Object.keys(extState.channel).forEach((index) => {
             const ch = extState.channel[index];
             let pgmOn = 0;

@@ -5,7 +5,7 @@ export declare class SisyfosInterface extends EventEmitter {
     host: string;
     port: number;
     private _oscClient;
-    private _state;
+    private _state?;
     private _connectivityCheckInterval;
     private _pingCounter;
     private _connectivityTimeout;
@@ -23,7 +23,7 @@ export declare class SisyfosInterface extends EventEmitter {
     isInitialized(): boolean;
     reInitialize(): void;
     readonly connected: boolean;
-    readonly state: SisyfosAPIState;
+    readonly state: SisyfosAPIState | undefined;
     readonly mixerOnline: boolean;
     setMixerOnline(state: boolean): void;
     private _monitorConnectivity;

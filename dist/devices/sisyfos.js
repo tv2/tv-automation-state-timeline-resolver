@@ -12,6 +12,7 @@ const sisyfosAPI_1 = require("./sisyfosAPI");
 class SisyfosMessageDevice extends device_1.DeviceWithState {
     constructor(deviceId, deviceOptions, options) {
         super(deviceId, deviceOptions, options);
+        this._resyncing = false;
         if (deviceOptions.options) {
             if (deviceOptions.options.commandReceiver)
                 this._commandReceiver = deviceOptions.options.commandReceiver;
@@ -61,16 +62,19 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
         }
         // Transform timeline states into device states
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
-        let oldState = (this.getStateBefore(previousStateTime) || { state: { channels: {} } }).state;
+        let oldState = (this.getStateBefore(previousStateTime) || { state: { channels: {}, resync: false } }).state;
         let newAbstractState = this.convertStateToSisyfosState(newState);
+        this._handleStateInner(oldState, newAbstractState, previousStateTime, newState.time);
+    }
+    _handleStateInner(oldState, newAbstractState, previousStateTime, newTime) {
         // Generate commands necessary to transition to the new state
         let commandsToAchieveState = this._diffStates(oldState, newAbstractState);
         // clear any queued commands later than this time:
         this._doOnTime.clearQueueNowAndAfter(previousStateTime);
         // add the new commands to the queue:
-        this._addToQueue(commandsToAchieveState, newState.time);
+        this._addToQueue(commandsToAchieveState, newTime);
         // store the new state, for later use:
-        this.setState(newAbstractState, newState.time);
+        this.setState(newAbstractState, newTime);
     }
     /**
      * Clear any scheduled commands after this time
@@ -90,7 +94,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             statusCode = device_1.StatusCode.BAD;
             messages.push('Not connected');
         }
-        if (!this._sisyfos.state) {
+        if (!this._sisyfos.state && !this._resyncing) {
             statusCode = device_1.StatusCode.BAD;
             messages.push(`Sisyfos device connection not initialized (restart required)`);
         }
@@ -104,12 +108,29 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
         };
     }
     makeReady(okToDestroyStuff) {
+        return this._makeReadyInner(okToDestroyStuff);
+    }
+    _makeReadyInner(okToDestroyStuff, resync) {
         if (okToDestroyStuff) {
+            if (resync) {
+                this._resyncing = true;
+                // If state is still not reinitialised afer 5 seconds, we may have a problem.
+                setTimeout(() => this._resyncing = false, 5000);
+            }
             this._doOnTime.clearQueueNowAndAfter(this.getCurrentTime());
             this._sisyfos.reInitialize();
-            this._sisyfos.once('initialized', () => {
-                this.setState(this.getDeviceState(false), this.getCurrentTime());
-                this.emit('resetResolver');
+            this._sisyfos.on('initialized', () => {
+                if (resync) {
+                    this._resyncing = false;
+                    const targetState = this.getState(this.getCurrentTime());
+                    if (targetState) {
+                        this._handleStateInner(this.getDeviceState(false), targetState.state, targetState.time, this.getCurrentTime());
+                    }
+                }
+                else {
+                    this.setState(this.getDeviceState(false), this.getCurrentTime());
+                    this.emit('resetResolver');
+                }
             });
         }
         return Promise.resolve();
@@ -121,8 +142,10 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
         return this._sisyfos.connected;
     }
     getDeviceState(isDefaultState = true) {
-        const deviceStateFromAPI = this._sisyfos.state;
-        const deviceState = { channels: {} };
+        let deviceStateFromAPI = this._sisyfos.state;
+        const deviceState = { channels: {}, resync: false };
+        if (!deviceStateFromAPI)
+            deviceStateFromAPI = deviceState;
         for (const ch of Object.keys(deviceStateFromAPI.channels)) {
             const channelFromAPI = deviceStateFromAPI.channels[ch];
             let channel = Object.assign(Object.assign({}, channelFromAPI), { tlObjIds: [] });
@@ -143,6 +166,10 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
         _.each(state.layers, (tlObject, layerName) => {
             const layer = tlObject;
             let foundMapping = this.getMapping()[layerName]; // @todo: make ts understand this
+            // Allow resync without valid channel mapping
+            if (layer.content.resync !== undefined) {
+                deviceState.resync = deviceState.resync || layer.content.resync;
+            }
             // if the tlObj is specifies to load to PST the original Layer is used to resolve the mapping
             if (!foundMapping && layer.isLookahead && layer.lookaheadForLayer) {
                 foundMapping = this.getMapping()[layer.lookaheadForLayer];
@@ -194,6 +221,15 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
      */
     _diffStates(oldOscSendState, newOscSendState) {
         const commands = [];
+        if (newOscSendState.resync && !oldOscSendState.resync) {
+            commands.push({
+                context: `Resyncing with Sisyfos`,
+                content: {
+                    type: sisyfos_1.Commands.RESYNC
+                },
+                timelineObjId: ''
+            });
+        }
         _.each(newOscSendState.channels, (newChannel, index) => {
             const oldChannel = oldOscSendState.channels[index];
             if (oldChannel && oldChannel.pgmOn !== newChannel.pgmOn) {
@@ -262,12 +298,18 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             timelineObjId: timelineObjId
         };
         this.emit('debug', cwc);
-        try {
-            this._sisyfos.send(cmd);
+        if (cmd.type === sisyfos_1.Commands.RESYNC) {
+            this._makeReadyInner(true, true);
             return Promise.resolve();
         }
-        catch (e) {
-            return Promise.reject(e);
+        else {
+            try {
+                this._sisyfos.send(cmd);
+                return Promise.resolve();
+            }
+            catch (e) {
+                return Promise.reject(e);
+            }
         }
     }
     _connectionChanged() {

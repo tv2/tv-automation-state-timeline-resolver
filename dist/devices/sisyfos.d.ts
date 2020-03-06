@@ -16,6 +16,7 @@ export declare class SisyfosMessageDevice extends DeviceWithState<SisyfosState> 
     private _doOnTime;
     private _sisyfos;
     private _commandReceiver;
+    private _resyncing;
     constructor(deviceId: string, deviceOptions: DeviceOptionsSisyfosInternal, options: any);
     init(initOptions: SisyfosOptions): Promise<boolean>;
     /** Called by the Conductor a bit before a .handleState is called */
@@ -26,6 +27,7 @@ export declare class SisyfosMessageDevice extends DeviceWithState<SisyfosState> 
      * @param newState
      */
     handleState(newState: TimelineState): void;
+    private _handleStateInner;
     /**
      * Clear any scheduled commands after this time
      * @param clearAfterTime
@@ -34,6 +36,7 @@ export declare class SisyfosMessageDevice extends DeviceWithState<SisyfosState> 
     terminate(): Promise<boolean>;
     getStatus(): DeviceStatus;
     makeReady(okToDestroyStuff?: boolean): Promise<void>;
+    private _makeReadyInner;
     readonly canConnect: boolean;
     readonly connected: boolean;
     getDeviceState(isDefaultState?: boolean): SisyfosState;
