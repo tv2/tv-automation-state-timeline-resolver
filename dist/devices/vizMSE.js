@@ -8,6 +8,7 @@ const src_1 = require("../types/src");
 const v_connection_1 = require("v-connection");
 const doOnTime_1 = require("../doOnTime");
 const crypto = require("crypto");
+const net = require("net");
 /** The ideal time to prepare elements before going on air */
 const IDEAL_PREPARE_TIME = 1000;
 /** Minimum time to wait after preparing elements */
@@ -175,7 +176,8 @@ class VizMSEDevice extends device_1.DeviceWithState {
                     else if (l.content.type === src_1.TimelineContentTypeVizMSE.CLEAR_ALL_ELEMENTS) {
                         // Special case: clear all graphics:
                         state.isClearAll = {
-                            timelineObjId: l.id
+                            timelineObjId: l.id,
+                            channelsToSendCommands: l.content.channelsToSendCommands
                         };
                     }
                     else if (l.content.type === src_1.TimelineContentTypeVizMSE.CONTINUE) {
@@ -238,14 +240,24 @@ class VizMSEDevice extends device_1.DeviceWithState {
                 this.clearStates();
                 if (this._vizmseManager) {
                     if (this._initOptions &&
-                        this._initOptions.clearAllOnMakeReady &&
-                        this._initOptions.clearAllTemplateName) {
-                        yield this._vizmseManager.clearAll({
-                            type: VizMSECommandType.CLEAR_ALL_ELEMENTS,
-                            time: this.getCurrentTime(),
-                            timelineObjId: 'makeReady',
-                            templateName: this._initOptions.clearAllTemplateName
-                        });
+                        this._initOptions.clearAllOnMakeReady) {
+                        if (this._initOptions.clearAllTemplateName) {
+                            yield this._vizmseManager.clearAll({
+                                type: VizMSECommandType.CLEAR_ALL_ELEMENTS,
+                                time: this.getCurrentTime(),
+                                timelineObjId: 'makeReady',
+                                templateName: this._initOptions.clearAllTemplateName
+                            });
+                        }
+                        if (this._initOptions.clearAllCommands && this._initOptions.clearAllCommands.length) {
+                            yield this._vizmseManager.clearEngines({
+                                type: VizMSECommandType.CLEAR_ALL_ENGINES,
+                                time: this.getCurrentTime(),
+                                timelineObjId: 'makeReady',
+                                channels: 'all',
+                                commands: this._initOptions.clearAllCommands
+                            });
+                        }
                     }
                 }
                 else
@@ -405,21 +417,31 @@ class VizMSEDevice extends device_1.DeviceWithState {
         });
         if (newState.isClearAll && !oldState.isClearAll) {
             // Special: clear all graphics
+            const clearingCommands = [];
             const templateName = this._initOptions && this._initOptions.clearAllTemplateName;
             if (!templateName) {
                 this.emit('warning', `vizMSE: initOptions.clearAllTemplateName is not set!`);
             }
             else {
                 // Start playing special element:
-                return [
-                    device_1.literal({
-                        timelineObjId: newState.isClearAll.timelineObjId,
-                        time: time,
-                        type: VizMSECommandType.CLEAR_ALL_ELEMENTS,
-                        templateName: templateName
-                    })
-                ];
+                clearingCommands.push(device_1.literal({
+                    timelineObjId: newState.isClearAll.timelineObjId,
+                    time: time,
+                    type: VizMSECommandType.CLEAR_ALL_ELEMENTS,
+                    templateName: templateName
+                }));
             }
+            if (newState.isClearAll.channelsToSendCommands && this._initOptions && this._initOptions.clearAllCommands && this._initOptions.clearAllCommands.length) {
+                // Send special commands to the engines:
+                clearingCommands.push(device_1.literal({
+                    timelineObjId: newState.isClearAll.timelineObjId,
+                    time: time,
+                    type: VizMSECommandType.CLEAR_ALL_ENGINES,
+                    channels: newState.isClearAll.channelsToSendCommands,
+                    commands: this._initOptions.clearAllCommands
+                }));
+            }
+            return clearingCommands;
         }
         const sortCommands = (commands) => {
             // Sort the commands so that take out:s are run first
@@ -520,6 +542,9 @@ class VizMSEDevice extends device_1.DeviceWithState {
                     }
                     else if (cmd.type === VizMSECommandType.CLEAR_ALL_ELEMENTS) {
                         yield this._vizmseManager.clearAll(cmd);
+                    }
+                    else if (cmd.type === VizMSECommandType.CLEAR_ALL_ENGINES) {
+                        yield this._vizmseManager.clearEngines(cmd);
                     }
                     else {
                         // @ts-ignore never
@@ -820,6 +845,55 @@ class VizMSEManager extends events_1.EventEmitter {
                 return rundown.take(elementRef);
             });
         });
+    }
+    /**
+     * Special: send commands to Viz Engines in order to clear them
+     */
+    clearEngines(cmd) {
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            try {
+                const profile = yield this._vizMSE.getProfile(this._profile);
+                const engines = yield this._vizMSE.getEngines();
+                const enginesToClear = this._prepareEnginesToClear(profile, engines, cmd.channels);
+                enginesToClear.forEach(engine => {
+                    const sender = new VizEngineTcpSender(engine.port, engine.host);
+                    sender.on('warning', w => this.emit('warning', `clearEngines: ${w}`));
+                    sender.on('error', e => this.emit('error', `clearEngines: ${e}`));
+                    sender.send(cmd.commands);
+                });
+            }
+            catch (e) {
+                this.emit('warning', `Sending Clear-all command failed ${e}`);
+            }
+        });
+    }
+    _prepareEnginesToClear(profile, engines, channels) {
+        const enginesToClear = [];
+        const outputs = new Map(); // engine name : channel name
+        _.each(profile.execution_groups, (group, groupName) => {
+            _.each(group, entry => {
+                if (typeof entry === 'object' && entry.viz) {
+                    if (typeof entry.viz === 'object' && entry.viz.value) {
+                        outputs.set(entry.viz.value, groupName);
+                    }
+                }
+            });
+        });
+        const outputEngines = engines.filter(engine => {
+            return outputs.has(engine.name);
+        });
+        outputEngines.forEach(engine => {
+            _.each(_.keys(engine.renderer), fullHost => {
+                const channelName = outputs.get(engine.name);
+                if (channels === 'all' || _.contains(channels, channelName)) {
+                    const match = fullHost.match(/([^:]+):?(\d*)?/);
+                    const port = (match && match[2]) ? parseInt(match[2], 10) : 6100;
+                    const host = (match && match[1]) ? match[1] : fullHost;
+                    enginesToClear.push({ host, port });
+                }
+            });
+        });
+        return enginesToClear;
     }
     /**
      * Load all elements: Trigger a loading of all pilot elements onto the vizEngine.
@@ -1335,6 +1409,7 @@ var VizMSECommandType;
     VizMSECommandType["CONTINUE_ELEMENT_REVERSE"] = "continuereverse";
     VizMSECommandType["LOAD_ALL_ELEMENTS"] = "load_all_elements";
     VizMSECommandType["CLEAR_ALL_ELEMENTS"] = "clear_all_elements";
+    VizMSECommandType["CLEAR_ALL_ENGINES"] = "clear_all_engines";
 })(VizMSECommandType = exports.VizMSECommandType || (exports.VizMSECommandType = {}));
 function content2StateLayer(timelineObjId, content) {
     if (content.type === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL) {
@@ -1363,5 +1438,87 @@ function content2StateLayer(timelineObjId, content) {
         return o;
     }
     return;
+}
+class VizEngineTcpSender extends events_1.EventEmitter {
+    constructor(port, host) {
+        super();
+        this._socket = new net.Socket();
+        this._connected = false;
+        this._commandCount = 0;
+        this._sendQueue = [];
+        this._waitQueue = new Set();
+        this._incomingData = '';
+        this._responseTimeoutMs = 6000;
+        this._port = port;
+        this._host = host;
+    }
+    send(commands) {
+        commands.forEach(command => {
+            this._sendQueue.push(command);
+        });
+        if (this._connected) {
+            this._flushQueue();
+        }
+        else {
+            this._connect();
+        }
+    }
+    _connect() {
+        this._socket = net.createConnection(this._port, this._host);
+        this._socket.on('connect', () => {
+            this._connected = true;
+            if (this._sendQueue.length) {
+                this._flushQueue();
+            }
+        });
+        this._socket.on('error', e => {
+            this.emit('error', e);
+            this._destroy();
+        });
+        this._socket.on('lookup', () => {
+            // this handles a dns exception, but the error is handled on 'error' event
+        });
+        this._socket.on('data', this._processData.bind(this));
+    }
+    _flushQueue() {
+        this._sendQueue.forEach(command => {
+            this._socket.write(`${++this._commandCount} ${command}\x00`);
+            this._waitQueue.add(this._commandCount);
+        });
+        setTimeout(() => {
+            if (this._waitQueue.size) {
+                this.emit('warning', `Response from ${this._host}:${this._port} not received on time`);
+                this._destroy();
+            }
+        }, this._responseTimeoutMs);
+    }
+    _processData(data) {
+        this._incomingData = this._incomingData.concat(data.toString());
+        let split = this._incomingData.split('\x00');
+        if (split.length === 0 || split.length === 1 && split[0] === '')
+            return;
+        if (split[split.length - 1] !== '') {
+            this._incomingData = split.pop();
+        }
+        else {
+            this._incomingData = '';
+        }
+        split.forEach(message => {
+            const firstSpace = message.indexOf(' ');
+            const id = message.substr(0, firstSpace);
+            const contents = message.substr(firstSpace + 1);
+            if (contents.startsWith('ERROR')) {
+                this.emit('warning', contents);
+            }
+            this._waitQueue.delete(parseInt(id, 10));
+        });
+        if (this._waitQueue.size === 0) {
+            this._destroy();
+        }
+    }
+    _destroy() {
+        this._socket.destroy();
+        this.removeAllListeners();
+    }
 }
 //# sourceMappingURL=vizMSE.js.map
