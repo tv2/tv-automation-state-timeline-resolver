@@ -17,6 +17,8 @@ const PREPARE_TIME_WAIT = 50;
 const MONITOR_INTERVAL = 5 * 1000;
 // How long to wait after any action (takes, cues, etc) before trying to cue for preloading
 const SAFE_PRELOAD_TIME = 2000;
+// How long to wait before retrying to ping the MSE when initializing the rundown, after a failed attempt
+const INIT_RETRY_INTERVAL = 3000;
 function getHash(str) {
     const hash = crypto.createHash('sha1');
     return hash.update(str).digest('base64').replace(/[\+\/\=]/g, '_'); // remove +/= from strings, because they cause troubles
@@ -57,11 +59,11 @@ class VizMSEDevice extends device_1.DeviceWithState {
             this._vizMSE = v_connection_1.createMSE(this._initOptions.host, this._initOptions.restPort, this._initOptions.wsPort);
             this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements, this._initOptions.autoLoadInternalElements, initOptions.showID, initOptions.profile, initOptions.playlistID);
             this._vizmseManager.on('connectionChanged', (connected) => this.connectionChanged(connected));
-            yield this._vizmseManager.initializeRundown();
             this._vizmseManager.on('info', str => this.emit('info', 'VizMSE: ' + str));
             this._vizmseManager.on('warning', str => this.emit('warning', 'VizMSE' + str));
             this._vizmseManager.on('error', e => this.emit('error', 'VizMSE', e));
             this._vizmseManager.on('debug', (...args) => this.emit('debug', ...args));
+            yield this._vizmseManager.initializeRundown();
             return true;
         });
     }
@@ -602,29 +604,38 @@ class VizMSEManager extends events_1.EventEmitter {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             this._vizMSE.on('connected', () => this.mseConnectionChanged(true));
             this._vizMSE.on('disconnected', () => this.mseConnectionChanged(false));
-            // Perform a ping, to ensure we are connected properly
-            yield this._vizMSE.ping();
-            this._msePingConnected = true;
-            this.mseConnectionChanged(true);
-            // Setup the rundown used by this device:
-            const rundown = yield this._getRundown();
-            if (!rundown)
-                throw new Error(`VizMSEManager: Unable to create rundown!`);
-            // const profile = await this._vizMSE.getProfile('sofie') // TODO: Figure out if this is needed
-            if (this._monitorAndLoadElementsInterval) {
-                clearInterval(this._monitorAndLoadElementsInterval);
-            }
-            this._monitorAndLoadElementsInterval = setInterval(() => {
-                this._monitorLoadedElements()
-                    .catch((...args) => {
-                    this.emit('error', ...args);
-                });
-            }, MONITOR_INTERVAL);
-            if (this._monitorMSEConnection) {
-                clearInterval(this._monitorMSEConnection);
-            }
-            this._monitorMSEConnection = setInterval(() => this._monitorConnection(), MONITOR_INTERVAL);
-            this.initialized = true;
+            const initializeRundownInner = () => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                try {
+                    // Perform a ping, to ensure we are connected properly
+                    yield this._vizMSE.ping();
+                    this._msePingConnected = true;
+                    this.mseConnectionChanged(true);
+                    // Setup the rundown used by this device:
+                    const rundown = yield this._getRundown();
+                    if (!rundown)
+                        throw new Error(`VizMSEManager: Unable to create rundown!`);
+                }
+                catch (e) {
+                    setTimeout(() => initializeRundownInner(), INIT_RETRY_INTERVAL);
+                    return;
+                }
+                // const profile = await this._vizMSE.getProfile('sofie') // TODO: Figure out if this is needed
+                if (this._monitorAndLoadElementsInterval) {
+                    clearInterval(this._monitorAndLoadElementsInterval);
+                }
+                this._monitorAndLoadElementsInterval = setInterval(() => {
+                    this._monitorLoadedElements()
+                        .catch((...args) => {
+                        this.emit('error', ...args);
+                    });
+                }, MONITOR_INTERVAL);
+                if (this._monitorMSEConnection) {
+                    clearInterval(this._monitorMSEConnection);
+                }
+                this._monitorMSEConnection = setInterval(() => this._monitorConnection(), MONITOR_INTERVAL);
+                this.initialized = true;
+            });
+            yield initializeRundownInner();
         });
     }
     /**
