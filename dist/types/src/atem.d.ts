@@ -81,6 +81,8 @@ export interface TimelineObjAtemME extends TimelineObjAtemBase {
         me: {
             input?: number;
             transition?: AtemTransitionStyle;
+            /** Cut directly to program */
+            programInput?: number;
             previewInput?: number;
             inTransition?: boolean;
             transitionPreview?: boolean;
