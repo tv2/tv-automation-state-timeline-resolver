@@ -1,11 +1,23 @@
 import { Mapping } from './mapping'
 import { TSRTimelineObjBase, DeviceType } from '.'
 
+type EmberValue = number | string | boolean | Buffer | null
+enum ParameterType {
+	Null = 'NULL',
+	Integer = 'INTEGER',
+	Real = 'REAL',
+	String = 'STRING',
+	Boolean = 'BOOLEAN',
+	Trigger = 'TRIGGER',
+	Enum = 'ENUM',
+	Octets = 'OCTETS'
+}
+
 export interface MappingLawo extends Mapping {
 	device: DeviceType.LAWO
 	mappingType: MappingLawoType
 	identifier?: string
-	emberType?: EmberTypes
+	emberType?: ParameterType
 	priority?: number
 }
 export enum MappingLawoType {
@@ -13,25 +25,38 @@ export enum MappingLawoType {
 	FULL_PATH = 'fullpath',
 	TRIGGER_VALUE = 'triggerValue'
 }
+export enum LawoDeviceMode {
+	R3lay,
+	Ruby,
+	RubyManualRamp,
+	MC2,
+	Manual
+}
 export interface LawoOptions {
 	setValueFn?: SetLawoValueFn
 	host?: string
 	port?: number
-	sourcesPath?: string
-	rampMotorFunctionPath?: string
-	dbPropertyName?: string
+
+	deviceMode: LawoDeviceMode
+
 	faderInterval?: number
+
+	/** Manual mode only: */
+	sourcesPath?: string
+	dbPropertyName?: string
+	rampMotorFunctionPath?: string
+	faderThreshold?: number
 }
-export type SetLawoValueFn = (command: LawoCommand, timelineObjId: string, valueType?: EmberTypes) => Promise<any>
+export type SetLawoValueFn = (command: LawoCommand, timelineObjId: string, logCommand?: boolean) => Promise<any>
 export interface LawoCommand {
 	path: string
-	value: EmberValueTypes
-	valueType: EmberTypes
+	value: EmberValue
+	valueType: ParameterType
 	key: string
 	identifier: string
 	type: TimelineContentTypeLawo
 	transitionDuration?: number
-	from?: EmberValueTypes
+	from?: EmberValue
 	priority: number
 }
 
@@ -42,13 +67,6 @@ export enum TimelineContentTypeLawo { //  Lawo-state
 }
 
 export type TimelineObjLawoAny = TimelineObjLawoSource | TimelineObjLawoEmberProperty | TimelineObjLawoEmberRetrigger
-export enum EmberTypes {
-	STRING = 'string',
-	INTEGER = 'integer',
-	REAL = 'real',
-	BOOLEAN = 'bool'
-}
-export type EmberValueTypes = string | number | boolean // @todo: move to ember library?
 
 export interface TimelineObjLawoBase extends TSRTimelineObjBase {
 	content: {
@@ -71,7 +89,7 @@ export interface TimelineObjLawoEmberProperty extends TimelineObjLawoBase {
 	content: {
 		deviceType: DeviceType.LAWO
 		type: TimelineContentTypeLawo.EMBER_PROPERTY
-		value: EmberValueTypes
+		value: EmberValue
 	}
 }
 export interface TimelineObjLawoEmberRetrigger extends TimelineObjLawoBase {

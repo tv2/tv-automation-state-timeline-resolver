@@ -378,7 +378,7 @@ describe('Rundown', () => {
 			layer: 10,
 			noClear: false,
 			device: 3,
-			format: undefined,
+			format: ChannelFormat.HD_720P5000,
 			channelLayout: undefined
 		})
 		expect(getMockCall(commandReceiver0, commandReceiver0Calls - 3, 1).name).toEqual('PlayDecklinkCommand')
@@ -387,7 +387,7 @@ describe('Rundown', () => {
 			layer: 20,
 			noClear: false,
 			device: 4,
-			format: undefined,
+			format: ChannelFormat.HD_720P5000,
 			channelLayout: undefined
 		})
 
@@ -399,7 +399,7 @@ describe('Rundown', () => {
 			'channel': 1,
 			'layer': 11,
 			'transition': 'mix',
-			'transitionDuration': 12,
+			'transitionDuration': 13,
 			'transitionEasing': 'linear',
 			'transitionDirection': 'right',
 			'opacity': 0,

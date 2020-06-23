@@ -72,7 +72,7 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> implements ID
 	private initOptions?: CasparCGOptions
 	private _connected: boolean = false
 	private _retryTimeout: NodeJS.Timeout
-	private _retryTime: number = MEDIA_RETRY_INTERVAL
+	private _retryTime: number | null = null
 
 	constructor (deviceId: string, deviceOptions: DeviceOptionsCasparCGInternal, options) {
 		super(deviceId, deviceOptions, options)
@@ -134,8 +134,8 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> implements ID
 			}
 		}) as StateNS.ChannelInfo[], this.getCurrentTime())
 
-		if (initOptions.retryInterval !== false) {
-			if (typeof initOptions.retryInterval === 'number') this._retryTime = initOptions.retryInterval || MEDIA_RETRY_INTERVAL
+		if (typeof initOptions.retryInterval === 'number') {
+			this._retryTime = initOptions.retryInterval || MEDIA_RETRY_INTERVAL
 			this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime)
 		}
 
@@ -303,8 +303,10 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> implements ID
 				media:			'decklink',
 				input: {
 					device:			inputObj.content.device,
-					channelLayout:	inputObj.content.channelLayout
+					channelLayout:	inputObj.content.channelLayout,
+					format:			inputObj.content.deviceFormat
 				},
+				filter: 		inputObj.content.filter,
 				playing:		true,
 				playTime:		null
 			})
@@ -357,8 +359,9 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> implements ID
 					channelLayout:		routeObj.content.channelLayout
 				},
 				mode:			routeObj.content.mode || undefined,
+				delay:			routeObj.content.delay || undefined,
 				playing:		true,
-				playTime:		null // layer.resolved.startTime || null
+				playTime:		null // layer.resolved.startTime || null,
 			})
 		} else if (layer.content.type === TimelineContentTypeCasparCg.RECORD) {
 			const recordObj = layer as any as TimelineObjCCGRecord
@@ -465,7 +468,7 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> implements ID
 				const channel = caspar.channels[mapping.channel] ? caspar.channels[mapping.channel] : new StateNS.Channel()
 				channel.channelNo = Number(mapping.channel) || 1
 				// @todo: check if we need to get fps.
-				channel.fps = 1 / 25 // 25 / 1000 // 25 fps over 1000ms
+				channel.fps = 25 / 1000 // 25 fps over 1000ms
 				caspar.channels[channel.channelNo] = channel
 
 				// create layer of appropriate type
@@ -729,13 +732,13 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> implements ID
 		// do no retry while we are sending commands, instead always retry closely after:
 		if (!context.match(/\[RETRY\]/i)) {
 			clearTimeout(this._retryTimeout)
-			if (!this.initOptions || this.initOptions.retryInterval !== false) this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime)
+			if (this._retryTime) this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime)
 		}
 
 		let cwc: CommandWithContext = {
 			context: context,
 			timelineObjId: timelineObjId,
-			command: cmd
+			command: JSON.stringify(cmd)
 		}
 		this.emit('debug', cwc)
 
@@ -761,22 +764,24 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> implements ID
 				const currentState = this.getState(time)
 				if (currentState) {
 					const currentCasparState = this.convertStateToCaspar(currentState.state)
-	
+
 					const trackedState = this._ccgState.getState()
 
 					const channel = currentCasparState.channels[resCommand.channel]
+					if (channel) {
 
-					if (!trackedState.channels[resCommand.channel]) {
-						trackedState.channels[resCommand.channel] = {
-							channelNo: channel.channelNo,
-							fps: channel.fps || 0,
-							videoMode: channel.videoMode || null,
-							layers: {}
+						if (!trackedState.channels[resCommand.channel]) {
+							trackedState.channels[resCommand.channel] = {
+								channelNo: channel.channelNo,
+								fps: channel.fps || 0,
+								videoMode: channel.videoMode || null,
+								layers: {}
+							}
 						}
+						// Copy the tracked from current state:
+						trackedState.channels[resCommand.channel].layers[resCommand.layer] = channel.layers[resCommand.layer]
+						this._ccgState.setState(trackedState)
 					}
-					// Copy the tracked from current state:
-					trackedState.channels[resCommand.channel].layers[resCommand.layer] = currentCasparState.channels[resCommand.channel].layers[resCommand.layer]
-					this._ccgState.setState(trackedState)
 				}
 			}
 		}).catch((error) => {
@@ -801,7 +806,6 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> implements ID
 			} else if (cmd.payload && !_.isEmpty(cmd.payload)) {
 				errorString += ', payload: ' + JSON.stringify(cmd.payload)
 			}
-			console.log('commandError', errorString)
 			this.emit('commandError', new Error(errorString), cwc)
 			if (cmd.name === 'ScheduleSetCommand') {
 				// delete this._queue[cmd.getParam('command').token]
@@ -816,7 +820,9 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> implements ID
 	 * the intended (timeline) state and that command will be executed.
 	 */
 	private _assertIntendedState () {
-		this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime)
+		if (this._retryTime) {
+			this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime)
+		}
 
 		const tlState = this.getState(this.getCurrentTime())
 
@@ -836,8 +842,6 @@ export class CasparCGDevice extends DeviceWithState<TimelineState> implements ID
 					(layer.cmds[i]._commandName === 'PlayCommand' && layer.cmds[i]._objectParams.clip)
 					||
 					layer.cmds[i]._commandName === 'LoadCommand'
-					||
-					layer.cmds[i]._commandName === 'ResumeCommand'
 				) {
 					layer.cmds[i].context.context += ' [RETRY]'
 					cmd.push(layer.cmds[i])
