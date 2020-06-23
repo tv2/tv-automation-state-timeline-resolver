@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tslib_1 = require("tslib");
 const _ = require("underscore");
 const device_1 = require("./device");
 const src_1 = require("../types/src");
@@ -173,59 +172,57 @@ class PanasonicPtzDevice extends device_1.DeviceWithState {
         };
     }
     // @ts-ignore no-unused-vars
-    _defaultCommandReceiver(time, cmd, context, timelineObjId) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            let cwc = {
-                context: context,
-                command: cmd,
-                timelineObjId: timelineObjId
-            };
-            try {
-                if (this._device) {
-                    if (cmd.type === src_1.TimelineContentTypePanasonicPtz.PRESET) { // recall preset
-                        if (cmd.preset !== undefined) {
-                            const res = yield this._device.recallPreset(cmd.preset);
-                            this.emit('debug', `Panasonic PTZ result: ${res}`);
-                        }
-                        else
-                            throw new Error(`Bad parameter: preset`);
-                    }
-                    else if (cmd.type === src_1.TimelineContentTypePanasonicPtz.SPEED) { // set speed
-                        if (cmd.speed !== undefined) {
-                            const res = yield this._device.setSpeed(cmd.speed);
-                            this.emit('debug', `Panasonic PTZ result: ${res}`);
-                        }
-                        else
-                            throw new Error(`Bad parameter: speed`);
-                    }
-                    else if (cmd.type === src_1.TimelineContentTypePanasonicPtz.ZOOM_SPEED) { // set zoom speed
-                        if (cmd.zoomSpeed !== undefined) {
-                            // scale -1 - 0 - +1 range to 01 - 50 - 99 range
-                            const res = yield this._device.setZoomSpeed((cmd.zoomSpeed * 49) + 50);
-                            this.emit('debug', `Panasonic PTZ result: ${res}`);
-                        }
-                        else
-                            throw new Error(`Bad parameter: zoomSpeed`);
-                    }
-                    else if (cmd.type === src_1.TimelineContentTypePanasonicPtz.ZOOM) { // set zoom
-                        if (cmd.zoom !== undefined) {
-                            // scale 0 - +1 range to 555h - FFFh range
-                            const res = yield this._device.setZoom((cmd.zoom * 0xAAA) + 0x555);
-                            this.emit('debug', `Panasonic PTZ result: ${res}`);
-                        }
-                        else
-                            throw new Error(`Bad parameter: zoom`);
+    async _defaultCommandReceiver(time, cmd, context, timelineObjId) {
+        let cwc = {
+            context: context,
+            command: cmd,
+            timelineObjId: timelineObjId
+        };
+        try {
+            if (this._device) {
+                if (cmd.type === src_1.TimelineContentTypePanasonicPtz.PRESET) { // recall preset
+                    if (cmd.preset !== undefined) {
+                        const res = await this._device.recallPreset(cmd.preset);
+                        this.emit('debug', `Panasonic PTZ result: ${res}`);
                     }
                     else
-                        throw new Error(`PTZ: Unknown type: "${cmd.type}"`);
+                        throw new Error(`Bad parameter: preset`);
+                }
+                else if (cmd.type === src_1.TimelineContentTypePanasonicPtz.SPEED) { // set speed
+                    if (cmd.speed !== undefined) {
+                        const res = await this._device.setSpeed(cmd.speed);
+                        this.emit('debug', `Panasonic PTZ result: ${res}`);
+                    }
+                    else
+                        throw new Error(`Bad parameter: speed`);
+                }
+                else if (cmd.type === src_1.TimelineContentTypePanasonicPtz.ZOOM_SPEED) { // set zoom speed
+                    if (cmd.zoomSpeed !== undefined) {
+                        // scale -1 - 0 - +1 range to 01 - 50 - 99 range
+                        const res = await this._device.setZoomSpeed((cmd.zoomSpeed * 49) + 50);
+                        this.emit('debug', `Panasonic PTZ result: ${res}`);
+                    }
+                    else
+                        throw new Error(`Bad parameter: zoomSpeed`);
+                }
+                else if (cmd.type === src_1.TimelineContentTypePanasonicPtz.ZOOM) { // set zoom
+                    if (cmd.zoom !== undefined) {
+                        // scale 0 - +1 range to 555h - FFFh range
+                        const res = await this._device.setZoom((cmd.zoom * 0xAAA) + 0x555);
+                        this.emit('debug', `Panasonic PTZ result: ${res}`);
+                    }
+                    else
+                        throw new Error(`Bad parameter: zoom`);
                 }
                 else
-                    throw new Error(`PTZ device not set up`);
+                    throw new Error(`PTZ: Unknown type: "${cmd.type}"`);
             }
-            catch (e) {
-                this.emit('commandError', e, cwc);
-            }
-        });
+            else
+                throw new Error(`PTZ device not set up`);
+        }
+        catch (e) {
+            this.emit('commandError', e, cwc);
+        }
     }
     /**
      * Add commands to queue, to be executed at the right time

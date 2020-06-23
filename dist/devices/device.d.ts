@@ -31,9 +31,6 @@ export interface DeviceStatus {
     messages?: Array<string>;
 }
 export declare function literal<T>(o: T): T;
-export interface DeviceClassOptions {
-    getCurrentTime: () => number;
-}
 export interface IDevice {
     init: (initOptions: DeviceInitOptions) => Promise<boolean>;
     getCurrentTime: () => number;
@@ -69,7 +66,7 @@ export declare abstract class Device extends EventEmitter implements IDevice {
     useDirectTime: boolean;
     protected _deviceOptions: DeviceOptionsAny;
     protected _reportAllCommands: boolean;
-    constructor(deviceId: string, deviceOptions: DeviceOptionsAny, options: DeviceClassOptions);
+    constructor(deviceId: string, deviceOptions: DeviceOptionsAny, getCurrentTime: () => Promise<number>);
     /**
      * Connect to the device, resolve the promise when ready.
      * @param initOptions Device-specific options
@@ -114,27 +111,16 @@ export declare abstract class Device extends EventEmitter implements IDevice {
     readonly supportsExpectedPlayoutItems: boolean;
     handleExpectedPlayoutItems(_expectedPlayoutItems: Array<ExpectedPlayoutItemContent>): void;
     private _updateCurrentTime;
-    on(event: 'info', listener: (info: string) => void): this;
-    on(event: 'warning', listener: (warning: string) => void): this;
-    on(event: 'error', listener: (context: string, err: Error) => void): this;
-    on(event: 'debug', listener: (...debug: any[]) => void): this;
+    on: ((event: 'info', listener: (info: string) => void) => this) & ((event: 'warning', listener: (warning: string) => void) => this) & ((event: 'error', listener: (context: string, err: Error) => void) => this) & ((event: 'debug', listener: (...debug: any[]) => void) => this) & 
     /** The connection status has changed */
-    on(event: 'connectionChanged', listener: (status: DeviceStatus) => void): this;
+    ((event: 'connectionChanged', listener: (status: DeviceStatus) => void) => this) & 
     /** A message to the resolver that something has happened that warrants a reset of the resolver (to re-run it again) */
-    on(event: 'resetResolver', listener: () => void): this;
+    ((event: 'resetResolver', listener: () => void) => this) & 
     /** A report that a command was sent too late */
-    on(event: 'slowCommand', listener: (commandInfo: string) => void): this;
+    ((event: 'slowCommand', listener: (commandInfo: string) => void) => this) & 
     /** Something went wrong when executing a command  */
-    on(event: 'commandError', listener: (error: Error, context: CommandWithContext) => void): this;
-    emit(event: 'info', info: string): boolean;
-    emit(event: 'warning', warning: string): boolean;
-    emit(event: 'error', context: string, err: Error): boolean;
-    emit(event: 'debug', ...debug: any[]): boolean;
-    emit(event: 'connectionChanged', status: DeviceStatus): boolean;
-    emit(event: 'resetResolver'): boolean;
-    emit(event: 'slowCommand', commandInfo: string): boolean;
-    emit(event: 'commandReport', commandReport: CommandReport): boolean;
-    emit(event: 'commandError', error: Error, context: CommandWithContext): boolean;
+    ((event: 'commandError', listener: (error: Error, context: CommandWithContext) => void) => this);
+    emit: ((event: 'info', info: string) => boolean) & ((event: 'warning', warning: string) => boolean) & ((event: 'error', context: string, err: Error) => boolean) & ((event: 'debug', ...debug: any[]) => boolean) & ((event: 'connectionChanged', status: DeviceStatus) => boolean) & ((event: 'resetResolver') => boolean) & ((event: 'slowCommand', commandInfo: string) => boolean) & ((event: 'commandReport', commandReport: CommandReport) => boolean) & ((event: 'commandError', error: Error, context: CommandWithContext) => boolean);
     readonly instanceId: number;
     readonly startTime: number;
     protected handleDoOnTime(doOnTime: DoOnTime, deviceType: string): void;

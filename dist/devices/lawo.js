@@ -1,13 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tslib_1 = require("tslib");
 const _ = require("underscore");
 const device_1 = require("./device");
 const src_1 = require("../types/src");
-const emberplus_1 = require("emberplus");
 const doOnTime_1 = require("../doOnTime");
 const lib_1 = require("../lib");
-const FADER_THRESHOLD = -90; // below this value the channel is considered muted
+const emberplus_connection_1 = require("emberplus-connection");
 /**
  * This is a wrapper for a Lawo sound mixer
  *
@@ -16,7 +14,6 @@ const FADER_THRESHOLD = -90; // below this value the channel is considered muted
 class LawoDevice extends device_1.DeviceWithState {
     constructor(deviceId, deviceOptions, options) {
         super(deviceId, deviceOptions, options);
-        this._savedNodes = [];
         this._lastSentValue = {};
         this._connected = false;
         this.transitions = {};
@@ -33,30 +30,49 @@ class LawoDevice extends device_1.DeviceWithState {
             else {
                 this._setValueFn = this.setValueWrapper;
             }
-            if (deviceOptions.options.sourcesPath) {
-                this._sourcesPath = deviceOptions.options.sourcesPath;
-            }
-            if (deviceOptions.options.rampMotorFunctionPath) {
-                this._rampMotorFunctionPath = deviceOptions.options.rampMotorFunctionPath;
-            }
-            if (deviceOptions.options.dbPropertyName) {
-                this._dbPropertyName = deviceOptions.options.dbPropertyName;
-            }
             if (deviceOptions.options.faderInterval) {
                 this._faderIntervalTime = deviceOptions.options.faderInterval;
+            }
+            switch (deviceOptions.options.deviceMode) {
+                case src_1.LawoDeviceMode.Ruby:
+                    this._sourcesPath = 'Ruby.Sources';
+                    this._dbPropertyName = 'Fader.Motor dB Value';
+                    this._rampMotorFunctionPath = 'Ruby.Functions.RampMotorFader';
+                    break;
+                case src_1.LawoDeviceMode.RubyManualRamp:
+                    this._sourcesPath = 'Ruby.Sources';
+                    this._dbPropertyName = 'Fader.Motor dB Value';
+                    this._faderThreshold = -60;
+                    break;
+                case src_1.LawoDeviceMode.MC2:
+                    this._sourcesPath = 'Channels.Inputs';
+                    this._dbPropertyName = 'Fader.Fader Level';
+                    this._faderThreshold = -90;
+                    break;
+                case src_1.LawoDeviceMode.R3lay:
+                    this._sourcesPath = 'R3LAYVRX4.Ex.Sources';
+                    this._dbPropertyName = 'Active.Amplification';
+                    this._faderThreshold = -60;
+                    break;
+                case src_1.LawoDeviceMode.Manual:
+                default:
+                    this._sourcesPath = deviceOptions.options.sourcesPath || '';
+                    this._dbPropertyName = deviceOptions.options.dbPropertyName || '';
+                    this._rampMotorFunctionPath = deviceOptions.options.dbPropertyName || '';
+                    this._faderThreshold = deviceOptions.options.faderThreshold || -60;
             }
         }
         let host = (deviceOptions.options && deviceOptions.options.host
             ? deviceOptions.options.host :
-            null);
+            undefined);
         let port = (deviceOptions.options && deviceOptions.options.port ?
             deviceOptions.options.port :
-            null);
+            undefined);
         this._doOnTime = new doOnTime_1.DoOnTime(() => {
             return this.getCurrentTime();
         }, doOnTime_1.SendMode.BURST, this._deviceOptions);
         this.handleDoOnTime(this._doOnTime, 'Lawo');
-        this._lawo = new emberplus_1.DeviceTree(host, port);
+        this._lawo = new emberplus_connection_1.EmberClient(host || '', port);
         this._lawo.on('error', (e) => {
             if ((e.message + '').match(/econnrefused/i) ||
                 (e.message + '').match(/disconnected/i)) {
@@ -66,8 +82,22 @@ class LawoDevice extends device_1.DeviceWithState {
                 this.emit('error', 'Lawo.Emberplus', e);
             }
         });
-        this._lawo.on('connected', () => {
+        // this._lawo.on('warn', (w) => {
+        // 	this.emit('debug', 'Warning: Lawo.Emberplus', w)
+        // })
+        let firstConnection = true;
+        this._lawo.on('connected', async () => {
             this._setConnected(true);
+            if (firstConnection) {
+                try {
+                    const req = await this._lawo.getDirectory(this._lawo.tree);
+                    await req.response;
+                }
+                catch (e) {
+                    this.emit('error', 'Error while expanding root', e);
+                }
+            }
+            firstConnection = false;
         });
         this._lawo.on('disconnected', () => {
             this._setConnected(false);
@@ -76,26 +106,11 @@ class LawoDevice extends device_1.DeviceWithState {
     /**
      * Initiates the connection with Lawo
      */
-    init(_initOptions) {
-        return new Promise((resolve, reject) => {
-            let fail = (e) => reject(e);
-            try {
-                this._lawo.once('error', fail);
-                this._lawo.connect() // default timeout = 2
-                    .then(() => {
-                    this._lawo.removeListener('error', fail);
-                    resolve(true);
-                })
-                    .catch((e) => {
-                    this._lawo.removeListener('error', fail);
-                    reject(e);
-                });
-            }
-            catch (e) {
-                this._lawo.removeListener('error', fail);
-                reject(e);
-            }
-        });
+    async init(_initOptions) {
+        const err = await this._lawo.connect();
+        if (err)
+            this.emit('error', 'Lawo initialization', err);
+        return true; // device is usable, lib will handle connection
     }
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime) {
@@ -139,7 +154,9 @@ class LawoDevice extends device_1.DeviceWithState {
             clearInterval(this.transitionInterval);
         // @todo: Implement lawo dispose function upstream
         try {
-            this._lawo.disconnect();
+            this._lawo.disconnect().then(() => {
+                this._lawo.discard();
+            }).catch(() => null); // fail silently
             this._lawo.removeAllListeners('error');
             this._lawo.removeAllListeners('connected');
             this._lawo.removeAllListeners('disconnected');
@@ -176,7 +193,7 @@ class LawoDevice extends device_1.DeviceWithState {
                         key: 'Fader/Motor dB Value',
                         identifier: mapping.identifier,
                         value: fader.value,
-                        valueType: src_1.EmberTypes.REAL,
+                        valueType: emberplus_connection_1.Model.ParameterType.Real,
                         transitionDuration: fader.transitionDuration,
                         priority: mapping.priority || 0,
                         timelineObjId: tlObject.id
@@ -189,7 +206,7 @@ class LawoDevice extends device_1.DeviceWithState {
                         key: '',
                         identifier: mapping.identifier,
                         value: tlObjectSource.content.value,
-                        valueType: mapping.emberType || src_1.EmberTypes.REAL,
+                        valueType: mapping.emberType || emberplus_connection_1.Model.ParameterType.Real,
                         priority: mapping.priority || 0,
                         timelineObjId: tlObject.id
                     };
@@ -286,25 +303,9 @@ class LawoDevice extends device_1.DeviceWithState {
      * Gets an ember node based on its path
      * @param path
      */
-    _getNodeByPath(path) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            return new Promise((resolve, reject) => {
-                if (this._savedNodes[path] !== undefined) {
-                    resolve(this._savedNodes[path]);
-                }
-                else {
-                    this._lawo.getNodeByPath(path)
-                        .then((node) => {
-                        this._savedNodes[path] = node;
-                        resolve(node);
-                    })
-                        .catch((e) => {
-                        this.emit('error', 'Lawo path error', e);
-                        reject(e);
-                    });
-                }
-            });
-        });
+    async _getNodeByPath(path) {
+        const node = await this._lawo.getElementByPath(path);
+        return node;
     }
     /**
      * Returns an attribute path
@@ -318,90 +319,95 @@ class LawoDevice extends device_1.DeviceWithState {
             attributePath.replace('/', '.')
         ]).join('.');
     }
-    _defaultCommandReceiver(_time, command, context, timelineObjId) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            const cwc = {
-                context: context,
-                command: command,
-                timelineObjId: timelineObjId
-            };
-            this.emit('debug', cwc);
-            // save start time of command
-            const startSend = this.getCurrentTime();
-            this._lastSentValue[command.path] = startSend;
-            try {
-                if (command.key === 'Fader/Motor dB Value' && command.transitionDuration && command.transitionDuration >= 0) { // fader level
-                    // this.emit('debug', cwc)
-                    if (!this._rampMotorFunctionPath) {
-                        // add the fade to the fade object, such that we can fade the signal using the fader
-                        if (!command.from) { // @todo: see if we can query the lawo first
-                            const node = yield this._getNodeByPath(command.path);
-                            if (node) {
-                                if (node.contents.value === command.value)
-                                    return;
+    async _defaultCommandReceiver(_time, command, context, timelineObjId) {
+        const cwc = {
+            context: context,
+            command: command,
+            timelineObjId: timelineObjId
+        };
+        this.emit('debug', cwc);
+        // save start time of command
+        const startSend = this.getCurrentTime();
+        this._lastSentValue[command.path] = startSend;
+        try {
+            if (command.key === 'Fader/Motor dB Value' && command.transitionDuration && command.transitionDuration >= 0) { // fader level
+                // TODO - Lawo result 6 code is based on time - difference ratio, certain ratios we may want to run a manual fade?
+                if (!this._rampMotorFunctionPath || (command.transitionDuration < 500 && this._faderIntervalTime < 250)) {
+                    // add the fade to the fade object, such that we can fade the signal using the fader
+                    if (!command.from) { // @todo: see if we can query the lawo first
+                        const node = await this._getNodeByPath(command.path);
+                        if (node) {
+                            if (node.contents.factor) {
+                                command.from = node.contents.value / (node.contents.factor || 1);
+                            }
+                            else {
                                 command.from = node.contents.value;
                             }
-                            else {
-                                yield this._setValueFn(command, timelineObjId);
+                            if (command.from === command.value)
                                 return;
-                            }
                         }
-                        this.transitions[command.path] = Object.assign(Object.assign({}, command), { started: this.getCurrentTime() });
-                        if (!this.transitionInterval)
-                            this.transitionInterval = setInterval(() => this.runAnimation(), this._faderIntervalTime || 75);
-                    }
-                    else if (command.transitionDuration >= 500) { // Motor Ramp in Lawo cannot handle too short durations
-                        try {
-                            const res = yield this._lawo.invokeFunction(new emberplus_1.Ember.QualifiedFunction(this._rampMotorFunctionPath), [
-                                command.identifier,
-                                new emberplus_1.Ember.ParameterContents(command.value, 'real'),
-                                new emberplus_1.Ember.ParameterContents(command.transitionDuration / 1000, 'real')
-                            ]);
-                            this.emit('debug', `Ember function result (${timelineObjId}): ${JSON.stringify(res)}`);
-                        }
-                        catch (e) {
-                            if (e.result && e.result.indexOf(6) > -1 && this._lastSentValue[command.path] <= startSend) { // result 6 and no new command fired for this path in meantime
-                                // Lawo rejected the command, so ensure the value gets set
-                                this.emit('info', `Ember function result (${timelineObjId}) was 6, running a direct setValue now`);
-                                yield this._setValueFn(command, timelineObjId, src_1.EmberTypes.REAL);
-                            }
-                            else {
-                                if (e.success === false) { // @todo: QualifiedFunction Fader/Motor cannot handle too short durations or small value changes
-                                    this.emit('info', `Ember function result (${timelineObjId}): ${JSON.stringify(e)}`);
-                                }
-                                this.emit('error', `Lawo: Ember function command error (${timelineObjId})`, e);
-                                throw e;
-                            }
+                        else {
+                            throw new Error('Node ' + command.path + ' was not found');
                         }
                     }
-                    else { // withouth timed fader movement
-                        yield this._setValueFn(command, timelineObjId, src_1.EmberTypes.REAL);
+                    this.transitions[command.path] = {
+                        ...command,
+                        tlObjId: timelineObjId,
+                        started: this.getCurrentTime()
+                    };
+                    if (!this.transitionInterval)
+                        this.transitionInterval = setInterval(() => this.runAnimation(), this._faderIntervalTime || 75);
+                }
+                else if (command.transitionDuration >= 500) { // Motor Ramp in Lawo cannot handle too short durations
+                    const fn = await this._lawo.getElementByPath(this._rampMotorFunctionPath);
+                    if (!fn)
+                        throw new Error('Function path not found');
+                    if (fn.contents.type !== emberplus_connection_1.Model.ElementType.Function)
+                        throw new Error('Node at specified path for function is not a function');
+                    const req = await this._lawo.invoke(fn, { type: emberplus_connection_1.Model.ParameterType.String, value: command.identifier }, { type: emberplus_connection_1.Model.ParameterType.Real, value: command.value }, { type: emberplus_connection_1.Model.ParameterType.Real, value: command.transitionDuration / 1000 });
+                    this.emit('debug', `Ember function invoked (${timelineObjId})`);
+                    const res = await req.response;
+                    this.emit('debug', `Ember function result (${timelineObjId}): ${(JSON.stringify(res))}`, res);
+                    if (res && res.success === false) {
+                        if (res.result && res.result[0].value === 6 && this._lastSentValue[command.path] <= startSend) { // result 6 and no new command fired for this path in meantime
+                            // Lawo rejected the command, so ensure the value gets set
+                            this.emit('info', `Ember function result (${timelineObjId}) was 6, running a direct setValue now`);
+                            await this._setValueFn(command, timelineObjId);
+                        }
+                        else {
+                            this.emit('error', `Lawo: Ember function success false (${timelineObjId}, ${command.identifier})`, new Error('Lawo Result ' + res.result[0].value));
+                        }
                     }
                 }
-                else {
-                    yield this._setValueFn(command, timelineObjId);
+                else { // withouth timed fader movement
+                    await this._setValueFn(command, timelineObjId);
                 }
             }
-            catch (error) {
-                this.emit('commandError', error, cwc);
+            else {
+                await this._setValueFn(command, timelineObjId);
             }
-        });
+        }
+        catch (error) {
+            this.emit('commandError', error, cwc);
+        }
     }
-    setValueWrapper(command, timelineObjId, valueType) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            try {
-                const node = yield this._getNodeByPath(command.path);
-                if ((valueType || command.valueType) === src_1.EmberTypes.REAL && command.value % 1 === 0) {
-                    command.value += .01;
-                }
-                const res = yield this._lawo.setValueWithHacksaw(node, new emberplus_1.Ember.ParameterContents(command.value, valueType || command.valueType));
-                this.emit('debug', `Ember result (${timelineObjId}): ${JSON.stringify(res)}`);
+    async setValueWrapper(command, timelineObjId, logResult = true) {
+        try {
+            const node = await this._getNodeByPath(command.path);
+            const value = node.contents.factor ? command.value * node.contents.factor : command.value;
+            const req = await this._lawo.setValue(node, value, logResult);
+            if (logResult) {
+                const res = await req.response;
+                this.emit('debug', `Ember result (${timelineObjId}): ${(res && res.contents.value)}`, { command, res: res && res.contents });
             }
-            catch (e) {
-                this.emit('error', `Lawo: Error in setValue (${timelineObjId})`, e);
-                throw e;
+            else if (!req.sentOk) {
+                this.emit('error', 'SetValue no logResult', new Error(`Ember req (${timelineObjId}) for "${command.path}" to "${value}" failed`));
             }
-        });
+        }
+        catch (e) {
+            this.emit('error', `Lawo: Error in setValue (${timelineObjId})`, e);
+            throw e;
+        }
     }
     _connectionChanged() {
         this.emit('connectionChanged', this.getStatus());
@@ -413,16 +419,16 @@ class LawoDevice extends device_1.DeviceWithState {
             if (transition.started + transition.transitionDuration < this.getCurrentTime()) {
                 delete this.transitions[addr];
                 // assert correct finished value:
-                this._setValueFn(transition, '').catch(() => null);
+                this._setValueFn(transition, transition.tlObjId).catch(() => null);
             }
         }
         for (const addr in this.transitions) {
             const transition = this.transitions[addr];
-            const from = Math.max(FADER_THRESHOLD, transition.from);
-            const to = Math.max(FADER_THRESHOLD, transition.value);
+            const from = this._faderThreshold ? Math.max(this._faderThreshold, transition.from) : transition.from;
+            const to = this._faderThreshold ? Math.max(this._faderThreshold, transition.value) : transition.value;
             const p = (this.getCurrentTime() - transition.started) / transition.transitionDuration;
             const v = from + p * (to - from); // should this have easing?
-            this._setValueFn(Object.assign(Object.assign({}, transition), { value: v }), '').catch(() => null);
+            this._setValueFn({ ...transition, value: v }, transition.tlObjId, false).catch(() => null);
         }
         if (Object.keys(this.transitions).length === 0) {
             clearInterval(this.transitionInterval);

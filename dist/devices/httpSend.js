@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tslib_1 = require("tslib");
 const _ = require("underscore");
 const device_1 = require("./device");
 const src_1 = require("../types/src");
@@ -25,6 +24,7 @@ class HTTPSendDevice extends device_1.DeviceWithState {
     }
     init(initOptions) {
         this._makeReadyCommands = initOptions.makeReadyCommands || [];
+        this._makeReadyDoesReset = initOptions.makeReadyDoesReset || false;
         return Promise.resolve(true); // This device doesn't have any initialization procedure
     }
     /** Called by the Conductor a bit before a .handleState is called */
@@ -61,18 +61,17 @@ class HTTPSendDevice extends device_1.DeviceWithState {
             statusCode: device_1.StatusCode.GOOD
         };
     }
-    makeReady(okToDestroyStuff) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (okToDestroyStuff && this._makeReadyCommands && this._makeReadyCommands.length > 0) {
-                const time = this.getCurrentTime();
-                _.each(this._makeReadyCommands, (cmd) => {
-                    // add the new commands to the queue:
-                    this._doOnTime.queue(time, cmd.queueId, (cmd) => {
-                        return this._commandReceiver(time, cmd, 'makeReady', '');
-                    }, cmd);
-                });
+    async makeReady(okToDestroyStuff) {
+        if (okToDestroyStuff) {
+            const time = this.getCurrentTime();
+            if (this._makeReadyDoesReset) {
+                this.clearStates();
+                this._doOnTime.clearQueueAfter(0);
             }
-        });
+            for (const cmd of this._makeReadyCommands || []) {
+                await this._commandReceiver(time, cmd, 'makeReady', '');
+            }
+        }
     }
     get canConnect() {
         return false;

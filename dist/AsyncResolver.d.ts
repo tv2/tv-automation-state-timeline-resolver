@@ -1,8 +1,9 @@
-/// <reference types="node" />
 import { ResolvedStates } from 'superfly-timeline';
-import { EventEmitter } from 'events';
+import { TimelineTriggerTimeResult } from './conductor';
 import { TSRTimeline } from './types/src';
-export declare class AsyncResolver extends EventEmitter {
+export declare class AsyncResolver {
+    private readonly onSetTimelineTriggerTime;
+    constructor(onSetTimelineTriggerTime: (res: TimelineTriggerTimeResult) => void);
     resolveTimeline(resolveTime: number, timeline: TSRTimeline, limitTime: number): Promise<{
         resolvedStates: ResolvedStates;
         objectsFixed: {

@@ -10,7 +10,6 @@ var SendMode;
     SendMode[SendMode["IN_ORDER"] = 2] = "IN_ORDER";
 })(SendMode = exports.SendMode || (exports.SendMode = {}));
 class DoOnTime extends events_1.EventEmitter {
-    /* tslint:enable:unified-signatures */
     constructor(getCurrentTime, sendMode = SendMode.BURST, options) {
         super();
         this._i = 0;
@@ -21,12 +20,6 @@ class DoOnTime extends events_1.EventEmitter {
         this.getCurrentTime = getCurrentTime;
         this._sendMode = sendMode;
         this._options = options || {};
-    }
-    on(event, listener) {
-        return super.on(event, listener);
-    }
-    emit(event, ...args) {
-        return super.emit(event, ...args);
     }
     queue(time, queueId, fcn, ...args) {
         if (!(time >= 0))

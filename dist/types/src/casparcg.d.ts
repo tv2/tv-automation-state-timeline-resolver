@@ -109,6 +109,7 @@ export interface TimelineObjCCGInput extends TimelineObjCasparCGBase {
         device: number;
         /** The input format (example: '1080i5000') */
         deviceFormat: ChannelFormat;
+        filter?: string;
         /** Audio channel layout (example 'stereo') */
         channelLayout?: string;
     } & TimelineObjCCGProducerContentBase;
@@ -294,42 +295,43 @@ export declare enum BlendMode {
 export declare enum ChannelFormat {
     PAL = "PAL",
     NTSC = "NTSC",
-    SD_576P2500 = "SD_576P2500",
-    HD_720P2398 = "HD_720P2398",
-    HD_720P2400 = "HD_720P2400",
-    HD_720P2500 = "HD_720P2500",
-    HD_720P2997 = "HD_720P2997",
-    HD_720P3000 = "HD_720P3000",
-    HD_720P5000 = "HD_720P5000",
-    HD_720P5994 = "HD_720P5994",
-    HD_720P6000 = "HD_720P6000",
-    HD_1080I5000 = "HD_1080I5000",
-    HD_1080I5994 = "HD_1080I5994",
-    HD_1080I6000 = "HD_1080I6000",
-    HD_1080P2398 = "HD_1080P2398",
-    HD_1080P2400 = "HD_1080P2400",
-    HD_1080P2500 = "HD_1080P2500",
-    HD_1080P2997 = "HD_1080P2997",
-    HD_1080P3000 = "HD_1080P3000",
-    HD_1080P5000 = "HD_1080P5000",
-    HD_1080P5994 = "HD_1080P5994",
-    HD_1080P6000 = "HD_1080P6000",
-    DCI_1080P2398 = "DCI_1080P2398",
-    DCI_1080P2400 = "DCI_1080P2400",
-    DCI_1080P2500 = "DCI_1080P2500",
-    DCI_2160P2398 = "DCI_2160P2398",
-    DCI_2160P2400 = "DCI_2160P2400",
-    DCI_2160P2500 = "DCI_2160P2500",
-    UCH_2160P2400 = "UCH_2160P2400",
-    UHD_1556P2398 = "UHD_1556P2398",
-    UHD_1556P2400 = "UHD_1556P2400",
-    UHD_1556P2500 = "UHD_1556P2500",
-    UHD_2160P2398 = "UHD_2160P2398",
-    UHD_2160P2500 = "UHD_2160P2500",
-    UHD_2160P2997 = "UHD_2160P2997",
-    UHD_2160P3000 = "UHD_2160P3000",
-    UHD_2160P5000 = "UHD_2160P5000",
-    UHD_2160P5994 = "UHD_2160P5994",
+    SD_576P2500 = "576P2500",
+    HD_720P2398 = "720P2398",
+    HD_720P2400 = "720P2400",
+    HD_720P2500 = "720P2500",
+    HD_720P2997 = "720P2997",
+    HD_720P3000 = "720P3000",
+    HD_720P5000 = "720P5000",
+    HD_720P5994 = "720P5994",
+    HD_720P6000 = "720P6000",
+    HD_1080I5000 = "1080I5000",
+    HD_1080I5994 = "1080I5994",
+    HD_1080I6000 = "1080I6000",
+    HD_1080P2398 = "1080P2398",
+    HD_1080P2400 = "1080P2400",
+    HD_1080P2500 = "1080P2500",
+    HD_1080P2997 = "1080P2997",
+    HD_1080P3000 = "1080P3000",
+    HD_1080P5000 = "1080P5000",
+    HD_1080P5994 = "1080P5994",
+    HD_1080P6000 = "1080P6000",
+    DCI_1080P2398 = "dci1080P2398",
+    DCI_1080P2400 = "dci1080P2400",
+    DCI_1080P2500 = "dci1080P2500",
+    DCI_2160P2398 = "dci2160P2398",
+    DCI_2160P2400 = "dci2160P2400",
+    DCI_2160P2500 = "dci2160P2500",
+    UCH_2160P2400 = "2160P2400",
+    UHD_1556P2398 = "1556P2398",
+    UHD_1556P2400 = "1556P2400",
+    UHD_1556P2500 = "1556P2500",
+    UHD_2160P2398 = "2160P2398",
+    UHD_2160P2500 = "2160P2500",
+    UHD_2160P2997 = "2160P2997",
+    UHD_2160P3000 = "2160P3000",
+    UHD_2160P5000 = "2160P5000",
+    UHD_2160P5994 = "2160P5994",
+    UHD_2160P6000 = "2160P6000",
     INVALID = "INVALID"
 }
 export declare enum Chroma {
@@ -405,14 +407,14 @@ export interface TransitionObject {
     outTransition: Transition0;
 }
 export interface ITransition {
-    type?: string;
+    type?: Transition;
     duration: number;
-    easing?: string;
-    direction?: string;
+    easing?: Ease;
+    direction?: Direction | string;
 }
 export interface Transition0 extends ITransition {
-    type: string;
+    type: Transition;
     duration: number;
-    easing: string;
-    direction: string;
+    easing: Ease;
+    direction: Direction | string;
 }

@@ -1,19 +1,15 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+var MappingSisyfosType;
+(function (MappingSisyfosType) {
+    MappingSisyfosType["CHANNEL"] = "channel";
+    MappingSisyfosType["CHANNELS"] = "channels";
+})(MappingSisyfosType = exports.MappingSisyfosType || (exports.MappingSisyfosType = {}));
 var TimelineContentTypeSisyfos;
 (function (TimelineContentTypeSisyfos) {
+    /** @deprecated use CHANNEL instead */
     TimelineContentTypeSisyfos["SISYFOS"] = "sisyfos";
+    TimelineContentTypeSisyfos["CHANNEL"] = "channel";
+    TimelineContentTypeSisyfos["CHANNELS"] = "channels";
 })(TimelineContentTypeSisyfos = exports.TimelineContentTypeSisyfos || (exports.TimelineContentTypeSisyfos = {}));
-var Commands;
-(function (Commands) {
-    Commands["TOGGLE_PGM"] = "togglePgm";
-    Commands["TOGGLE_PST"] = "togglePst";
-    Commands["SET_FADER"] = "setFader";
-    Commands["CLEAR_PST_ROW"] = "clearPstRow";
-    Commands["LABEL"] = "label";
-    Commands["TAKE"] = "take";
-    Commands["VISIBLE"] = "visible";
-    Commands["RESYNC"] = "resync";
-})(Commands = exports.Commands || (exports.Commands = {}));
-// ------------------------------------------------------
 //# sourceMappingURL=sisyfos.js.map

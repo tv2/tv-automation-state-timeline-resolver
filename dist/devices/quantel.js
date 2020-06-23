@@ -1,12 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tslib_1 = require("tslib");
 const _ = require("underscore");
 const events_1 = require("events");
 const device_1 = require("./device");
 const src_1 = require("../types/src");
 const doOnTime_1 = require("../doOnTime");
-const quantelGateway_1 = require("./quantelGateway");
+const tv_automation_quantel_gateway_client_1 = require("tv-automation-quantel-gateway-client");
 const IDEAL_PREPARE_TIME = 1000;
 const PREPARE_TIME_WAIT = 50;
 const SOFT_JUMP_WAIT_TIME = 250;
@@ -30,9 +29,11 @@ class QuantelDevice extends device_1.DeviceWithState {
             else
                 this._commandReceiver = this._defaultCommandReceiver;
         }
-        this._quantel = new quantelGateway_1.QuantelGateway();
+        this._quantel = new tv_automation_quantel_gateway_client_1.QuantelGateway();
         this._quantel.on('error', e => this.emit('error', 'Quantel.QuantelGateway', e));
-        this._quantelManager = new QuantelManager(this._quantel, () => this.getCurrentTime());
+        this._quantelManager = new QuantelManager(this._quantel, () => this.getCurrentTime(), {
+            allowCloneClips: deviceOptions.options.allowCloneClips
+        });
         this._quantelManager.on('info', str => this.emit('info', 'Quantel: ' + str));
         this._quantelManager.on('warning', str => this.emit('warning', 'Quantel' + str));
         this._quantelManager.on('error', e => this.emit('error', 'Quantel', e));
@@ -46,31 +47,28 @@ class QuantelDevice extends device_1.DeviceWithState {
         }, doOnTime_1.SendMode.BURST, this._deviceOptions);
         this.handleDoOnTime(this._doOnTimeBurst, 'Quantel.burst');
     }
-    init(initOptions) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            this._initOptions = initOptions;
-            if (!this._initOptions.gatewayUrl)
-                throw new Error('Quantel bad connection option: gatewayUrl');
-            if (!this._initOptions.ISAUrl)
-                throw new Error('Quantel bad connection option: ISAUrl');
-            if (!this._initOptions.serverId)
-                throw new Error('Quantel bad connection option: serverId');
-            yield this._quantel.init(this._initOptions.gatewayUrl, this._initOptions.ISAUrl, this._initOptions.zoneId, this._initOptions.serverId);
-            this._quantel.monitorServerStatus((_connected) => {
-                this._connectionChanged();
-            });
-            return true;
+    async init(initOptions) {
+        this._initOptions = initOptions;
+        const ISAUrlMaster = this._initOptions.ISAUrlMaster || this._initOptions['ISAUrl']; // tmp: ISAUrl for backwards compatibility, to be removed later
+        if (!this._initOptions.gatewayUrl)
+            throw new Error('Quantel bad connection option: gatewayUrl');
+        if (!ISAUrlMaster)
+            throw new Error('Quantel bad connection option: ISAUrlMaster');
+        if (!this._initOptions.serverId)
+            throw new Error('Quantel bad connection option: serverId');
+        await this._quantel.init(this._initOptions.gatewayUrl, ISAUrlMaster, this._initOptions.ISAUrlBackup, this._initOptions.zoneId, this._initOptions.serverId);
+        this._quantel.monitorServerStatus((_connected) => {
+            this._connectionChanged();
         });
+        return true;
     }
     /**
      * Terminates the device safely such that things can be garbage collected.
      */
-    terminate() {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            this._quantel.dispose();
-            this._doOnTime.dispose();
-            return true;
-        });
+    async terminate() {
+        this._quantel.dispose();
+        this._doOnTime.dispose();
+        return true;
     }
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime) {
@@ -104,15 +102,13 @@ class QuantelDevice extends device_1.DeviceWithState {
     /**
      * Attempts to restart the gateway
      */
-    restartGateway() {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (this._quantel.connected) {
-                return this._quantel.kill();
-            }
-            else {
-                throw new Error('Quantel Gateway not connected');
-            }
-        });
+    async restartGateway() {
+        if (this._quantel.connected) {
+            return this._quantel.kill();
+        }
+        else {
+            throw new Error('Quantel Gateway not connected');
+        }
     }
     /**
      * Clear any scheduled commands after this time
@@ -222,17 +218,15 @@ class QuantelDevice extends device_1.DeviceWithState {
      * Prepares the physical device for playout.
      * @param okToDestroyStuff Whether it is OK to do things that affects playout visibly
      */
-    makeReady(okToDestroyStuff) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (okToDestroyStuff) {
-                // release and re-claim all ports:
-                // TODO
-            }
-            // reset our own state(s):
-            if (okToDestroyStuff) {
-                this.clearStates();
-            }
-        });
+    async makeReady(okToDestroyStuff) {
+        if (okToDestroyStuff) {
+            // release and re-claim all ports:
+            // TODO
+        }
+        // reset our own state(s):
+        if (okToDestroyStuff) {
+            this.clearStates();
+        }
     }
     getStatus() {
         let statusCode = device_1.StatusCode.GOOD;
@@ -385,46 +379,44 @@ class QuantelDevice extends device_1.DeviceWithState {
      * @param time deprecated
      * @param cmd Command to execute
      */
-    _defaultCommandReceiver(_time, cmd, context, timelineObjId) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            let cwc = {
-                context: context,
-                timelineObjId: timelineObjId,
-                command: cmd
-            };
-            this.emit('debug', cwc);
-            try {
-                if (cmd.type === QuantelCommandType.SETUPPORT) {
-                    yield this._quantelManager.setupPort(cmd);
-                }
-                else if (cmd.type === QuantelCommandType.RELEASEPORT) {
-                    yield this._quantelManager.releasePort(cmd);
-                }
-                else if (cmd.type === QuantelCommandType.LOADCLIPFRAGMENTS) {
-                    yield this._quantelManager.loadClipFragments(cmd);
-                }
-                else if (cmd.type === QuantelCommandType.PLAYCLIP) {
-                    yield this._quantelManager.playClip(cmd);
-                }
-                else if (cmd.type === QuantelCommandType.PAUSECLIP) {
-                    yield this._quantelManager.pauseClip(cmd);
-                }
-                else if (cmd.type === QuantelCommandType.CLEARCLIP) {
-                    yield this._quantelManager.clearClip(cmd);
-                    this.getCurrentTime();
-                }
-                else {
-                    // @ts-ignore never
-                    throw new Error(`Unsupported command type "${cmd.type}"`);
-                }
+    async _defaultCommandReceiver(_time, cmd, context, timelineObjId) {
+        let cwc = {
+            context: context,
+            timelineObjId: timelineObjId,
+            command: cmd
+        };
+        this.emit('debug', cwc);
+        try {
+            if (cmd.type === QuantelCommandType.SETUPPORT) {
+                await this._quantelManager.setupPort(cmd);
             }
-            catch (error) {
-                let errorString = (error && error.message ?
-                    error.message :
-                    error.toString());
-                this.emit('commandError', new Error(errorString), cwc);
+            else if (cmd.type === QuantelCommandType.RELEASEPORT) {
+                await this._quantelManager.releasePort(cmd);
             }
-        });
+            else if (cmd.type === QuantelCommandType.LOADCLIPFRAGMENTS) {
+                await this._quantelManager.loadClipFragments(cmd);
+            }
+            else if (cmd.type === QuantelCommandType.PLAYCLIP) {
+                await this._quantelManager.playClip(cmd);
+            }
+            else if (cmd.type === QuantelCommandType.PAUSECLIP) {
+                await this._quantelManager.pauseClip(cmd);
+            }
+            else if (cmd.type === QuantelCommandType.CLEARCLIP) {
+                await this._quantelManager.clearClip(cmd);
+                this.getCurrentTime();
+            }
+            else {
+                // @ts-ignore never
+                throw new Error(`Unsupported command type "${cmd.type}"`);
+            }
+        }
+        catch (error) {
+            let errorString = (error && error.message ?
+                error.message :
+                error.toString());
+            this.emit('commandError', new Error(errorString), cwc);
+        }
     }
     _connectionChanged() {
         this.emit('connectionChanged', this.getStatus());
@@ -432,10 +424,11 @@ class QuantelDevice extends device_1.DeviceWithState {
 }
 exports.QuantelDevice = QuantelDevice;
 class QuantelManager extends events_1.EventEmitter {
-    constructor(_quantel, getCurrentTime) {
+    constructor(_quantel, getCurrentTime, options) {
         super();
         this._quantel = _quantel;
         this.getCurrentTime = getCurrentTime;
+        this.options = options;
         this._quantelState = {
             port: {}
         };
@@ -444,303 +437,311 @@ class QuantelManager extends events_1.EventEmitter {
         this._quantel.on('error', (...args) => this.emit('error', ...args));
         this._quantel.on('debug', (...args) => this.emit('debug', ...args));
     }
-    setupPort(cmd) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            const trackedPort = this._quantelState.port[cmd.portId];
-            // Check if the port is already set up
-            if (!trackedPort ||
-                trackedPort.channel !== cmd.channel) {
-                let port = null;
-                // Setup a port and connect it to a channel
-                try {
-                    port = yield this._quantel.getPort(cmd.portId);
-                }
-                catch (e) {
-                    // If the GET fails, it might be something unknown wrong.
-                    // A temporary workaround is to send a delete on that port and try again, it might work.
-                    try {
-                        yield this._quantel.releasePort(cmd.portId);
-                    }
-                    catch (_a) {
-                        // ignore any errors
-                    }
-                    // Try again:
-                    port = yield this._quantel.getPort(cmd.portId);
-                }
-                if (port) {
-                    // port already exists, release it first:
-                    yield this._quantel.releasePort(cmd.portId);
-                }
-                yield this._quantel.createPort(cmd.portId, cmd.channel);
-                // Store to the local tracking state:
-                this._quantelState.port[cmd.portId] = {
-                    loadedFragments: {},
-                    offset: -1,
-                    playing: false,
-                    jumpOffset: null,
-                    scheduledStop: null,
-                    channel: cmd.channel
-                };
-            }
-        });
-    }
-    releasePort(cmd) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+    async setupPort(cmd) {
+        const trackedPort = this._quantelState.port[cmd.portId];
+        // Check if the port is already set up
+        if (!trackedPort ||
+            trackedPort.channel !== cmd.channel) {
+            let port = null;
+            // Setup a port and connect it to a channel
             try {
-                yield this._quantel.releasePort(cmd.portId);
+                port = await this._quantel.getPort(cmd.portId);
             }
             catch (e) {
-                if (e.status !== 404) { // releasing a non-existent port is OK
-                    throw e;
+                // If the GET fails, it might be something unknown wrong.
+                // A temporary workaround is to send a delete on that port and try again, it might work.
+                try {
+                    await this._quantel.releasePort(cmd.portId);
                 }
+                catch (_a) {
+                    // ignore any errors
+                }
+                // Try again:
+                port = await this._quantel.getPort(cmd.portId);
             }
+            if (port) {
+                // port already exists, release it first:
+                await this._quantel.releasePort(cmd.portId);
+            }
+            await this._quantel.createPort(cmd.portId, cmd.channel);
             // Store to the local tracking state:
-            delete this._quantelState.port[cmd.portId];
-        });
+            this._quantelState.port[cmd.portId] = {
+                loadedFragments: {},
+                offset: -1,
+                playing: false,
+                jumpOffset: null,
+                scheduledStop: null,
+                channel: cmd.channel
+            };
+        }
     }
-    loadClipFragments(cmd) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            const trackedPort = this.getTrackedPort(cmd.portId);
-            const server = yield this.getServer();
-            let clipId = yield this.getClipId(cmd.clip);
-            const clipData = yield this._quantel.getClip(clipId);
-            if (!clipData)
-                throw new Error(`Clip ${clipId} not found`);
-            if (!clipData.PoolID)
-                throw new Error(`Clip ${clipData.ClipID} missing PoolID`);
-            // Check that the clip is present on the server:
-            if ((server.pools || []).indexOf(clipData.PoolID) === -1) {
-                throw new Error(`Clip "${clipData.ClipID}" PoolID ${clipData.PoolID} not found on server (${server.ident})`);
+    async releasePort(cmd) {
+        try {
+            await this._quantel.releasePort(cmd.portId);
+        }
+        catch (e) {
+            if (e.status !== 404) { // releasing a non-existent port is OK
+                throw e;
             }
-            let useInOutPoints = !!(cmd.clip.inPoint ||
-                cmd.clip.length);
-            let inPoint = cmd.clip.inPoint;
-            let length = cmd.clip.length;
-            /** In point [frames] */
-            const inPointFrames = (inPoint ?
-                Math.round(inPoint * DEFAULT_FPS / 1000) : // todo: handle fps, get it from clip?
-                0) || 0;
-            /** Duration [frames] */
-            let lengthFrames = (length ?
-                Math.round(length * DEFAULT_FPS / 1000) : // todo: handle fps, get it from clip?
-                0) || parseInt(clipData.Frames, 10) || 0;
-            if (inPoint && !length) {
-                lengthFrames -= inPointFrames;
-            }
-            const outPointFrames = inPointFrames + lengthFrames;
-            let portInPoint;
-            let portOutPoint;
-            // Check if the fragments are already loaded on the port?
-            const loadedFragments = trackedPort.loadedFragments[clipId];
-            if (loadedFragments &&
-                loadedFragments.inPoint === inPointFrames &&
-                loadedFragments.outPoint === outPointFrames) {
-                // Reuse the already loaded fragment:
-                portInPoint = loadedFragments.portInPoint;
-                // portOutPoint = loadedFragments.portOutPoint
-            }
-            else {
-                // Fetch fragments of clip:
-                const fragmentsInfo = yield (useInOutPoints ?
-                    this._quantel.getClipFragments(clipId, inPointFrames, outPointFrames) :
-                    this._quantel.getClipFragments(clipId));
-                // Check what the end-frame of the port is:
-                const portStatus = yield this._quantel.getPort(cmd.portId);
-                if (!portStatus)
-                    throw new Error(`Port ${cmd.portId} not found`);
-                // Load the fragments onto Port:
-                portInPoint = portStatus.endOfData || 0;
-                const newPortStatus = yield this._quantel.loadFragmentsOntoPort(cmd.portId, fragmentsInfo.fragments, portInPoint);
-                if (!newPortStatus)
-                    throw new Error(`Port ${cmd.portId} not found after loading fragments`);
-                // Calculate the end of data of the fragments:
-                portOutPoint = portInPoint + (fragmentsInfo.fragments
-                    .filter(fragment => (fragment.type === 'VideoFragment' && // Only use video, so that we don't risk ending at a black frame
-                    fragment.trackNum === 0 // < 0 are historic data (not used for automation), 0 is the normal, playable video track, > 0 are extra channels, such as keys
-                ))
-                    .reduce((prev, current) => prev > current.finish ? prev : current.finish, 0) - 1 // newPortStatus.endOfData - 1
+        }
+        // Store to the local tracking state:
+        delete this._quantelState.port[cmd.portId];
+    }
+    async loadClipFragments(cmd) {
+        const trackedPort = this.getTrackedPort(cmd.portId);
+        const server = await this.getServer();
+        let clipId = await this.getClipId(cmd.clip);
+        let clipData = await this._quantel.getClip(clipId);
+        if (!clipData)
+            throw new Error(`Clip ${clipId} not found`);
+        if (!clipData.PoolID)
+            throw new Error(`Clip ${clipData.ClipID} missing PoolID`);
+        // Check that the clip is present on the server:
+        if (!(server.pools || []).includes(clipData.PoolID)) {
+            // It looks like the clip is not present on any of the pools on the server.
+            if (this.options.allowCloneClips) {
+                if (!server.pools)
+                    throw new Error(`server.pools not set!`);
+                // Try to copy the clip:
+                const cloneResult = await this._quantel.copyClip(undefined, // source zoneId. inter-zone copying not supported atm.
+                clipData.ClipID, server.pools[0] // pending discussion, which to choose
                 );
-                // Store a reference to the beginning of the fragments:
-                trackedPort.loadedFragments[clipId] = {
-                    portInPoint: portInPoint,
-                    portOutPoint: portOutPoint,
-                    inPoint: inPointFrames,
-                    outPoint: outPointFrames
-                };
-            }
-            // Prepare the jump?
-            let timeLeftToPlay = cmd.timeOfPlay - this.getCurrentTime();
-            if (timeLeftToPlay > 0) { // We have time to prepare the jump
-                if (portInPoint > 0 && trackedPort.scheduledStop === null) {
-                    // Since we've now added fragments to the end of the port timeline, we should make sure it'll stop at the previous end
-                    yield this._quantel.portStop(cmd.portId, portInPoint - 1);
-                    trackedPort.scheduledStop = portInPoint - 1;
+                // Check that the new clip is valid:
+                clipData = await this._quantel.getClip(cloneResult.copyID // new clip id
+                );
+                if (!clipData)
+                    throw new Error(`Copied Clip ${cloneResult.copyID} not found`);
+                if (!clipData.PoolID)
+                    throw new Error(`Copied Clip ${clipData.ClipID} missing PoolID`);
+                // Check that the copied clip is present on the server:
+                if (!(server.pools || []).includes(clipData.PoolID)) {
+                    throw new Error(`Copied Clip "${clipData.ClipID}" PoolID ${clipData.PoolID} not found on right server (${server.ident})`);
                 }
-                yield this._quantel.portPrepareJump(cmd.portId, portInPoint);
-                // Store the jump in the tracked state:
-                trackedPort.jumpOffset = portInPoint;
-            }
-        });
-    }
-    playClip(cmd) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            yield this.prepareClipJump(cmd, 'play');
-        });
-    }
-    pauseClip(cmd) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            yield this.prepareClipJump(cmd, 'pause');
-        });
-    }
-    clearClip(cmd) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            // Fetch tracked reference to the loaded clip:
-            const trackedPort = this.getTrackedPort(cmd.portId);
-            if (cmd.transition) {
-                if (cmd.transition.type === src_1.QuantelTransitionType.DELAY) {
-                    if (yield this.waitWithPort(cmd.portId, cmd.transition.delay)) {
-                        // at this point, the wait aws aborted by someone else. Do nothing then.
-                        return;
-                    }
-                }
-            }
-            // Reset the port (this will clear all fragments and reset playhead)
-            yield this._quantel.resetPort(cmd.portId);
-            trackedPort.loadedFragments = {};
-            trackedPort.offset = -1;
-            trackedPort.playing = false;
-            trackedPort.jumpOffset = null;
-            trackedPort.scheduledStop = null;
-        });
-    }
-    prepareClipJump(cmd, alsoDoAction) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            // Fetch tracked reference to the loaded clip:
-            const trackedPort = this.getTrackedPort(cmd.portId);
-            if (cmd.transition) {
-                if (cmd.transition.type === src_1.QuantelTransitionType.DELAY) {
-                    if (yield this.waitWithPort(cmd.portId, cmd.transition.delay)) {
-                        // at this point, the wait aws aborted by someone else. Do nothing then.
-                        return;
-                    }
-                }
-            }
-            const clipId = yield this.getClipId(cmd.clip);
-            const loadedFragments = trackedPort.loadedFragments[clipId];
-            if (!loadedFragments) {
-                // huh, the fragments hasn't been loaded
-                throw new Error(`Fragments of clip ${clipId} wasn't loaded`);
-            }
-            const clipFps = DEFAULT_FPS; // todo: handle fps, get it from clip?
-            const jumpToOffset = Math.floor(loadedFragments.portInPoint + (cmd.clip.playTime ?
-                Math.max(0, (cmd.clip.pauseTime || this.getCurrentTime()) - cmd.clip.playTime) * clipFps / 1000 :
-                0));
-            if (jumpToOffset === trackedPort.offset || // We're already there
-                (alsoDoAction === 'play' &&
-                    // trackedPort.offset &&
-                    jumpToOffset > trackedPort.offset &&
-                    jumpToOffset - trackedPort.offset < JUMP_ERROR_MARGIN
-                // We're probably a bit late, just start playing
-                )) {
-                // do nothing
             }
             else {
-                if (trackedPort.jumpOffset !== null &&
-                    Math.abs(trackedPort.jumpOffset - jumpToOffset) > JUMP_ERROR_MARGIN) {
-                    // It looks like the stored jump is no longer valid
-                    // Invalidate stored jump:
-                    trackedPort.jumpOffset = null;
+                throw new Error(`Clip "${clipData.ClipID}" PoolID ${clipData.PoolID} not found on right server (${server.ident})`);
+            }
+        }
+        let useInOutPoints = !!(cmd.clip.inPoint ||
+            cmd.clip.length);
+        let inPoint = cmd.clip.inPoint;
+        let length = cmd.clip.length;
+        /** In point [frames] */
+        const inPointFrames = (inPoint ?
+            Math.round(inPoint * DEFAULT_FPS / 1000) : // todo: handle fps, get it from clip?
+            0) || 0;
+        /** Duration [frames] */
+        let lengthFrames = (length ?
+            Math.round(length * DEFAULT_FPS / 1000) : // todo: handle fps, get it from clip?
+            0) || parseInt(clipData.Frames, 10) || 0;
+        if (inPoint && !length) {
+            lengthFrames -= inPointFrames;
+        }
+        const outPointFrames = inPointFrames + lengthFrames;
+        let portInPoint;
+        let portOutPoint;
+        // Check if the fragments are already loaded on the port?
+        const loadedFragments = trackedPort.loadedFragments[clipId];
+        if (loadedFragments &&
+            loadedFragments.inPoint === inPointFrames &&
+            loadedFragments.outPoint === outPointFrames) {
+            // Reuse the already loaded fragment:
+            portInPoint = loadedFragments.portInPoint;
+            // portOutPoint = loadedFragments.portOutPoint
+        }
+        else {
+            // Fetch fragments of clip:
+            const fragmentsInfo = await (useInOutPoints ?
+                this._quantel.getClipFragments(clipId, inPointFrames, outPointFrames) :
+                this._quantel.getClipFragments(clipId));
+            // Check what the end-frame of the port is:
+            const portStatus = await this._quantel.getPort(cmd.portId);
+            if (!portStatus)
+                throw new Error(`Port ${cmd.portId} not found`);
+            // Load the fragments onto Port:
+            portInPoint = portStatus.endOfData || 0;
+            const newPortStatus = await this._quantel.loadFragmentsOntoPort(cmd.portId, fragmentsInfo.fragments, portInPoint);
+            if (!newPortStatus)
+                throw new Error(`Port ${cmd.portId} not found after loading fragments`);
+            // Calculate the end of data of the fragments:
+            portOutPoint = portInPoint + (fragmentsInfo.fragments
+                .filter(fragment => (fragment.type === 'VideoFragment' && // Only use video, so that we don't risk ending at a black frame
+                fragment.trackNum === 0 // < 0 are historic data (not used for automation), 0 is the normal, playable video track, > 0 are extra channels, such as keys
+            ))
+                .reduce((prev, current) => prev > current.finish ? prev : current.finish, 0) - 1 // newPortStatus.endOfData - 1
+            );
+            // Store a reference to the beginning of the fragments:
+            trackedPort.loadedFragments[clipId] = {
+                portInPoint: portInPoint,
+                portOutPoint: portOutPoint,
+                inPoint: inPointFrames,
+                outPoint: outPointFrames
+            };
+        }
+        // Prepare the jump?
+        let timeLeftToPlay = cmd.timeOfPlay - this.getCurrentTime();
+        if (timeLeftToPlay > 0) { // We have time to prepare the jump
+            if (portInPoint > 0 && trackedPort.scheduledStop === null) {
+                // Since we've now added fragments to the end of the port timeline, we should make sure it'll stop at the previous end
+                await this._quantel.portStop(cmd.portId, portInPoint - 1);
+                trackedPort.scheduledStop = portInPoint - 1;
+            }
+            await this._quantel.portPrepareJump(cmd.portId, portInPoint);
+            // Store the jump in the tracked state:
+            trackedPort.jumpOffset = portInPoint;
+        }
+    }
+    async playClip(cmd) {
+        await this.prepareClipJump(cmd, 'play');
+    }
+    async pauseClip(cmd) {
+        await this.prepareClipJump(cmd, 'pause');
+    }
+    async clearClip(cmd) {
+        // Fetch tracked reference to the loaded clip:
+        const trackedPort = this.getTrackedPort(cmd.portId);
+        if (cmd.transition) {
+            if (cmd.transition.type === src_1.QuantelTransitionType.DELAY) {
+                if (await this.waitWithPort(cmd.portId, cmd.transition.delay)) {
+                    // at this point, the wait aws aborted by someone else. Do nothing then.
+                    return;
                 }
-                // Jump the port playhead to the correct place
-                if (trackedPort.jumpOffset !== null) {
-                    // Good, there is a prepared jump
+            }
+        }
+        // Reset the port (this will clear all fragments and reset playhead)
+        await this._quantel.resetPort(cmd.portId);
+        trackedPort.loadedFragments = {};
+        trackedPort.offset = -1;
+        trackedPort.playing = false;
+        trackedPort.jumpOffset = null;
+        trackedPort.scheduledStop = null;
+    }
+    async prepareClipJump(cmd, alsoDoAction) {
+        // Fetch tracked reference to the loaded clip:
+        const trackedPort = this.getTrackedPort(cmd.portId);
+        if (cmd.transition) {
+            if (cmd.transition.type === src_1.QuantelTransitionType.DELAY) {
+                if (await this.waitWithPort(cmd.portId, cmd.transition.delay)) {
+                    // at this point, the wait aws aborted by someone else. Do nothing then.
+                    return;
+                }
+            }
+        }
+        const clipId = await this.getClipId(cmd.clip);
+        const loadedFragments = trackedPort.loadedFragments[clipId];
+        if (!loadedFragments) {
+            // huh, the fragments hasn't been loaded
+            throw new Error(`Fragments of clip ${clipId} wasn't loaded`);
+        }
+        const clipFps = DEFAULT_FPS; // todo: handle fps, get it from clip?
+        const jumpToOffset = Math.floor(loadedFragments.portInPoint + (cmd.clip.playTime ?
+            Math.max(0, (cmd.clip.pauseTime || this.getCurrentTime()) - cmd.clip.playTime) * clipFps / 1000 :
+            0));
+        if (jumpToOffset === trackedPort.offset || // We're already there
+            (alsoDoAction === 'play' &&
+                // trackedPort.offset &&
+                jumpToOffset > trackedPort.offset &&
+                jumpToOffset - trackedPort.offset < JUMP_ERROR_MARGIN
+            // We're probably a bit late, just start playing
+            )) {
+            // do nothing
+        }
+        else {
+            if (trackedPort.jumpOffset !== null &&
+                Math.abs(trackedPort.jumpOffset - jumpToOffset) > JUMP_ERROR_MARGIN) {
+                // It looks like the stored jump is no longer valid
+                // Invalidate stored jump:
+                trackedPort.jumpOffset = null;
+            }
+            // Jump the port playhead to the correct place
+            if (trackedPort.jumpOffset !== null) {
+                // Good, there is a prepared jump
+                if (alsoDoAction === 'pause') {
+                    // Pause the playback:
+                    await this._quantel.portStop(cmd.portId);
+                    trackedPort.scheduledStop = null;
+                    trackedPort.playing = false;
+                }
+                // Trigger the jump:
+                await this._quantel.portTriggerJump(cmd.portId);
+                trackedPort.offset = trackedPort.jumpOffset;
+                trackedPort.jumpOffset = null;
+            }
+            else {
+                // No jump has been prepared
+                if (cmd.mode === src_1.QuantelControlMode.QUALITY) {
+                    // Prepare a soft jump:
+                    await this._quantel.portPrepareJump(cmd.portId, jumpToOffset);
+                    trackedPort.jumpOffset = jumpToOffset;
                     if (alsoDoAction === 'pause') {
                         // Pause the playback:
-                        yield this._quantel.portStop(cmd.portId);
+                        await this._quantel.portStop(cmd.portId);
                         trackedPort.scheduledStop = null;
                         trackedPort.playing = false;
+                        // Allow the server some time to load the clip:
+                        await this.wait(SOFT_JUMP_WAIT_TIME); // This is going to give the
+                    }
+                    else {
+                        // Allow the server some time to load the clip:
+                        await this.wait(SOFT_JUMP_WAIT_TIME); // This is going to give the
                     }
                     // Trigger the jump:
-                    yield this._quantel.portTriggerJump(cmd.portId);
+                    await this._quantel.portTriggerJump(cmd.portId);
                     trackedPort.offset = trackedPort.jumpOffset;
                     trackedPort.jumpOffset = null;
                 }
-                else {
-                    // No jump has been prepared
-                    if (cmd.mode === src_1.QuantelControlMode.QUALITY) {
-                        // Prepare a soft jump:
-                        yield this._quantel.portPrepareJump(cmd.portId, jumpToOffset);
-                        trackedPort.jumpOffset = jumpToOffset;
-                        if (alsoDoAction === 'pause') {
-                            // Pause the playback:
-                            yield this._quantel.portStop(cmd.portId);
-                            trackedPort.scheduledStop = null;
-                            trackedPort.playing = false;
-                            // Allow the server some time to load the clip:
-                            yield this.wait(SOFT_JUMP_WAIT_TIME); // This is going to give the
-                        }
-                        else {
-                            // Allow the server some time to load the clip:
-                            yield this.wait(SOFT_JUMP_WAIT_TIME); // This is going to give the
-                        }
-                        // Trigger the jump:
-                        yield this._quantel.portTriggerJump(cmd.portId);
-                        trackedPort.offset = trackedPort.jumpOffset;
-                        trackedPort.jumpOffset = null;
+                else { // cmd.mode === QuantelControlMode.SPEED
+                    // Just do a hard jump:
+                    await this._quantel.portHardJump(cmd.portId, jumpToOffset);
+                    trackedPort.offset = jumpToOffset;
+                    trackedPort.playing = false;
+                }
+            }
+        }
+        if (alsoDoAction === 'play') {
+            // Start playing:
+            await this._quantel.portPlay(cmd.portId);
+            await this.wait(60);
+            // Check if the play actually succeeded:
+            const portStatus = await this._quantel.getPort(cmd.portId);
+            if (!portStatus) {
+                // oh, something's gone very wrong
+                throw new Error(`Quantel: After play, port doesn't exist anymore`);
+            }
+            else if (!portStatus.status.match(/playing/i)) {
+                // The port didn't seem to have started playing, let's retry a few more times:
+                this.emit('warning', `quantelRecovery: port didn't play`);
+                this.emit('warning', portStatus);
+                for (let i = 0; i < 3; i++) {
+                    await this.wait(20);
+                    await this._quantel.portPlay(cmd.portId);
+                    await this.wait(60 + i * 200); // Wait progressively longer times before trying again:
+                    const portStatus = await this._quantel.getPort(cmd.portId);
+                    if (portStatus && portStatus.status.match(/playing/i)) {
+                        // it has started playing, all good!
+                        this.emit('warning', `quantelRecovery: port started playing again, on try ${i}`);
+                        break;
                     }
-                    else { // cmd.mode === QuantelControlMode.SPEED
-                        // Just do a hard jump:
-                        yield this._quantel.portHardJump(cmd.portId, jumpToOffset);
-                        trackedPort.offset = jumpToOffset;
-                        trackedPort.playing = false;
+                    else {
+                        this.emit('warning', `quantelRecovery: try ${i}, no luck trying again..`);
+                        this.emit('warning', portStatus);
                     }
                 }
             }
-            if (alsoDoAction === 'play') {
-                // Start playing:
-                yield this._quantel.portPlay(cmd.portId);
-                yield this.wait(60);
-                // Check if the play actually succeeded:
-                const portStatus = yield this._quantel.getPort(cmd.portId);
-                if (!portStatus) {
-                    // oh, something's gone very wrong
-                    throw new Error(`Quantel: After play, port doesn't exist anymore`);
-                }
-                else if (!portStatus.status.match(/playing/i)) {
-                    // The port didn't seem to have started playing, let's retry a few more times:
-                    this.emit('warning', `quantelRecovery: port didn't play`);
-                    this.emit('warning', portStatus);
-                    for (let i = 0; i < 3; i++) {
-                        yield this.wait(20);
-                        yield this._quantel.portPlay(cmd.portId);
-                        yield this.wait(60 + i * 200); // Wait progressively longer times before trying again:
-                        const portStatus = yield this._quantel.getPort(cmd.portId);
-                        if (portStatus && portStatus.status.match(/playing/i)) {
-                            // it has started playing, all good!
-                            this.emit('warning', `quantelRecovery: port started playing again, on try ${i}`);
-                            break;
-                        }
-                        else {
-                            this.emit('warning', `quantelRecovery: try ${i}, no luck trying again..`);
-                            this.emit('warning', portStatus);
-                        }
-                    }
-                }
-                trackedPort.scheduledStop = null;
-                trackedPort.playing = true;
-                // Schedule the port to stop at the last frame of the clip
-                if (loadedFragments.portOutPoint) {
-                    yield this._quantel.portStop(cmd.portId, loadedFragments.portOutPoint);
-                    trackedPort.scheduledStop = loadedFragments.portOutPoint;
-                }
+            trackedPort.scheduledStop = null;
+            trackedPort.playing = true;
+            // Schedule the port to stop at the last frame of the clip
+            if (loadedFragments.portOutPoint) {
+                await this._quantel.portStop(cmd.portId, loadedFragments.portOutPoint);
+                trackedPort.scheduledStop = loadedFragments.portOutPoint;
             }
-            else if (alsoDoAction === 'pause' &&
-                trackedPort.playing) {
-                yield this._quantel.portHardJump(cmd.portId, jumpToOffset);
-                trackedPort.offset = jumpToOffset;
-                trackedPort.playing = false;
-            }
-        });
+        }
+        else if (alsoDoAction === 'pause' &&
+            trackedPort.playing) {
+            await this._quantel.portHardJump(cmd.portId, jumpToOffset);
+            trackedPort.offset = jumpToOffset;
+            trackedPort.playing = false;
+        }
     }
     getTrackedPort(portId) {
         const trackedPort = this._quantelState.port[portId];
@@ -751,57 +752,53 @@ class QuantelManager extends events_1.EventEmitter {
         }
         return trackedPort;
     }
-    getServer() {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            const server = yield this._quantel.getServer();
-            if (!server)
-                throw new Error(`Quantel server ${this._quantel.serverId} not found`);
-            if (!server.pools)
-                throw new Error(`Server ${server.ident} has no .pools`);
-            if (!server.pools.length)
-                throw new Error(`Server ${server.ident} has an empty .pools array`);
-            return server;
-        });
+    async getServer() {
+        const server = await this._quantel.getServer();
+        if (!server)
+            throw new Error(`Quantel server ${this._quantel.serverId} not found`);
+        if (!server.pools)
+            throw new Error(`Server ${server.ident} has no .pools`);
+        if (!server.pools.length)
+            throw new Error(`Server ${server.ident} has an empty .pools array`);
+        return server;
     }
-    getClipId(clip) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            let clipId = clip.clipId;
-            if (!clipId && clip.guid) {
-                clipId = yield this._cache.getSet(`clip.guid.${clip.guid}.clipId`, () => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                    const server = yield this.getServer();
-                    // Look up the clip:
-                    const foundClips = yield this._quantel.searchClip({
-                        ClipGUID: `"${clip.guid}"`
-                    });
-                    const foundClip = _.find(foundClips, (clip) => {
-                        return (clip.PoolID &&
-                            (server.pools || []).indexOf(clip.PoolID) !== -1);
-                    });
-                    if (!foundClip)
-                        throw new Error(`Clip with GUID "${clip.guid}" not found on server (${server.ident})`);
-                    return foundClip.ClipID;
-                }));
-            }
-            else if (!clipId && clip.title) {
-                clipId = yield this._cache.getSet(`clip.title.${clip.title}.clipId`, () => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                    const server = yield this.getServer();
-                    // Look up the clip:
-                    const foundClips = yield this._quantel.searchClip({
-                        Title: `"${clip.title}"`
-                    });
-                    const foundClip = _.find(foundClips, (clip) => {
-                        return (clip.PoolID &&
-                            (server.pools || []).indexOf(clip.PoolID) !== -1);
-                    });
-                    if (!foundClip)
-                        throw new Error(`Clip with Title "${clip.title}" not found on server (${server.ident})`);
-                    return foundClip.ClipID;
-                }));
-            }
-            if (!clipId)
-                throw new Error(`Unable to determine clipId for clip "${clip.title || clip.guid}"`);
-            return clipId;
-        });
+    async getClipId(clip) {
+        let clipId = clip.clipId;
+        if (!clipId && clip.guid) {
+            clipId = await this._cache.getSet(`clip.guid.${clip.guid}.clipId`, async () => {
+                const server = await this.getServer();
+                // Look up the clip:
+                const foundClips = await this._quantel.searchClip({
+                    ClipGUID: `"${clip.guid}"`
+                });
+                const foundClip = _.find(foundClips, (clip) => {
+                    return (clip.PoolID &&
+                        (server.pools || []).indexOf(clip.PoolID) !== -1);
+                });
+                if (!foundClip)
+                    throw new Error(`Clip with GUID "${clip.guid}" not found on server (${server.ident})`);
+                return foundClip.ClipID;
+            });
+        }
+        else if (!clipId && clip.title) {
+            clipId = await this._cache.getSet(`clip.title.${clip.title}.clipId`, async () => {
+                const server = await this.getServer();
+                // Look up the clip:
+                const foundClips = await this._quantel.searchClip({
+                    Title: `"${clip.title}"`
+                });
+                const foundClip = _.find(foundClips, (clip) => {
+                    return (clip.PoolID &&
+                        (server.pools || []).indexOf(clip.PoolID) !== -1);
+                });
+                if (!foundClip)
+                    throw new Error(`Clip with Title "${clip.title}" not found on server (${server.ident})`);
+                return foundClip.ClipID;
+            });
+        }
+        if (!clipId)
+            throw new Error(`Unable to determine clipId for clip "${clip.title || clip.guid}"`);
+        return clipId;
     }
     wait(time) {
         return new Promise(resolve => {
@@ -861,7 +858,7 @@ class Cache {
         }
         else {
             let value = fcn();
-            if (value && _.isObject(value) && _.isFunction(value.then)) {
+            if (value && _.isObject(value) && _.isFunction(value['then'])) {
                 // value is a promise
                 return (Promise.resolve(value)
                     .then((value) => {

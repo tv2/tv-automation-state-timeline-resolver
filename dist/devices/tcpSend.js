@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tslib_1 = require("tslib");
 const net_1 = require("net");
 const _ = require("underscore");
 const device_1 = require("./device");
@@ -30,6 +29,7 @@ class TCPSendDevice extends device_1.DeviceWithState {
     }
     init(initOptions) {
         this._makeReadyCommands = initOptions.makeReadyCommands || [];
+        this._makeReadyDoesReset = initOptions.makeReadyDoesReset || false;
         this._host = initOptions.host;
         this._port = initOptions.port;
         this._bufferEncoding = initOptions.bufferEncoding;
@@ -62,28 +62,25 @@ class TCPSendDevice extends device_1.DeviceWithState {
         // Clear any scheduled commands after this time
         this._doOnTime.clearQueueAfter(clearAfterTime);
     }
-    makeReady(okToDestroyStuff) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (okToDestroyStuff && this._makeReadyCommands && this._makeReadyCommands.length > 0) {
-                yield this._disconnectTCPClient();
-                yield this._connectTCPClient();
-                const time = this.getCurrentTime();
-                _.each(this._makeReadyCommands, (cmd) => {
-                    // add the new commands to the queue:
-                    this._doOnTime.queue(time, cmd.queueId, (cmd) => {
-                        return this._commandReceiver(time, cmd, 'makeReady', '');
-                    }, cmd);
-                });
+    async makeReady(okToDestroyStuff) {
+        if (okToDestroyStuff) {
+            await this._disconnectTCPClient();
+            await this._connectTCPClient();
+            const time = this.getCurrentTime();
+            if (this._makeReadyDoesReset) {
+                this.clearStates();
+                this._doOnTime.clearQueueAfter(0);
             }
-        });
+            for (const cmd of this._makeReadyCommands || []) {
+                await this._commandReceiver(time, cmd, 'makeReady', '');
+            }
+        }
     }
-    terminate() {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            this._doOnTime.dispose();
-            clearTimeout(this._retryConnectTimeout);
-            yield this._disconnectTCPClient();
-            return true;
-        });
+    async terminate() {
+        this._doOnTime.dispose();
+        clearTimeout(this._retryConnectTimeout);
+        await this._disconnectTCPClient();
+        return true;
     }
     get canConnect() {
         return true;

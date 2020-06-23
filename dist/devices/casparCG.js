@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tslib_1 = require("tslib");
 const _ = require("underscore");
 const device_1 = require("./device");
 const casparcg_connection_1 = require("casparcg-connection");
@@ -24,7 +23,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
         this._timeToTimecodeMap = { time: 0, timecode: 0 };
         this._timeBase = {};
         this._connected = false;
-        this._retryTime = MEDIA_RETRY_INTERVAL;
+        this._retryTime = null;
         if (deviceOptions.options) {
             if (deviceOptions.options.commandReceiver)
                 this._commandReceiver = deviceOptions.options.commandReceiver;
@@ -47,46 +46,43 @@ class CasparCGDevice extends device_1.DeviceWithState {
      * Initiates the connection with CasparCG through the ccg-connection lib and
      * initializes CasparCG State library.
      */
-    init(initOptions) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            this.initOptions = initOptions;
-            this._useScheduling = initOptions.useScheduling;
-            this._ccg = new casparcg_connection_1.CasparCG({
-                host: initOptions.host,
-                port: initOptions.port,
-                autoConnect: true,
-                virginServerCheck: true,
-                onConnectionChanged: (connected) => {
-                    this._connected = connected;
-                    this._connectionChanged();
-                }
-            });
-            this._ccg.on(casparcg_connection_1.CasparCGSocketStatusEvent.CONNECTED, (event) => {
-                this.makeReady(false) // always make sure timecode is correct, setting it can never do bad
-                    .catch((e) => this.emit('error', 'casparCG.makeReady', e));
-                if (event.valueOf().virginServer === true) {
-                    // a "virgin server" was just restarted (so it is cleared & black).
-                    // Otherwise it was probably just a loss of connection
-                    this._ccgState.softClearState();
-                    this.clearStates();
-                    this.emit('resetResolver');
-                }
-            });
-            let command = yield this._ccg.info();
-            this._ccgState.initStateFromChannelInfo(_.map(command.response.data, (obj) => {
-                return {
-                    channelNo: obj.channel,
-                    videoMode: obj.format.toUpperCase(),
-                    fps: obj.frameRate
-                };
-            }), this.getCurrentTime());
-            if (initOptions.retryInterval !== false) {
-                if (typeof initOptions.retryInterval === 'number')
-                    this._retryTime = initOptions.retryInterval || MEDIA_RETRY_INTERVAL;
-                this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime);
+    async init(initOptions) {
+        this.initOptions = initOptions;
+        this._useScheduling = initOptions.useScheduling;
+        this._ccg = new casparcg_connection_1.CasparCG({
+            host: initOptions.host,
+            port: initOptions.port,
+            autoConnect: true,
+            virginServerCheck: true,
+            onConnectionChanged: (connected) => {
+                this._connected = connected;
+                this._connectionChanged();
             }
-            return true;
         });
+        this._ccg.on(casparcg_connection_1.CasparCGSocketStatusEvent.CONNECTED, (event) => {
+            this.makeReady(false) // always make sure timecode is correct, setting it can never do bad
+                .catch((e) => this.emit('error', 'casparCG.makeReady', e));
+            if (event.valueOf().virginServer === true) {
+                // a "virgin server" was just restarted (so it is cleared & black).
+                // Otherwise it was probably just a loss of connection
+                this._ccgState.softClearState();
+                this.clearStates();
+                this.emit('resetResolver');
+            }
+        });
+        let command = await this._ccg.info();
+        this._ccgState.initStateFromChannelInfo(_.map(command.response.data, (obj) => {
+            return {
+                channelNo: obj.channel,
+                videoMode: obj.format.toUpperCase(),
+                fps: obj.frameRate
+            };
+        }), this.getCurrentTime());
+        if (typeof initOptions.retryInterval === 'number') {
+            this._retryTime = initOptions.retryInterval || MEDIA_RETRY_INTERVAL;
+            this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime);
+        }
+        return true;
     }
     /**
      * Terminates the device safely such that things can be garbage collected.
@@ -230,8 +226,10 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 media: 'decklink',
                 input: {
                     device: inputObj.content.device,
-                    channelLayout: inputObj.content.channelLayout
+                    channelLayout: inputObj.content.channelLayout,
+                    format: inputObj.content.deviceFormat
                 },
+                filter: inputObj.content.filter,
                 playing: true,
                 playTime: null
             });
@@ -281,8 +279,9 @@ class CasparCGDevice extends device_1.DeviceWithState {
                     channelLayout: routeObj.content.channelLayout
                 },
                 mode: routeObj.content.mode || undefined,
+                delay: routeObj.content.delay || undefined,
                 playing: true,
-                playTime: null // layer.resolved.startTime || null
+                playTime: null // layer.resolved.startTime || null,
             });
         }
         else if (layer.content.type === src_1.TimelineContentTypeCasparCg.RECORD) {
@@ -377,17 +376,26 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 const channel = caspar.channels[mapping.channel] ? caspar.channels[mapping.channel] : new casparcg_state_1.CasparCG.Channel();
                 channel.channelNo = Number(mapping.channel) || 1;
                 // @todo: check if we need to get fps.
-                channel.fps = 1 / 25; // 25 / 1000 // 25 fps over 1000ms
+                channel.fps = 25 / 1000; // 25 fps over 1000ms
                 caspar.channels[channel.channelNo] = channel;
                 // create layer of appropriate type
                 const foregroundStateLayer = foregroundObj ? this.convertObjectToCasparState(foregroundObj, mapping, true) : undefined;
                 const backgroundStateLayer = backgroundObj ? this.convertObjectToCasparState(backgroundObj, mapping, false) : undefined;
                 if (foregroundStateLayer) {
-                    channel.layers[mapping.layer] = Object.assign(Object.assign({}, foregroundStateLayer), { nextUp: backgroundStateLayer ? device_1.literal(Object.assign(Object.assign({}, backgroundStateLayer), { auto: false })) : undefined });
+                    channel.layers[mapping.layer] = {
+                        ...foregroundStateLayer,
+                        nextUp: backgroundStateLayer ? device_1.literal({
+                            ...backgroundStateLayer,
+                            auto: false
+                        }) : undefined
+                    };
                 }
                 else if (backgroundStateLayer) {
                     if (mapping.previewWhenNotOnAir) {
-                        channel.layers[mapping.layer] = Object.assign(Object.assign({}, backgroundStateLayer), { playing: false });
+                        channel.layers[mapping.layer] = {
+                            ...backgroundStateLayer,
+                            playing: false
+                        };
                     }
                     else {
                         channel.layers[mapping.layer] = device_1.literal({
@@ -396,7 +404,10 @@ class CasparCGDevice extends device_1.DeviceWithState {
                             content: casparcg_state_1.CasparCG.LayerContentType.NOTHING,
                             playing: false,
                             pauseTime: 0,
-                            nextUp: device_1.literal(Object.assign(Object.assign({}, backgroundStateLayer), { auto: false }))
+                            nextUp: device_1.literal({
+                                ...backgroundStateLayer,
+                                auto: false
+                            })
                         });
                     }
                 }
@@ -410,48 +421,46 @@ class CasparCGDevice extends device_1.DeviceWithState {
      * all channels and resets our states.
      * @param okToDestroyStuff Whether it is OK to restart the device
      */
-    makeReady(okToDestroyStuff) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            // Sync Caspar Time to our time:
-            let command = yield this._ccg.info();
-            let channels = command.response.data;
-            const attemptSync = (channelNo, tries) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                let startTime = this.getCurrentTime();
-                yield this._commandReceiver(startTime, new casparcg_connection_1.AMCP.TimeCommand({
-                    channel: channelNo,
-                    timecode: this.convertTimeToTimecode(startTime, channelNo)
-                }), 'makeReady', '');
-                let duration = this.getCurrentTime() - startTime;
-                if (duration > MAX_TIMESYNC_DURATION) { // @todo: acceptable time is dependent on fps
-                    if (tries > MAX_TIMESYNC_TRIES) {
-                        this.emit('error', 'CasparCG', new Error(`CasparCG Time command took too long (${MAX_TIMESYNC_TRIES} tries took longer than ${MAX_TIMESYNC_DURATION}ms), channel will be slightly out of sync!`));
-                        return Promise.resolve();
-                    }
-                    yield new Promise(resolve => { setTimeout(() => resolve(), MAX_TIMESYNC_DURATION); });
-                    yield attemptSync(channelNo, tries + 1);
+    async makeReady(okToDestroyStuff) {
+        // Sync Caspar Time to our time:
+        let command = await this._ccg.info();
+        let channels = command.response.data;
+        const attemptSync = async (channelNo, tries) => {
+            let startTime = this.getCurrentTime();
+            await this._commandReceiver(startTime, new casparcg_connection_1.AMCP.TimeCommand({
+                channel: channelNo,
+                timecode: this.convertTimeToTimecode(startTime, channelNo)
+            }), 'makeReady', '');
+            let duration = this.getCurrentTime() - startTime;
+            if (duration > MAX_TIMESYNC_DURATION) { // @todo: acceptable time is dependent on fps
+                if (tries > MAX_TIMESYNC_TRIES) {
+                    this.emit('error', 'CasparCG', new Error(`CasparCG Time command took too long (${MAX_TIMESYNC_TRIES} tries took longer than ${MAX_TIMESYNC_DURATION}ms), channel will be slightly out of sync!`));
+                    return Promise.resolve();
                 }
-            });
-            if (this._useScheduling) {
-                for (let i in channels) {
-                    let channel = channels[i];
-                    let channelNo = channel.channel;
-                    yield attemptSync(channelNo, 1);
-                }
+                await new Promise(resolve => { setTimeout(() => resolve(), MAX_TIMESYNC_DURATION); });
+                await attemptSync(channelNo, tries + 1);
             }
-            // Clear all channels (?)
-            if (okToDestroyStuff) {
-                yield Promise.all(_.map(channels, (channel) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                    yield this._commandReceiver(this.getCurrentTime(), new casparcg_connection_1.AMCP.ClearCommand({
-                        channel: channel.channel
-                    }), 'makeReady and destroystuff', '');
-                })));
+        };
+        if (this._useScheduling) {
+            for (let i in channels) {
+                let channel = channels[i];
+                let channelNo = channel.channel;
+                await attemptSync(channelNo, 1);
             }
-            // reset our own state(s):
-            if (okToDestroyStuff) {
-                this.clearStates();
-            }
-            // a resolveTimeline will be triggered later
-        });
+        }
+        // Clear all channels (?)
+        if (okToDestroyStuff) {
+            await Promise.all(_.map(channels, async (channel) => {
+                await this._commandReceiver(this.getCurrentTime(), new casparcg_connection_1.AMCP.ClearCommand({
+                    channel: channel.channel
+                }), 'makeReady and destroystuff', '');
+            }));
+        }
+        // reset our own state(s):
+        if (okToDestroyStuff) {
+            this.clearStates();
+        }
+        // a resolveTimeline will be triggered later
     }
     /**
      * Attemps to restart casparcg over the HTTP API provided by CasparCG launcher.
@@ -596,13 +605,13 @@ class CasparCGDevice extends device_1.DeviceWithState {
         // do no retry while we are sending commands, instead always retry closely after:
         if (!context.match(/\[RETRY\]/i)) {
             clearTimeout(this._retryTimeout);
-            if (!this.initOptions || this.initOptions.retryInterval !== false)
+            if (this._retryTime)
                 this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime);
         }
         let cwc = {
             context: context,
             timelineObjId: timelineObjId,
-            command: cmd
+            command: JSON.stringify(cmd)
         };
         this.emit('debug', cwc);
         return this._ccg.do(cmd)
@@ -625,17 +634,19 @@ class CasparCGDevice extends device_1.DeviceWithState {
                     const currentCasparState = this.convertStateToCaspar(currentState.state);
                     const trackedState = this._ccgState.getState();
                     const channel = currentCasparState.channels[resCommand.channel];
-                    if (!trackedState.channels[resCommand.channel]) {
-                        trackedState.channels[resCommand.channel] = {
-                            channelNo: channel.channelNo,
-                            fps: channel.fps || 0,
-                            videoMode: channel.videoMode || null,
-                            layers: {}
-                        };
+                    if (channel) {
+                        if (!trackedState.channels[resCommand.channel]) {
+                            trackedState.channels[resCommand.channel] = {
+                                channelNo: channel.channelNo,
+                                fps: channel.fps || 0,
+                                videoMode: channel.videoMode || null,
+                                layers: {}
+                            };
+                        }
+                        // Copy the tracked from current state:
+                        trackedState.channels[resCommand.channel].layers[resCommand.layer] = channel.layers[resCommand.layer];
+                        this._ccgState.setState(trackedState);
                     }
-                    // Copy the tracked from current state:
-                    trackedState.channels[resCommand.channel].layers[resCommand.layer] = currentCasparState.channels[resCommand.channel].layers[resCommand.layer];
-                    this._ccgState.setState(trackedState);
                 }
             }
         }).catch((error) => {
@@ -657,7 +668,6 @@ class CasparCGDevice extends device_1.DeviceWithState {
             else if (cmd.payload && !_.isEmpty(cmd.payload)) {
                 errorString += ', payload: ' + JSON.stringify(cmd.payload);
             }
-            console.log('commandError', errorString);
             this.emit('commandError', new Error(errorString), cwc);
             if (cmd.name === 'ScheduleSetCommand') {
                 // delete this._queue[cmd.getParam('command').token]
@@ -671,7 +681,9 @@ class CasparCGDevice extends device_1.DeviceWithState {
      * the intended (timeline) state and that command will be executed.
      */
     _assertIntendedState() {
-        this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime);
+        if (this._retryTime) {
+            this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime);
+        }
         const tlState = this.getState(this.getCurrentTime());
         if (!tlState)
             return; // no state implies any state is correct
@@ -685,9 +697,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
                     ||
                         (layer.cmds[i]._commandName === 'PlayCommand' && layer.cmds[i]._objectParams.clip)
                     ||
-                        layer.cmds[i]._commandName === 'LoadCommand'
-                    ||
-                        layer.cmds[i]._commandName === 'ResumeCommand') {
+                        layer.cmds[i]._commandName === 'LoadCommand') {
                     layer.cmds[i].context.context += ' [RETRY]';
                     cmd.push(layer.cmds[i]);
                 }

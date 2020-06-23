@@ -100,7 +100,10 @@ class OSCMessageDevice extends device_1.DeviceWithState {
         const addrToOSCMessage = {};
         const addrToPriority = {};
         _.each(state.layers, (layer) => {
-            const content = Object.assign(Object.assign({}, layer.content), { fromTlObject: layer.id });
+            const content = {
+                ...layer.content,
+                fromTlObject: layer.id
+            };
             if ((addrToOSCMessage[content.path] &&
                 addrToPriority[content.path] <= (layer.priority || 0)) ||
                 !addrToOSCMessage[content.path]) {
@@ -202,7 +205,10 @@ class OSCMessageDevice extends device_1.DeviceWithState {
                         }
                     }
                 }
-                this.transitions[cmd.path] = Object.assign({ started: time }, cmd);
+                this.transitions[cmd.path] = {
+                    started: time,
+                    ...cmd
+                };
                 this._oscSender({
                     address: cmd.path,
                     args: [...cmd.values].map((o, i) => cmd.from[i] || o)

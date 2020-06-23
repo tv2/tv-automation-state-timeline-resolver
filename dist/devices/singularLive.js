@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tslib_1 = require("tslib");
 const _ = require("underscore");
 const device_1 = require("./device");
 const src_1 = require("../types/src");
@@ -66,18 +65,16 @@ class SingularLiveDevice extends device_1.DeviceWithState {
         // Good, since this device has no status, really
         return this._deviceStatus;
     }
-    makeReady(_okToDestroyStuff) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            // if (okToDestroyStuff && this._makeReadyCommands && this._makeReadyCommands.length > 0) {
-            // 	const time = this.getCurrentTime()
-            // 	_.each(this._makeReadyCommands, (cmd: SingularLiveCommandContent) => {
-            // 		// add the new commands to the queue:
-            // 		this._doOnTime.queue(time, undefined, (cmd: SingularLiveCommandContent) => {
-            // 			return this._commandReceiver(time, cmd, 'makeReady', '')
-            // 		}, cmd)
-            // 	})
-            // }
-        });
+    async makeReady(_okToDestroyStuff) {
+        // if (okToDestroyStuff && this._makeReadyCommands && this._makeReadyCommands.length > 0) {
+        // 	const time = this.getCurrentTime()
+        // 	_.each(this._makeReadyCommands, (cmd: SingularLiveCommandContent) => {
+        // 		// add the new commands to the queue:
+        // 		this._doOnTime.queue(time, undefined, (cmd: SingularLiveCommandContent) => {
+        // 			return this._commandReceiver(time, cmd, 'makeReady', '')
+        // 		}, cmd)
+        // 	})
+        // }
     }
     get canConnect() {
         return false;

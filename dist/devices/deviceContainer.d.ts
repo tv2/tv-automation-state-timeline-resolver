@@ -1,5 +1,5 @@
 import { ThreadedClass, ThreadedClassConfig } from 'threadedclass';
-import { DeviceClassOptions, Device } from './device';
+import { Device } from './device';
 import { DeviceType, DeviceOptionsAny } from '../types/src';
 /**
  * A device container is a wrapper around a device in ThreadedClass class, it
@@ -12,13 +12,12 @@ export declare class DeviceContainer {
     _deviceType: DeviceType;
     _deviceName: string;
     _deviceOptions: DeviceOptionsAny;
-    _options: DeviceClassOptions;
     _threadConfig: ThreadedClassConfig | undefined;
     onChildClose: () => void | undefined;
     private _instanceId;
     private _startTime;
     private _onEventListener;
-    create<T extends Device>(orgModule: string, orgClass: Function, deviceId: string, deviceOptions: DeviceOptionsAny, options: DeviceClassOptions, threadConfig?: ThreadedClassConfig): Promise<this>;
+    create<T extends Device, TCtor extends new (...args: any) => T>(orgModule: string, orgClass: TCtor, deviceId: string, deviceOptions: DeviceOptionsAny, getCurrentTime: () => number, threadConfig?: ThreadedClassConfig): Promise<this>;
     reloadProps(): Promise<void>;
     terminate(): Promise<void>;
     readonly device: ThreadedClass<Device>;
@@ -26,7 +25,6 @@ export declare class DeviceContainer {
     readonly deviceType: DeviceType;
     readonly deviceName: string;
     readonly deviceOptions: DeviceOptionsAny;
-    readonly options: DeviceClassOptions;
     readonly threadConfig: ThreadedClassConfig | undefined;
     readonly instanceId: number;
     readonly startTime: number;

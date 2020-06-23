@@ -18,7 +18,7 @@ exports.literal = literal;
  * class will use.
  */
 class Device extends events_1.EventEmitter {
-    constructor(deviceId, deviceOptions, options) {
+    constructor(deviceId, deviceOptions, getCurrentTime) {
         super();
         this._mappings = {};
         this._currentTimeDiff = 0;
@@ -30,14 +30,18 @@ class Device extends events_1.EventEmitter {
         this._instanceId = Math.floor(Math.random() * 10000);
         this._startTime = Date.now();
         this._reportAllCommands = !!deviceOptions.reportAllCommands;
-        // this._deviceOptions = this._deviceOptions // ts-lint fix
         if (process.env.JEST_WORKER_ID !== undefined) {
             // running in Jest test environment.
             // Because Jest does a lot of funky stuff with the timing, we have to pull the time directly.
             this.useDirectTime = true;
+            // Hack around the function mangling done by threadedClass
+            const getCurrentTimeTmp = getCurrentTime;
+            if (getCurrentTimeTmp && getCurrentTimeTmp.inner) {
+                getCurrentTime = getCurrentTimeTmp.inner;
+            }
         }
-        if (options.getCurrentTime) {
-            this._getCurrentTime = () => options.getCurrentTime();
+        if (getCurrentTime) {
+            this._getCurrentTime = getCurrentTime;
         }
         this._updateCurrentTime();
     }
@@ -108,13 +112,6 @@ class Device extends events_1.EventEmitter {
             });
         }
     }
-    on(event, listener) {
-        return super.on(event, listener);
-    }
-    emit(event, ...args) {
-        return super.emit(event, ...args);
-    }
-    /* tslint:enable:unified-signatures */
     get instanceId() {
         return this._instanceId;
     }

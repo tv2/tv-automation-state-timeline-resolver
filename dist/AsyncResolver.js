@@ -1,29 +1,26 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tslib_1 = require("tslib");
 const superfly_timeline_1 = require("superfly-timeline");
 const _ = require("underscore");
-const events_1 = require("events");
-class AsyncResolver extends events_1.EventEmitter {
-    resolveTimeline(resolveTime, timeline, limitTime) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            let objectsFixed = this._fixNowObjects(timeline, resolveTime);
-            const resolvedTimeline = superfly_timeline_1.Resolver.resolveTimeline(timeline, {
-                limitCount: 999,
-                limitTime: limitTime,
-                time: resolveTime
-            });
-            const resolvedStates = superfly_timeline_1.Resolver.resolveAllStates(resolvedTimeline);
-            return {
-                resolvedStates,
-                objectsFixed
-            };
-        });
+class AsyncResolver {
+    constructor(onSetTimelineTriggerTime) {
+        this.onSetTimelineTriggerTime = onSetTimelineTriggerTime;
     }
-    getState(resolved, resolveTime) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            return superfly_timeline_1.Resolver.getState(resolved, resolveTime);
+    async resolveTimeline(resolveTime, timeline, limitTime) {
+        let objectsFixed = this._fixNowObjects(timeline, resolveTime);
+        const resolvedTimeline = superfly_timeline_1.Resolver.resolveTimeline(timeline, {
+            limitCount: 999,
+            limitTime: limitTime,
+            time: resolveTime
         });
+        const resolvedStates = superfly_timeline_1.Resolver.resolveAllStates(resolvedTimeline);
+        return {
+            resolvedStates,
+            objectsFixed
+        };
+    }
+    async getState(resolved, resolveTime) {
+        return superfly_timeline_1.Resolver.getState(resolved, resolveTime);
     }
     _fixNowObjects(timeline, now) {
         let objectsFixed = [];
@@ -90,8 +87,7 @@ class AsyncResolver extends events_1.EventEmitter {
                 break;
         }
         if (objectsFixed.length) {
-            let r = objectsFixed;
-            this.emit('setTimelineTriggerTime', r);
+            this.onSetTimelineTriggerTime(objectsFixed);
         }
         return objectsFixed;
     }

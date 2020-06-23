@@ -13,6 +13,7 @@ declare type CommandContext = string;
  */
 export declare class HTTPSendDevice extends DeviceWithState<TimelineState> implements IDevice {
     private _makeReadyCommands;
+    private _makeReadyDoesReset;
     private _doOnTime;
     private _commandReceiver;
     constructor(deviceId: string, deviceOptions: DeviceOptionsHTTPSendInternal, options: any);

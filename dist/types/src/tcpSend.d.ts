@@ -12,6 +12,8 @@ export interface TcpSendCommandContent {
 }
 export interface TCPSendOptions {
     makeReadyCommands?: TcpSendCommandContent[];
+    /** Whether a makeReady should be treated as a reset of the device. It should be assumed clean, with the queue discarded, and state reapplied from empty */
+    makeReadyDoesReset?: boolean;
     host: string;
     port: number;
     bufferEncoding?: BufferEncoding;

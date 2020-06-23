@@ -1,7 +1,6 @@
 /// <reference types="node" />
-import { SisyfosCommand, SisyfosAPIState } from '../types/src/sisyfos';
 import { EventEmitter } from 'events';
-export declare class SisyfosInterface extends EventEmitter {
+export declare class SisyfosApi extends EventEmitter {
     host: string;
     port: number;
     private _oscClient;
@@ -32,4 +31,59 @@ export declare class SisyfosInterface extends EventEmitter {
     private updateIsConnected;
     private parseChannelCommand;
     private parseSisyfosState;
+}
+export declare enum SisyfosCommandType {
+    TOGGLE_PGM = "togglePgm",
+    TOGGLE_PST = "togglePst",
+    SET_FADER = "setFader",
+    CLEAR_PST_ROW = "clearPstRow",
+    LABEL = "label",
+    TAKE = "take",
+    VISIBLE = "visible",
+    RESYNC = "resync"
+}
+export interface BaseCommand {
+    type: SisyfosCommandType;
+}
+export interface ChannelCommand {
+    type: SisyfosCommandType.SET_FADER | SisyfosCommandType.TOGGLE_PGM | SisyfosCommandType.TOGGLE_PST | SisyfosCommandType.LABEL | SisyfosCommandType.VISIBLE;
+    channel: number;
+    value: boolean | number | string;
+}
+export interface BoolCommand extends ChannelCommand {
+    type: SisyfosCommandType.VISIBLE;
+    value: boolean;
+}
+export interface ValueCommand extends ChannelCommand {
+    type: SisyfosCommandType.TOGGLE_PGM | SisyfosCommandType.TOGGLE_PST | SisyfosCommandType.SET_FADER;
+    value: number;
+}
+export interface StringCommand extends ChannelCommand {
+    type: SisyfosCommandType.LABEL;
+    value: string;
+}
+export interface ResyncCommand extends BaseCommand {
+    type: SisyfosCommandType.RESYNC;
+}
+export declare type SisyfosCommand = BaseCommand | ValueCommand | BoolCommand | StringCommand | ResyncCommand;
+export interface SisyfosChannel extends SisyfosAPIChannel {
+    tlObjIds: string[];
+}
+export interface SisyfosState {
+    channels: {
+        [index: string]: SisyfosChannel;
+    };
+    resync: boolean;
+}
+export interface SisyfosAPIChannel {
+    faderLevel: number;
+    pgmOn: number;
+    pstOn: number;
+    label: string;
+    visible: boolean;
+}
+export interface SisyfosAPIState {
+    channels: {
+        [index: string]: SisyfosAPIChannel;
+    };
 }

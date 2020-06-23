@@ -38,7 +38,7 @@ export declare class QuantelDevice extends DeviceWithState<QuantelState> impleme
     /**
      * Attempts to restart the gateway
      */
-    restartGateway(): Promise<any>;
+    restartGateway(): Promise<unknown>;
     /**
      * Clear any scheduled commands after this time
      * @param clearAfterTime

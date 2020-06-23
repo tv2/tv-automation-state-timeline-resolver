@@ -1,7 +1,8 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
 import { DeviceType, DeviceOptionsSisyfos } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
-import { SisyfosOptions, SisyfosState, SisyfosCommand } from '../types/src/sisyfos';
+import { SisyfosOptions } from '../types/src/sisyfos';
+import { SisyfosCommand, SisyfosState, SisyfosChannel } from './sisyfosAPI';
 export interface DeviceOptionsSisyfosInternal extends DeviceOptionsSisyfos {
     options: (DeviceOptionsSisyfos['options'] & {
         commandReceiver?: CommandReceiver;
@@ -40,6 +41,7 @@ export declare class SisyfosMessageDevice extends DeviceWithState<SisyfosState> 
     readonly canConnect: boolean;
     readonly connected: boolean;
     getDeviceState(isDefaultState?: boolean): SisyfosState;
+    getDefaultStateChannel(): SisyfosChannel;
     /**
      * Transform the timeline state into a device state, which is in this case also
      * a timeline state.

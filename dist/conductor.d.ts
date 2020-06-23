@@ -65,6 +65,7 @@ export declare class Conductor extends EventEmitter {
     private _callbackInstances;
     private _triggerSendStartStopCallbacksTimeout;
     private _sentCallbacks;
+    private _actionQueue;
     private _statMeasureStart;
     private _statMeasureReason;
     private _statReports;
@@ -107,7 +108,7 @@ export declare class Conductor extends EventEmitter {
      * @param deviceOptions The options used to initalize the device
      * @returns A promise that resolves with the created device, or rejects with an error message.
      */
-    addDevice(deviceId: any, deviceOptions: DeviceOptionsAnyInternal): Promise<DeviceContainer>;
+    addDevice(deviceId: string, deviceOptions: DeviceOptionsAnyInternal): Promise<DeviceContainer>;
     /**
      * Safely remove a device
      * @param deviceId The id of the device to be removed
@@ -130,6 +131,7 @@ export declare class Conductor extends EventEmitter {
      * Send a standDown-trigger to all devices
      */
     devicesStandDown(okToDestroyStuff?: boolean): Promise<void>;
+    private _mapAllDevices;
     /**
      * This is the main resolve-loop.
      */
@@ -156,4 +158,4 @@ export declare class Conductor extends EventEmitter {
      */
     private getFilteredLayers;
 }
-export declare type DeviceOptionsAnyInternal = (DeviceOptionsAbstractInternal | DeviceOptionsCasparCGInternal | DeviceOptionsAtemInternal | DeviceOptionsLawoInternal | DeviceOptionsHTTPSendInternal | DeviceOptionsHTTPWatcherInternal | DeviceOptionsPanasonicPTZInternal | DeviceOptionsTCPSendInternal | DeviceOptionsHyperdeckInternal | DeviceOptionsPharosInternal | DeviceOptionsOSCInternal | DeviceOptionsSisyfosInternal | DeviceOptionsQuantelInternal | DeviceOptionsVizMSEInternal | DeviceOptionsSingularLiveInternal);
+export declare type DeviceOptionsAnyInternal = (DeviceOptionsAbstractInternal | DeviceOptionsCasparCGInternal | DeviceOptionsAtemInternal | DeviceOptionsLawoInternal | DeviceOptionsHTTPSendInternal | DeviceOptionsHTTPWatcherInternal | DeviceOptionsPanasonicPTZInternal | DeviceOptionsTCPSendInternal | DeviceOptionsHyperdeckInternal | DeviceOptionsPharosInternal | DeviceOptionsOSCInternal | DeviceOptionsSisyfosInternal | DeviceOptionsQuantelInternal | DeviceOptionsVizMSEInternal | DeviceOptionsSingularLiveInternal | DeviceOptionsVizMSEInternal);

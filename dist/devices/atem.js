@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tslib_1 = require("tslib");
 const _ = require("underscore");
 const underScoreDeepExtend = require("underscore-deep-extend");
 const device_1 = require("./device");
@@ -47,7 +46,7 @@ class AtemDevice extends device_1.DeviceWithState {
         return new Promise((resolve, reject) => {
             // This is where we would do initialization, like connecting to the devices, etc
             this._state = new atem_state_1.AtemState();
-            this._atem = new atem_connection_1.Atem({ externalLog: console.log });
+            this._atem = new atem_connection_1.Atem({ externalLog: (...args) => this.emit('info', JSON.stringify(args)) });
             this._atem.once('connected', () => {
                 // check if state has been initialized:
                 this._connected = true;
@@ -94,14 +93,12 @@ class AtemDevice extends device_1.DeviceWithState {
      * Prepare device for playout
      * @param okToDestroyStuff If true, may break output
      */
-    makeReady(okToDestroyStuff) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            this.firstStateAfterMakeReady = true;
-            if (okToDestroyStuff) {
-                this._doOnTime.clearQueueNowAndAfter(this.getCurrentTime());
-                this.setState(this._atem.state, this.getCurrentTime());
-            }
-        });
+    async makeReady(okToDestroyStuff) {
+        this.firstStateAfterMakeReady = true;
+        if (okToDestroyStuff) {
+            this._doOnTime.clearQueueNowAndAfter(this.getCurrentTime());
+            this.setState(this._atem.state, this.getCurrentTime());
+        }
     }
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime) {
@@ -218,7 +215,10 @@ class AtemDevice extends device_1.DeviceWithState {
                                 const chan = deviceState.audio.channels[mapping.index];
                                 let atemObj = tlObject;
                                 if (chan) {
-                                    deviceState.audio.channels[mapping.index] = Object.assign(Object.assign({}, chan), atemObj.content.audioChannel);
+                                    deviceState.audio.channels[mapping.index] = {
+                                        ...chan,
+                                        ...atemObj.content.audioChannel
+                                    };
                                 }
                             }
                             break;
@@ -345,6 +345,14 @@ class AtemDevice extends device_1.DeviceWithState {
             deviceState.audio.channels[i] = jsonClone(atem_state_1.Defaults.Audio.Channel);
         }
         deviceState.macro.macroPlayer = jsonClone(atem_state_1.Defaults.Video.MacroPlayer);
+        for (let i = 0; i < this._atem.state.info.capabilities.mediaPlayers; i++) {
+            deviceState.media.players[i] = {
+                ...jsonClone(atem_state_1.Defaults.Video.MediaPlayer),
+                // default to matching index
+                clipIndex: i,
+                stillIndex: i
+            };
+        }
         return deviceState;
     }
     _defaultCommandReceiver(_time, command, context, timelineObjId) {

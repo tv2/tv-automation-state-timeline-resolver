@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tslib_1 = require("tslib");
 const _ = require("underscore");
 const casparCG_1 = require("./devices/casparCG");
 const abstract_1 = require("./devices/abstract");
@@ -24,6 +23,9 @@ const quantel_1 = require("./devices/quantel");
 const sisyfos_1 = require("./devices/sisyfos");
 const singularLive_1 = require("./devices/singularLive");
 const vizMSE_1 = require("./devices/vizMSE");
+const p_queue_1 = require("p-queue");
+const PAll = require("p-all");
+const p_timeout_1 = require("p-timeout");
 exports.LOOKAHEADTIME = 5000; // Will look ahead this far into the future
 exports.PREPARETIME = 2000; // Will prepare commands this time before the event is to happen
 exports.MINTRIGGERTIME = 10; // Minimum time between triggers
@@ -56,6 +58,9 @@ class Conductor extends events_1.EventEmitter {
         this._callbackInstances = {};
         this._triggerSendStartStopCallbacksTimeout = null;
         this._sentCallbacks = {};
+        this._actionQueue = new p_queue_1.default({
+            concurrency: 1
+        });
         this._statMeasureStart = 0;
         this._statMeasureReason = '';
         this._statReports = [];
@@ -87,24 +92,17 @@ class Conductor extends events_1.EventEmitter {
     /**
      * Initializates the resolver, with optional multithreading
      */
-    init() {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            this._resolver = yield threadedclass_1.threadedClass('../dist/AsyncResolver.js', AsyncResolver_1.AsyncResolver, [], {
-                threadUsage: this._multiThreadedResolver ? 1 : 0,
-                autoRestart: true,
-                disableMultithreading: !this._multiThreadedResolver,
-                instanceName: 'resolver'
-            });
-            yield this._resolver.on('setTimelineTriggerTime', (r) => {
-                this.emit('setTimelineTriggerTime', r);
-            });
-            yield this._resolver.on('info', (...args) => this.emit('info', 'Resolver', ...args));
-            yield this._resolver.on('debug', (...args) => this.emit('debug', 'Resolver', ...args));
-            yield this._resolver.on('error', (...args) => this.emit('error', 'Resolver', ...args));
-            yield this._resolver.on('warning', (...args) => this.emit('warning', 'Resolver', ...args));
-            this._isInitialized = true;
-            this.resetResolver();
+    async init() {
+        this._resolver = await threadedclass_1.threadedClass('../dist/AsyncResolver.js', AsyncResolver_1.AsyncResolver, [
+            r => { this.emit('setTimelineTriggerTime', r); }
+        ], {
+            threadUsage: this._multiThreadedResolver ? 1 : 0,
+            autoRestart: true,
+            disableMultithreading: !this._multiThreadedResolver,
+            instanceName: 'resolver'
         });
+        this._isInitialized = true;
+        this.resetResolver();
     }
     /**
      * Returns a nice, synchronized time.
@@ -129,21 +127,14 @@ class Conductor extends events_1.EventEmitter {
      * a resolve timeline.
      * @param mapping The new mappings
      */
-    setMapping(mapping) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            // Set mapping
-            // re-resolve timeline
-            this._mapping = mapping;
-            let ps = [];
-            _.each(this.devices, (d) => {
-                // @ts-ignore
-                ps.push(d.device.setMapping(mapping));
-            });
-            yield Promise.all(ps);
-            if (this._timeline) {
-                this._resolveTimeline();
-            }
-        });
+    async setMapping(mapping) {
+        // Set mapping
+        // re-resolve timeline
+        this._mapping = mapping;
+        await this._mapAllDevices(d => d.device.setMapping(mapping));
+        if (this._timeline) {
+            this._resolveTimeline();
+        }
     }
     /**
      * Returns the current timeline
@@ -180,147 +171,138 @@ class Conductor extends events_1.EventEmitter {
      * @param deviceOptions The options used to initalize the device
      * @returns A promise that resolves with the created device, or rejects with an error message.
      */
-    addDevice(deviceId, deviceOptions) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            try {
-                let newDevice;
-                let threadedClassOptions = {
-                    threadUsage: deviceOptions.threadUsage || 1,
+    async addDevice(deviceId, deviceOptions) {
+        try {
+            let newDevice;
+            let threadedClassOptions = {
+                threadUsage: deviceOptions.threadUsage || 1,
+                autoRestart: false,
+                disableMultithreading: !deviceOptions.isMultiThreaded,
+                instanceName: deviceId
+            };
+            let getCurrentTime = () => { return this.getCurrentTime(); };
+            if (deviceOptions.type === src_1.DeviceType.ABSTRACT) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/abstract.js', abstract_1.AbstractDevice, deviceId, deviceOptions, getCurrentTime, {
+                    threadUsage: deviceOptions.isMultiThreaded ? .1 : 0,
                     autoRestart: false,
                     disableMultithreading: !deviceOptions.isMultiThreaded,
                     instanceName: deviceId
-                };
-                let options = {
-                    getCurrentTime: () => { return this.getCurrentTime(); }
-                };
-                if (deviceOptions.type === src_1.DeviceType.ABSTRACT) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/abstract.js', abstract_1.AbstractDevice, deviceId, deviceOptions, options, {
-                        threadUsage: deviceOptions.isMultiThreaded ? .1 : 0,
-                        autoRestart: false,
-                        disableMultithreading: !deviceOptions.isMultiThreaded,
-                        instanceName: deviceId
-                    });
-                }
-                else if (deviceOptions.type === src_1.DeviceType.CASPARCG) {
-                    // Add CasparCG device:
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/casparCG.js', casparCG_1.CasparCGDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.ATEM) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/atem.js', atem_1.AtemDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.HTTPSEND) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/httpSend.js', httpSend_1.HTTPSendDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.HTTPWATCHER) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/httpWatcher.js', httpWatcher_1.HTTPWatcherDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.LAWO) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/lawo.js', lawo_1.LawoDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.TCPSEND) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/tcpSend.js', tcpSend_1.TCPSendDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.PANASONIC_PTZ) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/panasonicPTZ.js', panasonicPTZ_1.PanasonicPtzDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.HYPERDECK) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/hyperdeck.js', hyperdeck_1.HyperdeckDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.PHAROS) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/pharos.js', pharos_1.PharosDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.OSC) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/osc.js', osc_1.OSCMessageDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.QUANTEL) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/quantel.js', quantel_1.QuantelDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.SISYFOS) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/sisyfos.js', sisyfos_1.SisyfosMessageDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.VIZMSE) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/vizMSE.js', vizMSE_1.VizMSEDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else if (deviceOptions.type === src_1.DeviceType.SINGULAR_LIVE) {
-                    newDevice = yield new deviceContainer_1.DeviceContainer().create('../../dist/devices/singularLive.js', singularLive_1.SingularLiveDevice, deviceId, deviceOptions, options, threadedClassOptions);
-                }
-                else {
-                    // @ts-ignore deviceOptions.type is of type "never"
-                    const type = deviceOptions.type;
-                    return Promise.reject(`No matching device type for "${type}" ("${src_1.DeviceType[type]}") found in conductor`);
-                }
-                newDevice.device.on('debug', (...e) => {
-                    if (this.logDebug) {
-                        this.emit('debug', newDevice.deviceId, ...e);
-                    }
-                }).catch(console.error);
-                newDevice.device.on('resetResolver', () => this.resetResolver()).catch(console.error);
-                // Temporary listening to events, these are removed after the devide has been initiated.
-                // Todo: split the addDevice function into two separate functions, so that the device is
-                // first created, then initated by the consumer, allowing for setup of listeners in between...
-                const onDeviceInfo = (...args) => this.emit('info', newDevice.instanceId, ...args);
-                const onDeviceWarning = (...args) => this.emit('warning', newDevice.instanceId, ...args);
-                const onDeviceError = (...args) => this.emit('error', newDevice.instanceId, ...args);
-                const onDeviceDebug = (...args) => this.emit('debug', newDevice.instanceId, ...args);
-                newDevice.device.on('info', onDeviceInfo).catch(console.error);
-                newDevice.device.on('warning', onDeviceWarning).catch(console.error);
-                newDevice.device.on('error', onDeviceError).catch(console.error);
-                newDevice.device.on('debug', onDeviceDebug).catch(console.error);
-                this.emit('info', `Initializing device ${newDevice.deviceId} (${newDevice.instanceId}) of type ${src_1.DeviceType[deviceOptions.type]}...`);
-                this.devices[deviceId] = newDevice;
-                // @ts-ignore
-                yield newDevice.device.setMapping(this.mapping);
-                yield newDevice.device.init(deviceOptions.options);
-                yield newDevice.reloadProps(); // because the device name might have changed after init
-                this.emit('info', `Device ${newDevice.deviceId} (${newDevice.instanceId}) initialized!`);
-                // Remove listeners, expect consumer to subscribe to them now.
-                newDevice.device.removeListener('info', onDeviceInfo).catch(console.error);
-                newDevice.device.removeListener('warning', onDeviceWarning).catch(console.error);
-                newDevice.device.removeListener('error', onDeviceError).catch(console.error);
-                newDevice.device.removeListener('debug', onDeviceDebug).catch(console.error);
-                return newDevice;
+                });
             }
-            catch (e) {
-                this.emit('error', 'conductor.addDevice', e);
-                return Promise.reject(e);
+            else if (deviceOptions.type === src_1.DeviceType.CASPARCG) {
+                // Add CasparCG device:
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/casparCG.js', casparCG_1.CasparCGDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
-        });
+            else if (deviceOptions.type === src_1.DeviceType.ATEM) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/atem.js', atem_1.AtemDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.HTTPSEND) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/httpSend.js', httpSend_1.HTTPSendDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.HTTPWATCHER) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/httpWatcher.js', httpWatcher_1.HTTPWatcherDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.LAWO) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/lawo.js', lawo_1.LawoDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.TCPSEND) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/tcpSend.js', tcpSend_1.TCPSendDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.PANASONIC_PTZ) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/panasonicPTZ.js', panasonicPTZ_1.PanasonicPtzDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.HYPERDECK) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/hyperdeck.js', hyperdeck_1.HyperdeckDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.PHAROS) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/pharos.js', pharos_1.PharosDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.OSC) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/osc.js', osc_1.OSCMessageDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.QUANTEL) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/quantel.js', quantel_1.QuantelDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.SISYFOS) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/sisyfos.js', sisyfos_1.SisyfosMessageDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.VIZMSE) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/vizMSE.js', vizMSE_1.VizMSEDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.SINGULAR_LIVE) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/singularLive.js', singularLive_1.SingularLiveDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else {
+                // @ts-ignore deviceOptions.type is of type "never"
+                const type = deviceOptions.type;
+                return Promise.reject(`No matching device type for "${type}" ("${src_1.DeviceType[type]}") found in conductor`);
+            }
+            newDevice.device.on('debug', (...e) => {
+                if (this.logDebug) {
+                    this.emit('debug', newDevice.deviceId, ...e);
+                }
+            }).catch(console.error);
+            newDevice.device.on('resetResolver', () => this.resetResolver()).catch(console.error);
+            // Temporary listening to events, these are removed after the devide has been initiated.
+            // Todo: split the addDevice function into two separate functions, so that the device is
+            // first created, then initated by the consumer, allowing for setup of listeners in between...
+            const onDeviceInfo = (...args) => this.emit('info', newDevice.instanceId, ...args);
+            const onDeviceWarning = (...args) => this.emit('warning', newDevice.instanceId, ...args);
+            const onDeviceError = (...args) => this.emit('error', newDevice.instanceId, ...args);
+            const onDeviceDebug = (...args) => this.emit('debug', newDevice.instanceId, ...args);
+            newDevice.device.on('info', onDeviceInfo).catch(console.error);
+            newDevice.device.on('warning', onDeviceWarning).catch(console.error);
+            newDevice.device.on('error', onDeviceError).catch(console.error);
+            newDevice.device.on('debug', onDeviceDebug).catch(console.error);
+            this.emit('info', `Initializing device ${newDevice.deviceId} (${newDevice.instanceId}) of type ${src_1.DeviceType[deviceOptions.type]}...`);
+            this.devices[deviceId] = newDevice;
+            // @ts-ignore
+            await newDevice.device.setMapping(this.mapping);
+            // TODO - should the device be on this.devices yet? sounds like we could instruct it to do things before it has initialised?
+            await newDevice.device.init(deviceOptions.options);
+            await newDevice.reloadProps(); // because the device name might have changed after init
+            this.emit('info', `Device ${newDevice.deviceId} (${newDevice.instanceId}) initialized!`);
+            // Remove listeners, expect consumer to subscribe to them now.
+            newDevice.device.removeListener('info', onDeviceInfo).catch(console.error);
+            newDevice.device.removeListener('warning', onDeviceWarning).catch(console.error);
+            newDevice.device.removeListener('error', onDeviceError).catch(console.error);
+            newDevice.device.removeListener('debug', onDeviceDebug).catch(console.error);
+            return newDevice;
+        }
+        catch (e) {
+            this.emit('error', 'conductor.addDevice', e);
+            return Promise.reject(e);
+        }
     }
     /**
      * Safely remove a device
      * @param deviceId The id of the device to be removed
      */
-    removeDevice(deviceId) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            let device = this.devices[deviceId];
-            if (device) {
-                try {
-                    yield device.device.terminate();
-                }
-                catch (e) {
-                    // An error while terminating is probably not that important, since we'll kill the instance anyway
-                    this.emit('warning', 'Error when terminating device', e);
-                }
-                yield device.terminate();
-                delete this.devices[deviceId];
+    async removeDevice(deviceId) {
+        let device = this.devices[deviceId];
+        if (device) {
+            try {
+                await device.device.terminate();
             }
-            else {
-                return Promise.reject('No device found');
+            catch (e) {
+                // An error while terminating is probably not that important, since we'll kill the instance anyway
+                this.emit('warning', 'Error when terminating device', e);
             }
-        });
+            await device.terminate();
+            delete this.devices[deviceId];
+        }
+        else {
+            return Promise.reject('No device found');
+        }
     }
     /**
      * Remove all devices
      */
-    destroy() {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            clearTimeout(this._interval);
-            if (this._triggerSendStartStopCallbacksTimeout)
-                clearTimeout(this._triggerSendStartStopCallbacksTimeout);
-            yield Promise.all(_.map(_.keys(this.devices), (deviceId) => {
-                return this.removeDevice(deviceId);
-            }));
-        });
+    async destroy() {
+        clearTimeout(this._interval);
+        if (this._triggerSendStartStopCallbacksTimeout)
+            clearTimeout(this._triggerSendStartStopCallbacksTimeout);
+        await this._mapAllDevices(d => this.removeDevice(d.deviceId));
     }
     /**
      * Resets the resolve-time, so that the resolving will happen for the point-in time NOW
@@ -337,27 +319,24 @@ class Conductor extends events_1.EventEmitter {
     /**
      * Send a makeReady-trigger to all devices
      */
-    devicesMakeReady(okToDestroyStuff, activeRundownId) {
-        let p = Promise.resolve();
-        _.each(this.devices, (d) => {
-            p = p.then(() => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                return d.device.makeReady(okToDestroyStuff, activeRundownId);
-            }));
+    async devicesMakeReady(okToDestroyStuff, activeRundownId) {
+        await this._actionQueue.add(async () => {
+            await this._mapAllDevices((d) => p_timeout_1.default(d.device.makeReady(okToDestroyStuff, activeRundownId), 10000, `makeReady for "${d.deviceId}" timed out`));
+            this._triggerResolveTimeline();
         });
-        this._resolveTimeline();
-        return p;
     }
     /**
      * Send a standDown-trigger to all devices
      */
-    devicesStandDown(okToDestroyStuff) {
-        let p = Promise.resolve();
-        _.each(this.devices, (d) => {
-            p = p.then(() => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                return d.device.standDown(okToDestroyStuff);
-            }));
+    async devicesStandDown(okToDestroyStuff) {
+        await this._actionQueue.add(async () => {
+            await this._mapAllDevices((d) => p_timeout_1.default(d.device.standDown(okToDestroyStuff), 10000, `standDown for "${d.deviceId}" timed out`));
         });
-        return p;
+    }
+    _mapAllDevices(fcn) {
+        return PAll(_.map(_.values(this.devices), d => () => fcn(d)), {
+            stopOnError: false
+        });
     }
     /**
      * This is the main resolve-loop.
@@ -388,9 +367,11 @@ class Conductor extends events_1.EventEmitter {
             return;
         }
         this._resolveTimelineRunning = true;
-        this._resolveTimelineInner()
-            .catch(e => {
-            this.emit('error', 'Caught error in _resolveTimelineInner' + e);
+        this._actionQueue.add(() => {
+            return this._resolveTimelineInner()
+                .catch(e => {
+                this.emit('error', 'Caught error in _resolveTimelineInner' + e);
+            });
         })
             .then((nextResolveTime) => {
             this._resolveTimelineRunning = false;
@@ -408,204 +389,205 @@ class Conductor extends events_1.EventEmitter {
             this.emit('error', 'Caught error in _resolveTimeline.then' + e);
         });
     }
-    _resolveTimelineInner() {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._isInitialized) {
-                this.emit('warning', 'TSR is not initialized yet');
-                return;
+    async _resolveTimelineInner() {
+        if (!this._isInitialized) {
+            this.emit('warning', 'TSR is not initialized yet');
+            return;
+        }
+        let nextResolveTime = 0;
+        let timeUntilNextResolve = exports.LOOKAHEADTIME;
+        let startTime = Date.now();
+        let statMeasureStart = this._statMeasureStart;
+        let statTimeStateHandled = 0;
+        let statTimeTimelineStartResolve = 0;
+        let statTimeTimelineResolved = 0;
+        try {
+            /** The point in time this function is run. ( ie "right now") */
+            const now = this.getCurrentTime();
+            /** The point in time we're targeting. (This can be in the future) */
+            let resolveTime = this._nextResolveTime;
+            const estimatedResolveTime = this.estimateResolveTime();
+            if (resolveTime === 0 || // About to be resolved ASAP
+                resolveTime < now + estimatedResolveTime // We're late
+            ) {
+                resolveTime = now + estimatedResolveTime;
+                this.emit('debug', `resolveTimeline ${resolveTime} (${resolveTime - now} from now) (${estimatedResolveTime}) ---------`);
             }
-            let nextResolveTime = 0;
-            let timeUntilNextResolve = exports.LOOKAHEADTIME;
-            let startTime = Date.now();
-            let statMeasureStart = this._statMeasureStart;
-            let statTimeStateHandled = 0;
-            let statTimeTimelineStartResolve = 0;
-            let statTimeTimelineResolved = 0;
-            try {
-                const now = this.getCurrentTime();
-                let resolveTime = this._nextResolveTime;
-                const estimatedResolveTime = this.estimateResolveTime();
-                if (resolveTime === 0 || // About to be resolved ASAP
-                    resolveTime < now + estimatedResolveTime // We're late
-                ) {
-                    resolveTime = now + estimatedResolveTime;
-                    this.emit('debug', `resolveTimeline ${resolveTime} (${resolveTime - now} from now) (${estimatedResolveTime}) ---------`);
+            else {
+                this.emit('debug', `resolveTimeline ${resolveTime} (${resolveTime - now} from now) -----------------------------`);
+                if (resolveTime > now + exports.LOOKAHEADTIME) {
+                    // If the resolveTime is too far ahead, we'd rather wait and resolve it later.
+                    this.emit('debug', 'Too far ahead (' + resolveTime + ')');
+                    this._triggerResolveTimeline(exports.LOOKAHEADTIME);
+                    return;
                 }
-                else {
-                    this.emit('debug', `resolveTimeline ${resolveTime} (${resolveTime - now} from now) -----------------------------`);
-                    if (resolveTime > now + exports.LOOKAHEADTIME) {
-                        // If the resolveTime is too far ahead, we'd rather wait and resolve it later.
-                        this.emit('debug', 'Too far ahead (' + resolveTime + ')');
-                        this._triggerResolveTimeline(exports.LOOKAHEADTIME);
-                        return;
-                    }
-                }
-                // Let all devices know that a new state is about to come in.
-                // This is done so that they can clear future commands a bit earlier, possibly avoiding double or conflicting commands
-                const pPrepareForHandleStates = Promise.all(_.map(this.devices, (device) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                    yield device.device.prepareForHandleState(resolveTime);
-                }))).catch(error => {
-                    this.emit('error', error);
-                });
-                const fixTimelineObject = (o) => {
-                    if (nowIds[o.id])
-                        o.enable.start = nowIds[o.id];
-                    delete o['parent'];
-                    if (o.isGroup) {
-                        if (o.content.objects) {
-                            _.each(o.content.objects, (child) => {
-                                fixTimelineObject(child);
-                            });
-                        }
-                    }
-                };
-                statTimeTimelineStartResolve = Date.now();
-                const nowIds = {};
-                let timeline = this.timeline;
-                // To prevent trying to transfer circular references over IPC we remove
-                // any references to the parent property:
-                _.each(timeline, (o) => {
-                    fixTimelineObject(o);
-                });
-                let resolvedStates;
-                let objectsFixed = [];
-                if (this._resolvedStates.resolvedStates &&
-                    this._resolvedStates.resolveTime >= now &&
-                    this._resolvedStates.resolveTime < now + RESOLVE_LIMIT_TIME) {
-                    resolvedStates = this._resolvedStates.resolvedStates;
-                }
-                else {
-                    let o = yield this._resolver.resolveTimeline(resolveTime, this.timeline, now + RESOLVE_LIMIT_TIME);
-                    resolvedStates = o.resolvedStates;
-                    objectsFixed = o.objectsFixed;
-                }
-                let tlState = yield this._resolver.getState(resolvedStates, resolveTime);
-                yield pPrepareForHandleStates;
-                // Apply changes to fixed objects (set "now" triggers to an actual time):
-                _.each(objectsFixed, (o) => {
-                    nowIds[o.id] = o.time;
-                });
-                _.each(timeline, (o) => {
-                    fixTimelineObject(o);
-                });
-                statTimeTimelineResolved = Date.now();
-                if (this.getCurrentTime() > resolveTime) {
-                    this.emit('warn', `Resolver is ${this.getCurrentTime() - resolveTime} ms late`);
-                }
-                // Push state to the right device:
-                let pHandleStates = [];
-                pHandleStates = _.map(this.devices, (device) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                    // The subState contains only the parts of the state relevant to that device:
-                    let subState = {
-                        time: tlState.time,
-                        layers: this.getFilteredLayers(tlState.layers, device),
-                        nextEvents: []
-                    };
-                    const removeParent = (o) => {
-                        for (let key in o) {
-                            if (key === 'parent') {
-                                delete o['parent'];
-                            }
-                            else if (typeof o[key] === 'object') {
-                                o[key] = removeParent(o[key]);
-                            }
-                        }
-                        return o;
-                    };
-                    // Pass along the state to the device, it will generate its commands and execute them:
-                    try {
-                        yield device.device.handleState(removeParent(subState));
-                    }
-                    catch (e) {
-                        this.emit('error', 'Error in device "' + device.deviceId + '"' + e + ' ' + e.stack);
-                    }
-                }));
-                yield Promise.all(pHandleStates);
-                statTimeStateHandled = Date.now();
-                // Now that we've handled this point in time, it's time to determine what the next point in time is:
-                let nextEventTime = null;
-                _.each(tlState.nextEvents, event => {
-                    if (event.time &&
-                        event.time > now &&
-                        (!nextEventTime ||
-                            event.time < nextEventTime)) {
-                        nextEventTime = event.time;
-                    }
-                });
-                // let nextEventTime = await this._resolver.getNextTimelineEvent(timeline, tlState.time)
-                const nowPostExec = this.getCurrentTime();
-                if (nextEventTime) {
-                    timeUntilNextResolve = (Math.max(exports.MINTRIGGERTIME, // At minimum, we should wait this time
-                    Math.min(exports.LOOKAHEADTIME, // We should wait maximum this time, because we might have deferred a resolving this far ahead
-                    RESOLVE_LIMIT_TIME, // We should wait maximum this time, because we've only resolved repeating objects this far
-                    (nextEventTime - nowPostExec) - exports.PREPARETIME)));
-                    // resolve at nextEventTime next time:
-                    nextResolveTime = Math.min(tlState.time + exports.LOOKAHEADTIME, nextEventTime);
-                }
-                else {
-                    // there's nothing ahead in the timeline,
-                    // Tell the devices that the future is clear:
-                    const pClearFutures = _.map(this.devices, (device) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                        try {
-                            yield device.device.clearFuture(tlState.time);
-                        }
-                        catch (e) {
-                            this.emit('error', 'Error in device "' + device.deviceId + '", clearFuture: ' + e + ' ' + e.stack);
-                        }
-                    }));
-                    yield Promise.all(pClearFutures);
-                    // resolve at this time then next time (or later):
-                    nextResolveTime = Math.min(tlState.time);
-                }
-                // Special function: send callback to Core
-                this._doOnTime.clearQueueNowAndAfter(tlState.time);
-                let activeObjects = {};
-                _.each(tlState.layers, (instance) => {
-                    try {
-                        if (instance.content.callBack || instance.content.callBackStopped) {
-                            let callBackId = (instance.id +
-                                instance.content.callBack +
-                                instance.content.callBackStopped +
-                                instance.instance.start +
-                                JSON.stringify(instance.content.callBackData));
-                            activeObjects[callBackId] = {
-                                time: instance.instance.start || 0,
-                                id: instance.id,
-                                callBack: instance.content.callBack,
-                                callBackStopped: instance.content.callBackStopped,
-                                callBackData: instance.content.callBackData,
-                                startTime: instance.instance.start
-                            };
-                        }
-                    }
-                    catch (e) {
-                        this.emit('error', `callback to core, obj "${instance.id}"`, e);
-                    }
-                });
-                this._doOnTime.queue(tlState.time, undefined, (sentCallbacksNew) => {
-                    this._diffStateForCallbacks(sentCallbacksNew);
-                }, activeObjects);
-                this.emit('debug', 'resolveTimeline at time ' + resolveTime + ' done in ' + (Date.now() - startTime) + 'ms (size: ' + this.timeline.length + ')');
             }
-            catch (e) {
-                this.emit('error', 'resolveTimeline' + e + '\nStack: ' + e.stack);
-            }
-            // Report time taken to resolve
-            this.statReport(statMeasureStart, {
-                timelineStartResolve: statTimeTimelineStartResolve,
-                timelineResolved: statTimeTimelineResolved,
-                stateHandled: statTimeStateHandled,
-                done: Date.now()
+            // Let all devices know that a new state is about to come in.
+            // This is done so that they can clear future commands a bit earlier, possibly avoiding double or conflicting commands
+            // const pPrepareForHandleStates = this._mapAllDevices(async (device: DeviceContainer) => {
+            // 	await device.device.prepareForHandleState(resolveTime)
+            // }).catch(error => {
+            // 	this.emit('error', error)
+            // })
+            // TODO - the PAll way of doing this provokes https://github.com/nrkno/tv-automation-state-timeline-resolver/pull/139
+            // The doOnTime calls fire before this, meaning we cleanup the state for a time we have already sent commands for
+            const pPrepareForHandleStates = Promise.all(_.map(this.devices, async (device) => {
+                await device.device.prepareForHandleState(resolveTime);
+            })).catch(error => {
+                this.emit('error', error);
             });
-            // Try to trigger the next resolval
-            try {
-                this._triggerResolveTimeline(timeUntilNextResolve);
+            const applyRecursively = (o, func) => {
+                func(o);
+                if (o.isGroup) {
+                    _.each(o.children || [], (child) => {
+                        applyRecursively(child, func);
+                    });
+                }
+            };
+            statTimeTimelineStartResolve = Date.now();
+            let timeline = this.timeline;
+            // To prevent trying to transfer circular references over IPC we remove
+            // any references to the parent property:
+            const deleteParent = (o) => { delete o['parent']; };
+            _.each(timeline, (o) => applyRecursively(o, deleteParent));
+            // Determine if we can use the pre-resolved timeline:
+            let resolvedStates;
+            if (this._resolvedStates.resolvedStates &&
+                resolveTime >= this._resolvedStates.resolveTime &&
+                resolveTime < this._resolvedStates.resolveTime + RESOLVE_LIMIT_TIME) {
+                // Yes, we can use the previously resolved timeline:
+                resolvedStates = this._resolvedStates.resolvedStates;
             }
-            catch (e) {
-                this.emit('error', 'triggerResolveTimeline', e);
+            else {
+                // No, we need to resolve the timeline again:
+                let o = await this._resolver.resolveTimeline(resolveTime, timeline, resolveTime + RESOLVE_LIMIT_TIME);
+                resolvedStates = o.resolvedStates;
+                this._resolvedStates.resolvedStates = resolvedStates;
+                this._resolvedStates.resolveTime = resolveTime;
+                // Apply changes to fixed objects (set "now" triggers to an actual time):
+                // This gets persisted on this.timeline, so we only have to do this once
+                const nowIds = {};
+                _.each(o.objectsFixed, (o) => nowIds[o.id] = o.time);
+                const fixNow = (o) => { if (nowIds[o.id])
+                    o.enable.start = nowIds[o.id]; };
+                _.each(timeline, (o) => applyRecursively(o, fixNow));
             }
-            return nextResolveTime;
+            let tlState = await this._resolver.getState(resolvedStates, resolveTime);
+            await pPrepareForHandleStates;
+            statTimeTimelineResolved = Date.now();
+            if (this.getCurrentTime() > resolveTime) {
+                this.emit('warn', `Resolver is ${this.getCurrentTime() - resolveTime} ms late`);
+            }
+            // Push state to the right device:
+            await this._mapAllDevices(async (device) => {
+                // The subState contains only the parts of the state relevant to that device:
+                let subState = {
+                    time: tlState.time,
+                    layers: this.getFilteredLayers(tlState.layers, device),
+                    nextEvents: []
+                };
+                const removeParent = (o) => {
+                    for (let key in o) {
+                        if (key === 'parent') {
+                            delete o['parent'];
+                        }
+                        else if (typeof o[key] === 'object') {
+                            o[key] = removeParent(o[key]);
+                        }
+                    }
+                    return o;
+                };
+                // Pass along the state to the device, it will generate its commands and execute them:
+                try {
+                    await device.device.handleState(removeParent(subState));
+                }
+                catch (e) {
+                    this.emit('error', 'Error in device "' + device.deviceId + '"' + e + ' ' + e.stack);
+                }
+            });
+            statTimeStateHandled = Date.now();
+            // Now that we've handled this point in time, it's time to determine what the next point in time is:
+            let nextEventTime = null;
+            _.each(tlState.nextEvents, event => {
+                if (event.time &&
+                    event.time > now &&
+                    (!nextEventTime ||
+                        event.time < nextEventTime)) {
+                    nextEventTime = event.time;
+                }
+            });
+            // let nextEventTime = await this._resolver.getNextTimelineEvent(timeline, tlState.time)
+            const nowPostExec = this.getCurrentTime();
+            if (nextEventTime) {
+                timeUntilNextResolve = (Math.max(exports.MINTRIGGERTIME, // At minimum, we should wait this time
+                Math.min(exports.LOOKAHEADTIME, // We should wait maximum this time, because we might have deferred a resolving this far ahead
+                RESOLVE_LIMIT_TIME, // We should wait maximum this time, because we've only resolved repeating objects this far
+                (nextEventTime - nowPostExec) - exports.PREPARETIME)));
+                // resolve at nextEventTime next time:
+                nextResolveTime = Math.min(tlState.time + exports.LOOKAHEADTIME, nextEventTime);
+            }
+            else {
+                // there's nothing ahead in the timeline,
+                // Tell the devices that the future is clear:
+                await this._mapAllDevices(async (device) => {
+                    try {
+                        await device.device.clearFuture(tlState.time);
+                    }
+                    catch (e) {
+                        this.emit('error', 'Error in device "' + device.deviceId + '", clearFuture: ' + e + ' ' + e.stack);
+                    }
+                });
+                // resolve at this time then next time (or later):
+                nextResolveTime = Math.min(tlState.time);
+            }
+            // Special function: send callback to Core
+            this._doOnTime.clearQueueNowAndAfter(tlState.time);
+            let activeObjects = {};
+            _.each(tlState.layers, (instance) => {
+                try {
+                    if (instance.content.callBack || instance.content.callBackStopped) {
+                        let callBackId = (instance.id +
+                            instance.content.callBack +
+                            instance.content.callBackStopped +
+                            instance.instance.start +
+                            JSON.stringify(instance.content.callBackData));
+                        activeObjects[callBackId] = {
+                            time: instance.instance.start || 0,
+                            id: instance.id,
+                            callBack: instance.content.callBack,
+                            callBackStopped: instance.content.callBackStopped,
+                            callBackData: instance.content.callBackData,
+                            startTime: instance.instance.start
+                        };
+                    }
+                }
+                catch (e) {
+                    this.emit('error', `callback to core, obj "${instance.id}"`, e);
+                }
+            });
+            this._doOnTime.queue(tlState.time, undefined, (sentCallbacksNew) => {
+                this._diffStateForCallbacks(sentCallbacksNew);
+            }, activeObjects);
+            this.emit('debug', 'resolveTimeline at time ' + resolveTime + ' done in ' + (Date.now() - startTime) + 'ms (size: ' + timeline.length + ')');
+        }
+        catch (e) {
+            this.emit('error', 'resolveTimeline' + e + '\nStack: ' + e.stack);
+        }
+        // Report time taken to resolve
+        this.statReport(statMeasureStart, {
+            timelineStartResolve: statTimeTimelineStartResolve,
+            timelineResolved: statTimeTimelineResolved,
+            stateHandled: statTimeStateHandled,
+            done: Date.now()
         });
+        // Try to trigger the next resolval
+        try {
+            this._triggerResolveTimeline(timeUntilNextResolve);
+        }
+        catch (e) {
+            this.emit('error', 'triggerResolveTimeline', e);
+        }
+        return nextResolveTime;
     }
     /**
      * Returns a time estimate for the resolval duration based on the amount of

@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tslib_1 = require("tslib");
 const _ = require("underscore");
 const device_1 = require("./device");
 const src_1 = require("../types/src");
@@ -35,21 +34,21 @@ class HyperdeckDevice extends device_1.DeviceWithState {
             let firstConnect = true;
             this._hyperdeck = new hyperdeck_connection_1.Hyperdeck({ pingPeriod: 1000 });
             this._hyperdeck.connect(initOptions.host, initOptions.port);
-            this._hyperdeck.on('connected', () => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                yield this._hyperdeck.sendCommand(new hyperdeck_connection_1.Commands.RemoteCommand(true));
+            this._hyperdeck.on('connected', async () => {
+                await this._hyperdeck.sendCommand(new hyperdeck_connection_1.Commands.RemoteCommand(true));
                 this._queryCurrentState()
-                    .then((state) => tslib_1.__awaiter(this, void 0, void 0, function* () {
+                    .then(async (state) => {
                     this.setState(state, this.getCurrentTime());
                     if (firstConnect) {
                         firstConnect = false;
                         this._initialized = true;
-                        this._slots = yield this._querySlotNumber();
+                        this._slots = await this._querySlotNumber();
                         resolve(true);
                     }
                     this._connected = true;
                     this._connectionChanged();
                     this.emit('resetResolver');
-                }))
+                })
                     .catch(e => this.emit('error', 'Hyperdeck.on("connected")', e));
                 if (initOptions.minRecordingTime) {
                     this._minRecordingTime = initOptions.minRecordingTime;
@@ -65,18 +64,18 @@ class HyperdeckDevice extends device_1.DeviceWithState {
                 this._hyperdeck.sendCommand(tsCmd)
                     .then(r => this._transportStatus = r.status)
                     .catch(e => this.emit('error', 'HyperDeck.on("connected")', e));
-            }));
+            });
             this._hyperdeck.on('disconnected', () => {
                 this._connected = false;
                 this._connectionChanged();
             });
             this._hyperdeck.on('error', (e) => this.emit('error', 'Hyperdeck', e));
-            this._hyperdeck.on('notify.slot', (res) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-                yield this._queryRecordingTime().catch(e => this.emit('error', 'HyperDeck.queryRecordingTime', e));
+            this._hyperdeck.on('notify.slot', async (res) => {
+                await this._queryRecordingTime().catch(e => this.emit('error', 'HyperDeck.queryRecordingTime', e));
                 if (res.status)
                     this._connectionChanged();
-            }));
-            this._hyperdeck.on('notify.transport', (res) => tslib_1.__awaiter(this, void 0, void 0, function* () {
+            });
+            this._hyperdeck.on('notify.transport', async (res) => {
                 if (res.status) {
                     this._transportStatus = res.status;
                     const state = this.getState();
@@ -84,7 +83,7 @@ class HyperdeckDevice extends device_1.DeviceWithState {
                         this._connectionChanged();
                     }
                 }
-            }));
+            });
         });
     }
     /**
@@ -94,58 +93,54 @@ class HyperdeckDevice extends device_1.DeviceWithState {
         this._doOnTime.dispose();
         if (this._recTimePollTimer)
             clearTimeout(this._recTimePollTimer);
-        return new Promise((resolve) => tslib_1.__awaiter(this, void 0, void 0, function* () {
-            yield this._hyperdeck.disconnect();
+        return new Promise(async (resolve) => {
+            await this._hyperdeck.disconnect();
             this._hyperdeck.removeAllListeners();
             resolve(true);
-        }));
+        });
     }
     /**
      * Prepares device for playout
      */
-    makeReady(okToDestroyStuff) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (okToDestroyStuff) {
-                let time = this.getCurrentTime();
-                this._doOnTime.clearQueueNowAndAfter(time);
-                // TODO - could this being slow/offline be a problem?
-                let state = yield this._queryCurrentState();
-                this.setState(state, time);
-            }
-        });
+    async makeReady(okToDestroyStuff) {
+        if (okToDestroyStuff) {
+            let time = this.getCurrentTime();
+            this._doOnTime.clearQueueNowAndAfter(time);
+            // TODO - could this being slow/offline be a problem?
+            let state = await this._queryCurrentState();
+            this.setState(state, time);
+        }
     }
     /**
      * Sends commands to the HyperDeck to format disks. Afterwards,
      * calls this._queryRecordingTime
      */
-    formatDisks() {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            const wait = t => new Promise(resolve => setTimeout(() => resolve(), t));
-            for (let i = 1; i <= this._slots; i++) {
-                // select slot
-                const slotSel = new hyperdeck_connection_1.Commands.SlotSelectCommand();
-                slotSel.slotId = i + '';
-                try {
-                    yield this._hyperdeck.sendCommand(slotSel);
-                }
-                catch (e) {
-                    continue;
-                }
-                // get code:
-                const prepare = new hyperdeck_connection_1.Commands.FormatCommand();
-                prepare.filesystem = hyperdeck_connection_1.FilesystemFormat.exFAT;
-                const res = yield this._hyperdeck.sendCommand(prepare);
-                const format = new hyperdeck_connection_1.Commands.FormatConfirmCommand();
-                format.code = res.code;
-                yield this._hyperdeck.sendCommand(format);
-                // now actualy await until finished:
-                let slotInfo = new hyperdeck_connection_1.Commands.SlotInfoCommand(i);
-                while ((yield this._hyperdeck.sendCommand(slotInfo)).status === hyperdeck_connection_1.SlotStatus.EMPTY) {
-                    yield wait(500);
-                }
+    async formatDisks() {
+        const wait = t => new Promise(resolve => setTimeout(() => resolve(), t));
+        for (let i = 1; i <= this._slots; i++) {
+            // select slot
+            const slotSel = new hyperdeck_connection_1.Commands.SlotSelectCommand();
+            slotSel.slotId = i + '';
+            try {
+                await this._hyperdeck.sendCommand(slotSel);
             }
-            yield this._queryRecordingTime();
-        });
+            catch (e) {
+                continue;
+            }
+            // get code:
+            const prepare = new hyperdeck_connection_1.Commands.FormatCommand();
+            prepare.filesystem = hyperdeck_connection_1.FilesystemFormat.exFAT;
+            const res = await this._hyperdeck.sendCommand(prepare);
+            const format = new hyperdeck_connection_1.Commands.FormatConfirmCommand();
+            format.code = res.code;
+            await this._hyperdeck.sendCommand(format);
+            // now actualy await until finished:
+            let slotInfo = new hyperdeck_connection_1.Commands.SlotInfoCommand(i);
+            while ((await this._hyperdeck.sendCommand(slotInfo)).status === hyperdeck_connection_1.SlotStatus.EMPTY) {
+                await wait(500);
+            }
+        }
+        await this._queryRecordingTime();
     }
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime) {
@@ -392,70 +387,64 @@ class HyperdeckDevice extends device_1.DeviceWithState {
     /**
      * Gets the current state of the device
      */
-    _queryCurrentState() {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (!this._connected)
-                return this._getDefaultState();
-            const notify = this._hyperdeck.sendCommand(new hyperdeck_connection_1.Commands.NotifyGetCommand());
-            const transport = this._hyperdeck.sendCommand(new hyperdeck_connection_1.Commands.TransportInfoCommand());
-            const notifyRes = yield notify;
-            const transportRes = yield transport;
-            const res = {
-                notify: notifyRes,
-                transport: transportRes,
-                timelineObjId: 'currentState'
-            };
-            return res;
-        });
+    async _queryCurrentState() {
+        if (!this._connected)
+            return this._getDefaultState();
+        const notify = this._hyperdeck.sendCommand(new hyperdeck_connection_1.Commands.NotifyGetCommand());
+        const transport = this._hyperdeck.sendCommand(new hyperdeck_connection_1.Commands.TransportInfoCommand());
+        const notifyRes = await notify;
+        const transportRes = await transport;
+        const res = {
+            notify: notifyRes,
+            transport: transportRes,
+            timelineObjId: 'currentState'
+        };
+        return res;
     }
     /**
      * Queries the recording time left in seconds of the device and mutates
      * this._recordingTime
      */
-    _queryRecordingTime() {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (this._recTimePollTimer) {
-                clearTimeout(this._recTimePollTimer);
-            }
-            let time = 0;
-            for (let slot = 1; slot <= this._slots; slot++) {
-                try {
-                    const res = yield this._hyperdeck.sendCommand(new hyperdeck_connection_1.Commands.SlotInfoCommand(slot));
-                    this._slotStatus[slot] = res;
-                    if (res.status === 'mounted') {
-                        time += res.recordingTime;
-                    }
-                }
-                catch (e) {
-                    // null
+    async _queryRecordingTime() {
+        if (this._recTimePollTimer) {
+            clearTimeout(this._recTimePollTimer);
+        }
+        let time = 0;
+        for (let slot = 1; slot <= this._slots; slot++) {
+            try {
+                const res = await this._hyperdeck.sendCommand(new hyperdeck_connection_1.Commands.SlotInfoCommand(slot));
+                this._slotStatus[slot] = res;
+                if (res.status === 'mounted') {
+                    time += res.recordingTime;
                 }
             }
-            if (time !== this._recordingTime) {
-                this._recordingTime = time;
-                this._connectionChanged();
+            catch (e) {
+                // null
             }
-            let timeTillNextUpdate = 10;
-            if (time > 10) {
-                if (time - this._minRecordingTime > 10) {
-                    timeTillNextUpdate = (time - this._minRecordingTime) / 2;
-                }
-                else if (time - this._minRecordingTime < 0) {
-                    timeTillNextUpdate = time / 2;
-                }
+        }
+        if (time !== this._recordingTime) {
+            this._recordingTime = time;
+            this._connectionChanged();
+        }
+        let timeTillNextUpdate = 10;
+        if (time > 10) {
+            if (time - this._minRecordingTime > 10) {
+                timeTillNextUpdate = (time - this._minRecordingTime) / 2;
             }
-            this._recTimePollTimer = setTimeout(() => {
-                this._queryRecordingTime().catch(e => this.emit('error', 'HyperDeck.queryRecordingTime', e));
-            }, timeTillNextUpdate * 1000);
-        });
+            else if (time - this._minRecordingTime < 0) {
+                timeTillNextUpdate = time / 2;
+            }
+        }
+        this._recTimePollTimer = setTimeout(() => {
+            this._queryRecordingTime().catch(e => this.emit('error', 'HyperDeck.queryRecordingTime', e));
+        }, timeTillNextUpdate * 1000);
     }
-    _querySlotNumber() {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            const { slots } = yield this._hyperdeck.sendCommand(new hyperdeck_connection_1.Commands.DeviceInfoCommand());
-            // before protocol version 1.9 we do not get slot info, so we assume 2 slots.
-            if (!slots)
-                return 2;
-            return slots;
-        });
+    async _querySlotNumber() {
+        const { slots } = await this._hyperdeck.sendCommand(new hyperdeck_connection_1.Commands.DeviceInfoCommand());
+        // before protocol version 1.9 we do not get slot info, so we assume 2 slots.
+        if (!slots)
+            return 2;
+        return slots;
     }
     /**
      * Gets the default state of the device

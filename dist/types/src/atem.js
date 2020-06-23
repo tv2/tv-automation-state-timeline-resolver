@@ -11,6 +11,12 @@ var MappingAtemType;
     MappingAtemType[MappingAtemType["AudioChannel"] = 6] = "AudioChannel";
     MappingAtemType[MappingAtemType["MacroPlayer"] = 7] = "MacroPlayer";
 })(MappingAtemType = exports.MappingAtemType || (exports.MappingAtemType = {}));
+var AtemMediaPoolType;
+(function (AtemMediaPoolType) {
+    AtemMediaPoolType["Still"] = "still";
+    AtemMediaPoolType["Clip"] = "clip";
+    AtemMediaPoolType["Audio"] = "audio";
+})(AtemMediaPoolType = exports.AtemMediaPoolType || (exports.AtemMediaPoolType = {}));
 var TimelineContentTypeAtem;
 (function (TimelineContentTypeAtem) {
     TimelineContentTypeAtem["ME"] = "me";
@@ -32,4 +38,9 @@ var AtemTransitionStyle;
     AtemTransitionStyle[AtemTransitionStyle["CUT"] = 5] = "CUT";
     AtemTransitionStyle[AtemTransitionStyle["DUMMY"] = 6] = "DUMMY";
 })(AtemTransitionStyle = exports.AtemTransitionStyle || (exports.AtemTransitionStyle = {}));
+var MediaSourceType;
+(function (MediaSourceType) {
+    MediaSourceType[MediaSourceType["Still"] = 1] = "Still";
+    MediaSourceType[MediaSourceType["Clip"] = 2] = "Clip";
+})(MediaSourceType = exports.MediaSourceType || (exports.MediaSourceType = {}));
 //# sourceMappingURL=atem.js.map

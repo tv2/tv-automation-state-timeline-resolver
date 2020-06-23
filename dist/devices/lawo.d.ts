@@ -1,6 +1,7 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, TimelineContentTypeLawo, EmberValueTypes, EmberTypes, DeviceOptionsLawo, LawoCommand, LawoOptions } from '../types/src';
+import { DeviceType, TimelineContentTypeLawo, DeviceOptionsLawo, LawoCommand, LawoOptions } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
+import { Types as EmberTypes, Model as EmberModel } from 'emberplus-connection';
 export interface DeviceOptionsLawoInternal extends DeviceOptionsLawo {
     options: (DeviceOptionsLawo['options'] & {
         commandReceiver?: CommandReceiver;
@@ -15,8 +16,8 @@ export interface LawoState {
 }
 export interface LawoStateNode {
     type: TimelineContentTypeLawo;
-    value: EmberValueTypes;
-    valueType: EmberTypes;
+    value: EmberTypes.EmberValue;
+    valueType: EmberModel.ParameterType;
     key: string;
     identifier: string;
     transitionDuration?: number;
@@ -38,7 +39,6 @@ declare type CommandContext = string;
 export declare class LawoDevice extends DeviceWithState<TimelineState> implements IDevice {
     private _doOnTime;
     private _lawo;
-    private _savedNodes;
     private _lastSentValue;
     private _connected;
     private _commandReceiver;
@@ -47,6 +47,7 @@ export declare class LawoDevice extends DeviceWithState<TimelineState> implement
     private _dbPropertyName;
     private _setValueFn;
     private _faderIntervalTime;
+    private _faderThreshold;
     private transitions;
     private transitionInterval;
     constructor(deviceId: string, deviceOptions: DeviceOptionsLawoInternal, options: any);

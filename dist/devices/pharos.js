@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tslib_1 = require("tslib");
 const _ = require("underscore");
 const device_1 = require("./device");
 const src_1 = require("../types/src");
@@ -103,12 +102,10 @@ class PharosDevice extends device_1.DeviceWithState {
     get queue() {
         return this._doOnTime.getQueue();
     }
-    makeReady(okToDestroyStuff) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (okToDestroyStuff) {
-                this._doOnTime.clearQueueNowAndAfter(this.getCurrentTime());
-            }
-        });
+    async makeReady(okToDestroyStuff) {
+        if (okToDestroyStuff) {
+            this._doOnTime.clearQueueNowAndAfter(this.getCurrentTime());
+        }
     }
     getStatus() {
         let statusCode = device_1.StatusCode.GOOD;
@@ -301,27 +298,25 @@ class PharosDevice extends device_1.DeviceWithState {
         });
         return commands;
     }
-    _defaultCommandReceiver(_time, cmd, context, timelineObjId) {
-        return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            // emit the command to debug:
-            let cwc = {
-                context: context,
-                command: {
-                    // commandName: cmd.content.args,
-                    args: cmd.content.args
-                    // content: cmd.content
-                },
-                timelineObjId: timelineObjId
-            };
-            this.emit('debug', cwc);
-            // execute the command here
-            try {
-                yield cmd.content.fcn(...cmd.content.args);
-            }
-            catch (e) {
-                this.emit('commandError', e, cwc);
-            }
-        });
+    async _defaultCommandReceiver(_time, cmd, context, timelineObjId) {
+        // emit the command to debug:
+        let cwc = {
+            context: context,
+            command: {
+                // commandName: cmd.content.args,
+                args: cmd.content.args
+                // content: cmd.content
+            },
+            timelineObjId: timelineObjId
+        };
+        this.emit('debug', cwc);
+        // execute the command here
+        try {
+            await cmd.content.fcn(...cmd.content.args);
+        }
+        catch (e) {
+            this.emit('commandError', e, cwc);
+        }
     }
     _connectionChanged() {
         this.emit('connectionChanged', this.getStatus());

@@ -19,7 +19,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             else
                 this._commandReceiver = this._defaultCommandReceiver;
         }
-        this._sisyfos = new sisyfosAPI_1.SisyfosInterface();
+        this._sisyfos = new sisyfosAPI_1.SisyfosApi();
         this._sisyfos.on('error', e => this.emit('error', 'Sisyfos', e));
         this._sisyfos.on('connected', () => {
             this._connectionChanged();
@@ -143,18 +143,37 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
     }
     getDeviceState(isDefaultState = true) {
         let deviceStateFromAPI = this._sisyfos.state;
-        const deviceState = { channels: {}, resync: false };
+        const deviceState = {
+            channels: {},
+            resync: false
+        };
         if (!deviceStateFromAPI)
             deviceStateFromAPI = deviceState;
         for (const ch of Object.keys(deviceStateFromAPI.channels)) {
             const channelFromAPI = deviceStateFromAPI.channels[ch];
-            let channel = Object.assign(Object.assign({}, channelFromAPI), { tlObjIds: [] });
+            let channel = {
+                ...channelFromAPI,
+                tlObjIds: []
+            };
             if (isDefaultState) { // reset values for default state
-                channel = Object.assign(Object.assign({}, channel), { faderLevel: 0.75, pgmOn: 0, pstOn: 0, label: '', visible: true });
+                channel = {
+                    ...channel,
+                    ...this.getDefaultStateChannel()
+                };
             }
             deviceState.channels[ch] = channel;
         }
         return deviceState;
+    }
+    getDefaultStateChannel() {
+        return {
+            faderLevel: 0.75,
+            pgmOn: 0,
+            pstOn: 0,
+            label: '',
+            visible: true,
+            tlObjIds: []
+        };
     }
     /**
      * Transform the timeline state into a device state, which is in this case also
@@ -163,35 +182,77 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
      */
     convertStateToSisyfosState(state) {
         const deviceState = this.getDeviceState();
+        const mappings = this.getMapping();
         _.each(state.layers, (tlObject, layerName) => {
             const layer = tlObject;
-            let foundMapping = this.getMapping()[layerName]; // @todo: make ts understand this
+            let foundMapping = mappings[layerName]; // @todo: make ts understand this
+            const content = tlObject.content;
             // Allow resync without valid channel mapping
             if (layer.content.resync !== undefined) {
                 deviceState.resync = deviceState.resync || layer.content.resync;
             }
             // if the tlObj is specifies to load to PST the original Layer is used to resolve the mapping
             if (!foundMapping && layer.isLookahead && layer.lookaheadForLayer) {
-                foundMapping = this.getMapping()[layer.lookaheadForLayer];
+                foundMapping = mappings[layer.lookaheadForLayer];
             }
-            if (foundMapping && _.has(foundMapping, 'channel') && deviceState.channels[foundMapping.channel]) {
-                if (layer.isLookahead) {
-                    deviceState.channels[foundMapping.channel].pstOn = layer.content.isPgm || 0;
+            // Preparation: put all channels that comes from the state in an array:
+            const newChannels = [];
+            if (foundMapping) {
+                // @ts-ignore backwards-compatibility:
+                if (!foundMapping.mappingType)
+                    foundMapping.mappingType = sisyfos_1.MappingSisyfosType.CHANNEL;
+                // @ts-ignore backwards-compatibility:
+                if (content.type === 'sisyfos')
+                    content.type = sisyfos_1.TimelineContentTypeSisyfos.CHANNEL;
+                if (foundMapping.mappingType === sisyfos_1.MappingSisyfosType.CHANNEL &&
+                    content.type === sisyfos_1.TimelineContentTypeSisyfos.CHANNEL) {
+                    newChannels.push({
+                        ...content,
+                        channel: foundMapping.channel,
+                        overridePriority: content.overridePriority || 0,
+                        isLookahead: layer.isLookahead || false,
+                        tlObjId: layer.id
+                    });
                 }
-                else {
-                    deviceState.channels[foundMapping.channel].pgmOn = layer.content.isPgm || 0;
+                else if (foundMapping.mappingType === sisyfos_1.MappingSisyfosType.CHANNELS &&
+                    content.type === sisyfos_1.TimelineContentTypeSisyfos.CHANNELS) {
+                    _.each(content.channels, channel => {
+                        const referencedMapping = mappings[channel.mappedLayer];
+                        if (referencedMapping && referencedMapping.mappingType === sisyfos_1.MappingSisyfosType.CHANNEL) {
+                            newChannels.push({
+                                ...channel,
+                                channel: referencedMapping.channel,
+                                overridePriority: content.overridePriority || 0,
+                                isLookahead: layer.isLookahead || false,
+                                tlObjId: layer.id
+                            });
+                        }
+                    });
                 }
-                if (layer.content.faderLevel !== undefined) {
-                    deviceState.channels[foundMapping.channel].faderLevel = layer.content.faderLevel;
-                }
-                if (layer.content.label !== undefined) {
-                    deviceState.channels[foundMapping.channel].label = layer.content.label;
-                }
-                if (layer.content.visible !== undefined) {
-                    deviceState.channels[foundMapping.channel].visible = layer.content.visible;
-                }
-                deviceState.channels[foundMapping.channel].tlObjIds.push(tlObject.id);
+                deviceState.resync = deviceState.resync || content.resync || false;
             }
+            // Sort by overridePriority, so that those with highest overridePriority will be applied last
+            _.each(_.sortBy(newChannels, channel => channel.overridePriority), newChannel => {
+                if (!deviceState.channels[newChannel.channel]) {
+                    deviceState.channels[newChannel.channel] = this.getDefaultStateChannel();
+                }
+                const channel = deviceState.channels[newChannel.channel];
+                if (newChannel.isPgm !== undefined) {
+                    if (newChannel.isLookahead) {
+                        channel.pstOn = newChannel.isPgm || 0;
+                    }
+                    else {
+                        channel.pgmOn = newChannel.isPgm || 0;
+                    }
+                }
+                if (newChannel.faderLevel !== undefined)
+                    channel.faderLevel = newChannel.faderLevel;
+                if (newChannel.label !== undefined)
+                    channel.label = newChannel.label;
+                if (newChannel.visible !== undefined)
+                    channel.visible = newChannel.visible;
+                channel.tlObjIds.push(tlObject.id);
+            });
         });
         return deviceState;
     }
@@ -225,7 +286,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             commands.push({
                 context: `Resyncing with Sisyfos`,
                 content: {
-                    type: sisyfos_1.Commands.RESYNC
+                    type: sisyfosAPI_1.SisyfosCommandType.RESYNC
                 },
                 timelineObjId: ''
             });
@@ -236,7 +297,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                 commands.push({
                     context: `Channel ${index} pgm goes from "${oldChannel.pgmOn}" to "${newChannel.pgmOn}"`,
                     content: {
-                        type: sisyfos_1.Commands.TOGGLE_PGM,
+                        type: sisyfosAPI_1.SisyfosCommandType.TOGGLE_PGM,
                         channel: Number(index),
                         value: newChannel.pgmOn
                     },
@@ -247,7 +308,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                 commands.push({
                     context: `Channel ${index} pst goes from "${oldChannel.pstOn}" to "${newChannel.pstOn}"`,
                     content: {
-                        type: sisyfos_1.Commands.TOGGLE_PST,
+                        type: sisyfosAPI_1.SisyfosCommandType.TOGGLE_PST,
                         channel: Number(index),
                         value: newChannel.pstOn
                     },
@@ -258,7 +319,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                 commands.push({
                     context: 'faderLevel change',
                     content: {
-                        type: sisyfos_1.Commands.SET_FADER,
+                        type: sisyfosAPI_1.SisyfosCommandType.SET_FADER,
                         channel: Number(index),
                         value: newChannel.faderLevel
                     },
@@ -270,7 +331,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                 commands.push({
                     context: 'set label on fader',
                     content: {
-                        type: sisyfos_1.Commands.LABEL,
+                        type: sisyfosAPI_1.SisyfosCommandType.LABEL,
                         channel: Number(index),
                         value: newChannel.label
                     },
@@ -281,7 +342,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                 commands.push({
                     context: `Channel ${index} Visibility goes from "${oldChannel.visible}" to "${newChannel.visible}"`,
                     content: {
-                        type: sisyfos_1.Commands.VISIBLE,
+                        type: sisyfosAPI_1.SisyfosCommandType.VISIBLE,
                         channel: Number(index),
                         value: newChannel.visible
                     },
@@ -298,9 +359,8 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             timelineObjId: timelineObjId
         };
         this.emit('debug', cwc);
-        if (cmd.type === sisyfos_1.Commands.RESYNC) {
-            this._makeReadyInner(true, true);
-            return Promise.resolve();
+        if (cmd.type === sisyfosAPI_1.SisyfosCommandType.RESYNC) {
+            return this._makeReadyInner(true, true);
         }
         else {
             try {

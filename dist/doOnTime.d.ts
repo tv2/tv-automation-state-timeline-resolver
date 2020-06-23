@@ -23,12 +23,9 @@ export declare class DoOnTime extends EventEmitter {
     private _commandsToSendNow;
     private _sendingCommands;
     private _options;
-    on(event: 'error', listener: (err: Error) => void): this;
-    on(event: 'slowCommand', listener: (commandInfo: string) => void): this;
-    on(event: 'commandReport', listener: (commandReport: CommandReport) => void): this;
-    emit(event: 'error', err: Error): boolean;
-    emit(event: 'slowCommand', commandInfo: string): boolean;
-    emit(event: 'commandReport', commandReport: CommandReport): boolean;
+    on: ((event: 'error', listener: (err: Error) => void) => this) & ((event: 'slowCommand', listener: (commandInfo: string) => void) => this) & ((event: 'commandReport', listener: (commandReport: CommandReport) => void) => this);
+    emit: ((event: 'error', err: Error) => boolean) & ((event: 'slowCommand', commandInfo: string) => boolean) & // A report that a command was sent too late
+    ((event: 'commandReport', commandReport: CommandReport) => boolean);
     constructor(getCurrentTime: () => number, sendMode?: SendMode, options?: DoOnTimeOptions);
     queue(time: number, queueId: string | undefined, fcn: DoOrderFunctionNothing): string;
     queue<A>(time: number, queueId: string | undefined, fcn: DoOrderFunction0<A>, arg0: A): string;

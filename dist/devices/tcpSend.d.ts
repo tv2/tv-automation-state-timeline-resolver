@@ -13,6 +13,7 @@ declare type CommandContext = string;
  */
 export declare class TCPSendDevice extends DeviceWithState<TimelineState> implements IDevice {
     private _makeReadyCommands;
+    private _makeReadyDoesReset;
     private _doOnTime;
     private _tcpClient;
     private _connected;

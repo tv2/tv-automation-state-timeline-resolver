@@ -1,12 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const osc = require("osc");
-const sisyfos_1 = require("../types/src/sisyfos");
 const events_1 = require("events");
 /** How often to check connection status */
 const CONNECTIVITY_INTERVAL = 3000; // ms
 const CONNECTIVITY_TIMEOUT = 1000; // ms
-class SisyfosInterface extends events_1.EventEmitter {
+class SisyfosApi extends events_1.EventEmitter {
     constructor() {
         super(...arguments);
         this._pingCounter = Math.round(Math.random() * 10000);
@@ -58,37 +57,37 @@ class SisyfosInterface extends events_1.EventEmitter {
         this._oscClient.close();
     }
     send(command) {
-        if (command.type === sisyfos_1.Commands.TAKE) {
+        if (command.type === SisyfosCommandType.TAKE) {
             this._oscClient.send({ address: '/take', args: [] });
         }
-        else if (command.type === sisyfos_1.Commands.CLEAR_PST_ROW) {
+        else if (command.type === SisyfosCommandType.CLEAR_PST_ROW) {
             this._oscClient.send({ address: '/clearpst', args: [] });
         }
-        else if (command.type === sisyfos_1.Commands.LABEL) {
+        else if (command.type === SisyfosCommandType.LABEL) {
             this._oscClient.send({ address: `/ch/${command.channel + 1}/label`, args: [{
                         type: 's',
                         value: command.value
                     }] });
         }
-        else if (command.type === sisyfos_1.Commands.TOGGLE_PGM) {
+        else if (command.type === SisyfosCommandType.TOGGLE_PGM) {
             this._oscClient.send({ address: `/ch/${command.channel + 1}/pgm`, args: [{
                         type: 'i',
                         value: command.value
                     }] });
         }
-        else if (command.type === sisyfos_1.Commands.TOGGLE_PST) {
+        else if (command.type === SisyfosCommandType.TOGGLE_PST) {
             this._oscClient.send({ address: `/ch/${command.channel + 1}/pst`, args: [{
                         type: 'i',
                         value: command.value
                     }] });
         }
-        else if (command.type === sisyfos_1.Commands.SET_FADER) {
+        else if (command.type === SisyfosCommandType.SET_FADER) {
             this._oscClient.send({ address: `/ch/${command.channel + 1}/faderlevel`, args: [{
                         type: 'f',
                         value: command.value
                     }] });
         }
-        else if (command.type === sisyfos_1.Commands.VISIBLE) {
+        else if (command.type === SisyfosCommandType.VISIBLE) {
             this._oscClient.send({ address: `/ch/${command.channel + 1}/visible`, args: [{
                         type: 'i',
                         value: command.value
@@ -151,7 +150,10 @@ class SisyfosInterface extends events_1.EventEmitter {
             }
             else if (address[1] === 'ch' && this._state) {
                 const ch = address[2];
-                this._state.channels[ch] = Object.assign(Object.assign({}, this._state.channels[ch]), this.parseChannelCommand(message, address.slice(3)));
+                this._state.channels[ch] = {
+                    ...this._state.channels[ch],
+                    ...this.parseChannelCommand(message, address.slice(3))
+                };
             }
         }
         else if (address[0] === 'pong') { // a reply to "/ping"
@@ -218,5 +220,16 @@ class SisyfosInterface extends events_1.EventEmitter {
         return deviceState;
     }
 }
-exports.SisyfosInterface = SisyfosInterface;
+exports.SisyfosApi = SisyfosApi;
+var SisyfosCommandType;
+(function (SisyfosCommandType) {
+    SisyfosCommandType["TOGGLE_PGM"] = "togglePgm";
+    SisyfosCommandType["TOGGLE_PST"] = "togglePst";
+    SisyfosCommandType["SET_FADER"] = "setFader";
+    SisyfosCommandType["CLEAR_PST_ROW"] = "clearPstRow";
+    SisyfosCommandType["LABEL"] = "label";
+    SisyfosCommandType["TAKE"] = "take";
+    SisyfosCommandType["VISIBLE"] = "visible";
+    SisyfosCommandType["RESYNC"] = "resync";
+})(SisyfosCommandType = exports.SisyfosCommandType || (exports.SisyfosCommandType = {}));
 //# sourceMappingURL=sisyfosAPI.js.map
