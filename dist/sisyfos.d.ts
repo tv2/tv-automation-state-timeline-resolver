@@ -4,85 +4,61 @@ export interface SisyfosOptions {
     host: string;
     port: number;
 }
-export interface MappingSisyfos extends Mapping {
+export declare enum MappingSisyfosType {
+    CHANNEL = "channel",
+    CHANNELS = "channels"
+}
+export declare type MappingSisyfos = MappingSisyfosChannel | MappingSisyfosChannels;
+interface MappingSisyfosBase extends Mapping {
     device: DeviceType.SISYFOS;
+    mappingType: MappingSisyfosType;
+}
+export interface MappingSisyfosChannel extends MappingSisyfosBase {
+    mappingType: MappingSisyfosType.CHANNEL;
     channel: number;
+}
+export interface MappingSisyfosChannels extends MappingSisyfosBase {
+    mappingType: MappingSisyfosType.CHANNELS;
 }
 export declare enum TimelineContentTypeSisyfos {
-    SISYFOS = "sisyfos"
+    /** @deprecated use CHANNEL instead */
+    SISYFOS = "sisyfos",
+    CHANNEL = "channel",
+    CHANNELS = "channels"
 }
-export interface SisyfosCommandContent {
-    type: TimelineContentTypeSisyfos.SISYFOS;
-    isPgm?: number;
-    faderLevel?: number;
-    label?: string;
-    visible?: boolean;
-    resync?: boolean;
-}
-export declare type TimelineObjSisyfosAny = TimelineObjSisyfosMessage;
-export declare enum Commands {
-    TOGGLE_PGM = "togglePgm",
-    TOGGLE_PST = "togglePst",
-    SET_FADER = "setFader",
-    CLEAR_PST_ROW = "clearPstRow",
-    LABEL = "label",
-    TAKE = "take",
-    VISIBLE = "visible",
-    RESYNC = "resync"
-}
-export interface BaseCommand {
-    type: Commands;
-}
-export interface ChannelCommand {
-    type: Commands.SET_FADER | Commands.TOGGLE_PGM | Commands.TOGGLE_PST | Commands.LABEL | Commands.VISIBLE;
-    channel: number;
-    value: boolean | number | string;
-}
-export interface BoolCommand extends ChannelCommand {
-    type: Commands.VISIBLE;
-    value: boolean;
-}
-export interface ValueCommand extends ChannelCommand {
-    type: Commands.TOGGLE_PGM | Commands.TOGGLE_PST | Commands.SET_FADER;
-    value: number;
-}
-export interface StringCommand extends ChannelCommand {
-    type: Commands.LABEL;
-    value: string;
-}
-export interface ResyncCommand extends BaseCommand {
-    type: Commands.RESYNC;
-}
-export declare type SisyfosCommand = BaseCommand | ValueCommand | BoolCommand | StringCommand | ResyncCommand;
-export interface SisyfosChannel extends SisyfosAPIChannel {
-    tlObjIds: string[];
-}
-export interface SisyfosState {
-    channels: {
-        [index: string]: SisyfosChannel;
-    };
-    resync: boolean;
-}
+export declare type TimelineObjSisyfosAny = TimelineObjSisyfosChannel | TimelineObjSisyfosChannels;
 export interface TimelineObjSisyfos extends TSRTimelineObjBase {
     content: {
         deviceType: DeviceType.SISYFOS;
         type: TimelineContentTypeSisyfos;
     };
 }
-export interface TimelineObjSisyfosMessage extends TimelineObjSisyfos {
+export interface SisyfosChannelOptions {
+    isPgm?: 0 | 1 | 2;
+    faderLevel?: number;
+    label?: string;
+    visible?: boolean;
+}
+export interface TimelineObjSisyfosChannel extends TimelineObjSisyfos {
     content: {
         deviceType: DeviceType.SISYFOS;
-    } & SisyfosCommandContent;
+        type: TimelineContentTypeSisyfos.CHANNEL;
+        resync?: boolean;
+        overridePriority?: number;
+    } & SisyfosChannelOptions;
 }
-export interface SisyfosAPIChannel {
-    faderLevel: number;
-    pgmOn: number;
-    pstOn: number;
-    label: string;
-    visible: boolean;
-}
-export interface SisyfosAPIState {
-    channels: {
-        [index: string]: SisyfosAPIChannel;
+export interface TimelineObjSisyfosChannels extends TimelineObjSisyfos {
+    content: {
+        deviceType: DeviceType.SISYFOS;
+        type: TimelineContentTypeSisyfos.CHANNELS;
+        channels: ({
+            /** The mapping layer to look up the channel from */
+            mappedLayer: string;
+        } & SisyfosChannelOptions)[];
+        resync?: boolean;
+        overridePriority?: number;
     };
 }
+/** @deprecated use TimelineObjSisyfosChannel instead */
+export declare type TimelineObjSisyfosMessage = TimelineObjSisyfosChannel;
+export {};
