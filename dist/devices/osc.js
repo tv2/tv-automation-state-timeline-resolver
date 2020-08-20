@@ -79,7 +79,8 @@ class OSCMessageDevice extends device_1.DeviceWithState {
     getStatus() {
         // Good, since this device has no status, really
         return {
-            statusCode: device_1.StatusCode.GOOD
+            statusCode: device_1.StatusCode.GOOD,
+            active: this.isActive
         };
     }
     makeReady(_okToDestroyStuff) {

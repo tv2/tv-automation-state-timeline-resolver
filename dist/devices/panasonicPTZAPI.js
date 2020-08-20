@@ -17,9 +17,6 @@ class PanasonicPtzCamera extends events_1.EventEmitter {
         this._commandDelay = commandDelay;
         this._url = url;
     }
-    get url() {
-        return this._url;
-    }
     sendCommand(command) {
         const p = new Promise((resolve, reject) => {
             this._commandQueue.push({ command: command, executing: false, resolve: resolve, reject: reject });
@@ -148,7 +145,7 @@ class PanasonicPtzHttpInterface extends events_1.EventEmitter {
                     resolve(preset);
                 }
                 else {
-                    reject(`Unknown response: ${response}`);
+                    reject(`Unknown response to getPreset: ${response}`);
                 }
             }).catch((error) => {
                 this.emit('disconnected', error);
@@ -178,7 +175,7 @@ class PanasonicPtzHttpInterface extends events_1.EventEmitter {
                     resolve(preset);
                 }
                 else {
-                    reject(`Unknown response: ${response}`);
+                    reject(`Unknown response to recallPreset: ${response}`);
                 }
             }).catch((error) => {
                 this.emit('disconnected', error);
@@ -203,7 +200,7 @@ class PanasonicPtzHttpInterface extends events_1.EventEmitter {
                     resolve(speed);
                 }
                 else {
-                    reject(`Unknown response: ${response}`);
+                    reject(`Unknown response to getSpeed: ${response}`);
                 }
             }).catch((error) => {
                 this.emit('disconnected', error);
@@ -233,7 +230,7 @@ class PanasonicPtzHttpInterface extends events_1.EventEmitter {
                     resolve(speed);
                 }
                 else {
-                    reject(`Unknown response: ${response}`);
+                    reject(`Unknown response to setSpeed: ${response}`);
                 }
             }).catch((error) => {
                 this.emit('disconnected', error);
@@ -258,7 +255,7 @@ class PanasonicPtzHttpInterface extends events_1.EventEmitter {
                     resolve(speed);
                 }
                 else {
-                    reject(`Unknown response: ${response}`);
+                    reject(`Unknown response to getZoomSpeed: ${response}`);
                 }
             }).catch((error) => {
                 this.emit('disconnected', error);
@@ -288,7 +285,7 @@ class PanasonicPtzHttpInterface extends events_1.EventEmitter {
                     resolve(speed);
                 }
                 else {
-                    reject(`Unknown response: ${response}`);
+                    reject(`Unknown response to setZoomSpeed: ${response}`);
                 }
             }).catch((error) => {
                 this.emit('disconnected', error);
@@ -313,7 +310,7 @@ class PanasonicPtzHttpInterface extends events_1.EventEmitter {
                     resolve(zoom);
                 }
                 else {
-                    reject(`Unknown response: ${response}`);
+                    reject(`Unknown response to getZoom: ${response}`);
                 }
             }).catch((error) => {
                 this.emit('disconnected', error);
@@ -343,7 +340,7 @@ class PanasonicPtzHttpInterface extends events_1.EventEmitter {
                     resolve(level);
                 }
                 else {
-                    reject(`Unknown response: ${response}`);
+                    reject(`Unknown response to setZoom: ${response}`);
                 }
             }).catch((error) => {
                 this.emit('disconnected', error);
@@ -373,7 +370,7 @@ class PanasonicPtzHttpInterface extends events_1.EventEmitter {
                     resolve('turningOn');
                 }
                 else {
-                    reject(`Unknown response: ${response}`);
+                    reject(`Unknown response to ping: ${response}`);
                 }
             }).catch((error) => {
                 this.emit('disconnected', error);

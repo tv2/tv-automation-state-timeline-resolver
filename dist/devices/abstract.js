@@ -94,7 +94,8 @@ class AbstractDevice extends device_1.DeviceWithState {
     }
     getStatus() {
         return {
-            statusCode: device_1.StatusCode.GOOD
+            statusCode: device_1.StatusCode.GOOD,
+            active: this.isActive
         };
     }
     /**

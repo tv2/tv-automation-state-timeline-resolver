@@ -13,7 +13,8 @@ class SingularLiveDevice extends device_1.DeviceWithState {
     constructor(deviceId, deviceOptions, options) {
         super(deviceId, deviceOptions, options);
         this._deviceStatus = {
-            statusCode: device_1.StatusCode.GOOD
+            statusCode: device_1.StatusCode.GOOD,
+            active: this.isActive
         };
         if (deviceOptions.options) {
             if (deviceOptions.options.commandReceiver)
@@ -93,7 +94,7 @@ class SingularLiveDevice extends device_1.DeviceWithState {
         const singularState = this._getDefaultState();
         _.each(state.layers, (tlObject, layerName) => {
             const mapping = this.getMapping()[layerName];
-            if (mapping && mapping.device === src_1.DeviceType.SINGULAR_LIVE) {
+            if (mapping && mapping.device === src_1.DeviceType.SINGULAR_LIVE && mapping.deviceId === this.deviceId) {
                 let tlObjectSource = tlObject;
                 if (tlObjectSource.content.type === src_1.TimelineContentTypeSingularLive.COMPOSITION) {
                     singularState.compositions[mapping.compositionName] = {

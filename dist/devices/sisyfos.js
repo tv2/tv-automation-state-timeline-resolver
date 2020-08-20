@@ -104,7 +104,8 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
         }
         return {
             statusCode: statusCode,
-            messages: messages
+            messages: messages,
+            active: this.isActive
         };
     }
     makeReady(okToDestroyStuff) {
@@ -185,7 +186,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
         const mappings = this.getMapping();
         _.each(state.layers, (tlObject, layerName) => {
             const layer = tlObject;
-            let foundMapping = mappings[layerName]; // @todo: make ts understand this
+            let foundMapping = mappings[layerName];
             const content = tlObject.content;
             // Allow resync without valid channel mapping
             if (layer.content.resync !== undefined) {
@@ -197,7 +198,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             }
             // Preparation: put all channels that comes from the state in an array:
             const newChannels = [];
-            if (foundMapping) {
+            if (foundMapping && foundMapping.deviceId === this.deviceId) {
                 // @ts-ignore backwards-compatibility:
                 if (!foundMapping.mappingType)
                     foundMapping.mappingType = sisyfos_1.MappingSisyfosType.CHANNEL;

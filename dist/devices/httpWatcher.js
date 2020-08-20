@@ -89,7 +89,8 @@ class HTTPWatcherDevice extends device_1.Device {
     }
     getStatus() {
         let s = {
-            statusCode: this.status
+            statusCode: this.status,
+            active: true // since this is not using any mappings, it's considered to be always active
         };
         if (this.statusReason)
             s.messages = [this.statusReason];

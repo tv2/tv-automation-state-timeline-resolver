@@ -180,26 +180,57 @@ class LawoDevice extends device_1.DeviceWithState {
         const lawoState = {
             nodes: {}
         };
+        const attrName = this._rampMotorFunctionPath || !this._dbPropertyName ? 'Fader.Motor dB Value' : this._dbPropertyName;
+        const newFaders = [];
+        const pushFader = (identifier, fader, mapping, tlObjId, priority = 0) => {
+            newFaders.push({
+                attrPath: this._sourceNodeAttributePath(identifier, attrName),
+                priority,
+                node: {
+                    type: src_1.TimelineContentTypeLawo.SOURCE,
+                    key: 'fader',
+                    identifier: identifier,
+                    value: fader.faderValue,
+                    valueType: emberplus_connection_1.Model.ParameterType.Real,
+                    transitionDuration: fader.transitionDuration,
+                    priority: mapping.priority || 0,
+                    timelineObjId: tlObjId
+                }
+            });
+        };
         _.each(state.layers, (tlObject, layerName) => {
+            // for every layer
             const lawoObj = tlObject;
             const mapping = this.getMapping()[layerName];
-            if (mapping && mapping.device === src_1.DeviceType.LAWO) {
-                if (mapping.identifier && lawoObj.content.type === src_1.TimelineContentTypeLawo.SOURCE) {
+            if (mapping && mapping.device === src_1.DeviceType.LAWO && mapping.deviceId === this.deviceId) {
+                // Mapping is for Lawo
+                if (mapping.mappingType === src_1.MappingLawoType.SOURCES && lawoObj.content.type === src_1.TimelineContentTypeLawo.SOURCES) {
+                    // mapping implies a composite of sources
+                    for (const fader of lawoObj.content.sources) {
+                        // for every mapping in the composite
+                        const sourceMapping = this.getMapping()[fader.mappingName];
+                        if (!sourceMapping || !sourceMapping.identifier || sourceMapping.mappingType !== src_1.MappingLawoType.SOURCE || mapping.deviceId !== this.deviceId)
+                            continue;
+                        // mapped mapping is a source mapping
+                        pushFader(sourceMapping.identifier, fader, sourceMapping, tlObject.id, lawoObj.content.overridePriority);
+                    }
+                }
+                else if (mapping.identifier && lawoObj.content.type === src_1.TimelineContentTypeLawo.SOURCE) {
+                    // mapping is for a source
                     let tlObjectSource = lawoObj;
-                    const fader = tlObjectSource.content['Fader/Motor dB Value'];
-                    const attrName = this._rampMotorFunctionPath || !this._dbPropertyName ? 'Fader/Motor dB Value' : this._dbPropertyName;
-                    lawoState.nodes[this._sourceNodeAttributePath(mapping.identifier, attrName)] = {
-                        type: tlObjectSource.content.type,
-                        key: 'Fader/Motor dB Value',
-                        identifier: mapping.identifier,
-                        value: fader.value,
-                        valueType: emberplus_connection_1.Model.ParameterType.Real,
-                        transitionDuration: fader.transitionDuration,
-                        priority: mapping.priority || 0,
-                        timelineObjId: tlObject.id
-                    };
+                    let fader = tlObjectSource.content;
+                    const priority = tlObjectSource.content.overridePriority;
+                    // TODO - next breaking change, remove deprecated tlObject typings "Fader/Motor dB Value"
+                    if ('Fader/Motor dB Value' in tlObjectSource.content) {
+                        fader = {
+                            faderValue: tlObjectSource.content['Fader/Motor dB Value'].value,
+                            transitionDuration: tlObjectSource.content['Fader/Motor dB Value'].transitionDuration
+                        };
+                    }
+                    pushFader(mapping.identifier, fader, mapping, tlObject.id, priority);
                 }
                 else if (mapping.identifier && lawoObj.content.type === src_1.TimelineContentTypeLawo.EMBER_PROPERTY) {
+                    // mapping is a property to set
                     let tlObjectSource = lawoObj;
                     lawoState.nodes[mapping.identifier] = {
                         type: tlObjectSource.content.type,
@@ -212,11 +243,18 @@ class LawoDevice extends device_1.DeviceWithState {
                     };
                 }
                 else if (lawoObj.content.type === src_1.TimelineContentTypeLawo.TRIGGER_VALUE) {
+                    // mapping is a trigger value (will resend all commands to the Lawo to enforce state when changed)
                     let tlObjectSource = lawoObj;
                     lawoState.triggerValue = tlObjectSource.content.triggerValue;
                 }
             }
         });
+        newFaders.sort((a, b) => a.priority - b.priority);
+        // layers are sorted by priority
+        for (const newFader of newFaders) {
+            lawoState.nodes[newFader.attrPath] = newFader.node;
+        }
+        // highest priority source has been written to lawoState
         return lawoState;
     }
     get deviceType() {
@@ -237,7 +275,8 @@ class LawoDevice extends device_1.DeviceWithState {
         }
         return {
             statusCode: statusCode,
-            messages: messages
+            messages: messages,
+            active: this.isActive
         };
     }
     _setConnected(connected) {
@@ -268,7 +307,7 @@ class LawoDevice extends device_1.DeviceWithState {
         _.each(newLawoState.nodes, (newNode, path) => {
             let oldValue = oldLawoState.nodes[path] || null;
             let diff = lib_1.getDiff(_.omit(newNode, 'timelineObjId'), _.omit(oldValue, 'timelineObjId'));
-            if (diff || (newNode.key === 'Fader/Motor dB Value' && isRetrigger)) {
+            if (diff || (newNode.key === 'fader' && isRetrigger)) {
                 // It's a plain value:
                 commands.push({
                     cmd: {
@@ -316,7 +355,7 @@ class LawoDevice extends device_1.DeviceWithState {
         return _.compact([
             this._sourcesPath,
             identifier,
-            attributePath.replace('/', '.')
+            attributePath
         ]).join('.');
     }
     async _defaultCommandReceiver(_time, command, context, timelineObjId) {
@@ -330,7 +369,7 @@ class LawoDevice extends device_1.DeviceWithState {
         const startSend = this.getCurrentTime();
         this._lastSentValue[command.path] = startSend;
         try {
-            if (command.key === 'Fader/Motor dB Value' && command.transitionDuration && command.transitionDuration >= 0) { // fader level
+            if (command.key === 'fader' && command.transitionDuration && command.transitionDuration >= 0) { // fader level
                 // TODO - Lawo result 6 code is based on time - difference ratio, certain ratios we may want to run a manual fade?
                 if (!this._rampMotorFunctionPath || (command.transitionDuration < 500 && this._faderIntervalTime < 250)) {
                     // add the fade to the fade object, such that we can fade the signal using the fader

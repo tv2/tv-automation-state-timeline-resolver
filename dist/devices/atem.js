@@ -161,7 +161,7 @@ class AtemDevice extends device_1.DeviceWithState {
         _.each(sortedLayers, ({ tlObject, layerName }) => {
             // const content = tlObject.content
             let mapping = this.getMapping()[layerName];
-            if (mapping) {
+            if (mapping && mapping.deviceId === this.deviceId) {
                 if (mapping.index !== undefined && mapping.index >= 0) { // index must be 0 or higher
                     switch (mapping.mappingType) {
                         case src_1.MappingAtemType.MixEffect:
@@ -272,7 +272,8 @@ class AtemDevice extends device_1.DeviceWithState {
         }
         let deviceStatus = {
             statusCode: statusCode,
-            messages: messages
+            messages: messages,
+            active: this.isActive
         };
         return deviceStatus;
     }

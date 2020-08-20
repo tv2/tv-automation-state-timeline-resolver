@@ -17,6 +17,7 @@ import { DeviceOptionsHTTPWatcherInternal } from './devices/httpWatcher';
 import { DeviceOptionsQuantelInternal } from './devices/quantel';
 import { DeviceOptionsSisyfosInternal } from './devices/sisyfos';
 import { DeviceOptionsSingularLiveInternal } from './devices/singularLive';
+import { DeviceOptionsVMixInternal } from './devices/vmix';
 import { DeviceOptionsVizMSEInternal } from './devices/vizMSE';
 export { DeviceContainer };
 export { CommandWithContext };
@@ -73,6 +74,7 @@ export declare class Conductor extends EventEmitter {
     private _resolveTimelineOnQueue;
     private _resolver;
     private _interval;
+    private _timelineHash;
     constructor(options?: ConductorOptions);
     /**
      * Initializates the resolver, with optional multithreading
@@ -99,6 +101,7 @@ export declare class Conductor extends EventEmitter {
     * Sets a new timeline and resets the resolver.
     */
     timeline: TSRTimeline;
+    timelineHash: string | undefined;
     logDebug: boolean;
     getDevices(): Array<DeviceContainer>;
     getDevice(deviceId: string): DeviceContainer;
@@ -156,6 +159,6 @@ export declare class Conductor extends EventEmitter {
     /**
      * Split the state into substates that are relevant for each device
      */
-    private getFilteredLayers;
+    private filterLayersPerDevice;
 }
-export declare type DeviceOptionsAnyInternal = (DeviceOptionsAbstractInternal | DeviceOptionsCasparCGInternal | DeviceOptionsAtemInternal | DeviceOptionsLawoInternal | DeviceOptionsHTTPSendInternal | DeviceOptionsHTTPWatcherInternal | DeviceOptionsPanasonicPTZInternal | DeviceOptionsTCPSendInternal | DeviceOptionsHyperdeckInternal | DeviceOptionsPharosInternal | DeviceOptionsOSCInternal | DeviceOptionsSisyfosInternal | DeviceOptionsQuantelInternal | DeviceOptionsVizMSEInternal | DeviceOptionsSingularLiveInternal | DeviceOptionsVizMSEInternal);
+export declare type DeviceOptionsAnyInternal = (DeviceOptionsAbstractInternal | DeviceOptionsCasparCGInternal | DeviceOptionsAtemInternal | DeviceOptionsLawoInternal | DeviceOptionsHTTPSendInternal | DeviceOptionsHTTPWatcherInternal | DeviceOptionsPanasonicPTZInternal | DeviceOptionsTCPSendInternal | DeviceOptionsHyperdeckInternal | DeviceOptionsPharosInternal | DeviceOptionsOSCInternal | DeviceOptionsSisyfosInternal | DeviceOptionsQuantelInternal | DeviceOptionsSingularLiveInternal | DeviceOptionsVMixInternal | DeviceOptionsVizMSEInternal | DeviceOptionsSingularLiveInternal | DeviceOptionsVizMSEInternal);

@@ -263,7 +263,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
             const routeObj = layer;
             if (routeObj.content.mappedLayer) {
                 let routeMapping = this.getMapping()[routeObj.content.mappedLayer];
-                if (routeMapping) {
+                if (routeMapping && routeMapping.deviceId === this.deviceId) {
                     routeObj.content.channel = routeMapping.channel;
                     routeObj.content.layer = routeMapping.layer;
                 }
@@ -356,8 +356,21 @@ class CasparCGDevice extends device_1.DeviceWithState {
         _.each(this.getMapping(), (foundMapping, layerName) => {
             if (foundMapping &&
                 foundMapping.device === src_1.DeviceType.CASPARCG &&
+                foundMapping.deviceId === this.deviceId &&
                 _.has(foundMapping, 'channel') &&
                 _.has(foundMapping, 'layer')) {
+                const mapping = foundMapping;
+                mapping.channel = mapping.channel || 0;
+                mapping.layer = mapping.layer || 0;
+                // create a channel in state if necessary, or reuse existing channel
+                const channelId = Number(mapping.channel);
+                if (!channelId || isNaN(channelId))
+                    return;
+                const channel = caspar.channels[mapping.channel] ? caspar.channels[mapping.channel] : new casparcg_state_1.CasparCG.Channel();
+                channel.channelNo = mapping.channel;
+                // @todo: check if we need to get fps.
+                channel.fps = 25 / 1000; // 25 fps over 1000ms
+                caspar.channels[mapping.channel] = channel;
                 let foregroundObj = timelineState.layers[layerName];
                 let backgroundObj = _.last(_.filter(timelineState.layers, obj => {
                     // Takes the last one, to be consistent with previous behaviour
@@ -369,15 +382,6 @@ class CasparCGDevice extends device_1.DeviceWithState {
                     backgroundObj = foregroundObj;
                     foregroundObj = undefined;
                 }
-                const mapping = foundMapping;
-                mapping.channel = mapping.channel || 0;
-                mapping.layer = mapping.layer || 0;
-                // create a channel in state if necessary, or reuse existing channel
-                const channel = caspar.channels[mapping.channel] ? caspar.channels[mapping.channel] : new casparcg_state_1.CasparCG.Channel();
-                channel.channelNo = Number(mapping.channel) || 1;
-                // @todo: check if we need to get fps.
-                channel.fps = 25 / 1000; // 25 fps over 1000ms
-                caspar.channels[channel.channelNo] = channel;
                 // create layer of appropriate type
                 const foregroundStateLayer = foregroundObj ? this.convertObjectToCasparState(foregroundObj, mapping, true) : undefined;
                 const backgroundStateLayer = backgroundObj ? this.convertObjectToCasparState(backgroundObj, mapping, false) : undefined;
@@ -503,7 +507,8 @@ class CasparCGDevice extends device_1.DeviceWithState {
         }
         return {
             statusCode: statusCode,
-            messages: messages
+            messages: messages,
+            active: this.isActive
         };
     }
     /**

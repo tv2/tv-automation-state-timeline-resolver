@@ -79,7 +79,7 @@ class PanasonicPtzDevice extends device_1.DeviceWithState {
         const ptzState = this._getDefaultState();
         _.each(state.layers, (tlObject, layerName) => {
             const mapping = this.getMapping()[layerName];
-            if (mapping && mapping.device === src_1.DeviceType.PANASONIC_PTZ) {
+            if (mapping && mapping.device === src_1.DeviceType.PANASONIC_PTZ && mapping.deviceId === this.deviceId) {
                 if (mapping.mappingType === src_1.MappingPanasonicPtzType.PRESET) {
                     let tlObjectSource = tlObject;
                     ptzState.preset = {
@@ -157,7 +157,8 @@ class PanasonicPtzDevice extends device_1.DeviceWithState {
         }
         return {
             statusCode: statusCode,
-            messages: messages
+            messages: messages,
+            active: this.isActive
         };
     }
     _getDefaultState() {

@@ -29,6 +29,7 @@ export declare enum StatusCode {
 export interface DeviceStatus {
     statusCode: StatusCode;
     messages?: Array<string>;
+    active: boolean;
 }
 export declare function literal<T>(o: T): T;
 export interface IDevice {
@@ -59,6 +60,7 @@ export declare abstract class Device extends EventEmitter implements IDevice {
     private _getCurrentTime;
     private _deviceId;
     private _mappings;
+    private _ownMappings;
     private _currentTimeDiff;
     private _currentTimeUpdated;
     private _instanceId;
@@ -66,6 +68,7 @@ export declare abstract class Device extends EventEmitter implements IDevice {
     useDirectTime: boolean;
     protected _deviceOptions: DeviceOptionsAny;
     protected _reportAllCommands: boolean;
+    protected _isActive: boolean;
     constructor(deviceId: string, deviceOptions: DeviceOptionsAny, getCurrentTime: () => Promise<number>);
     /**
      * Connect to the device, resolve the promise when ready.
@@ -99,7 +102,10 @@ export declare abstract class Device extends EventEmitter implements IDevice {
      */
     standDown(_okToDestroyStuff?: boolean): Promise<void>;
     abstract getStatus(): DeviceStatus;
+    /** Get all mappings */
     getMapping(): Mappings;
+    /** Get mappings that are tied to this device */
+    getOwnMapping(): Mappings;
     setMapping(mappings: Mappings): void;
     readonly deviceId: string;
     /**
@@ -110,6 +116,7 @@ export declare abstract class Device extends EventEmitter implements IDevice {
     readonly deviceOptions: DeviceOptionsAny;
     readonly supportsExpectedPlayoutItems: boolean;
     handleExpectedPlayoutItems(_expectedPlayoutItems: Array<ExpectedPlayoutItemContent>): void;
+    readonly isActive: boolean;
     private _updateCurrentTime;
     on: ((event: 'info', listener: (info: string) => void) => this) & ((event: 'warning', listener: (warning: string) => void) => this) & ((event: 'error', listener: (context: string, err: Error) => void) => this) & ((event: 'debug', listener: (...debug: any[]) => void) => this) & 
     /** The connection status has changed */
@@ -124,6 +131,7 @@ export declare abstract class Device extends EventEmitter implements IDevice {
     readonly instanceId: number;
     readonly startTime: number;
     protected handleDoOnTime(doOnTime: DoOnTime, deviceType: string): void;
+    private updateIsActive;
 }
 /**
  * Basic class that devices with state tracking can inherit from. Defines some

@@ -104,7 +104,8 @@ class TCPSendDevice extends device_1.DeviceWithState {
     }
     getStatus() {
         return {
-            statusCode: this._connected ? device_1.StatusCode.GOOD : device_1.StatusCode.BAD
+            statusCode: this._connected ? device_1.StatusCode.GOOD : device_1.StatusCode.BAD,
+            active: this.isActive
         };
     }
     _setConnected(connected) {

@@ -161,7 +161,8 @@ class VizMSEDevice extends device_1.DeviceWithState {
                 isLookahead = true;
             }
             if (foundMapping &&
-                foundMapping.device === src_1.DeviceType.VIZMSE) {
+                foundMapping.device === src_1.DeviceType.VIZMSE &&
+                foundMapping.deviceId === this.deviceId) {
                 if (layer.content) {
                     let l = layer;
                     if (l.content.type === src_1.TimelineContentTypeVizMSE.LOAD_ALL_ELEMENTS) {
@@ -292,7 +293,8 @@ class VizMSEDevice extends device_1.DeviceWithState {
         }
         return {
             statusCode: statusCode,
-            messages: messages
+            messages: messages,
+            active: this.isActive
         };
     }
     /**
@@ -499,7 +501,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
                 }
             });
         }
-        console.log(`VIZMSE: COMMANDS: ${JSON.stringify(sortCommands(concatCommands))}`);
+        this.emit('debug', `VIZMSE: COMMANDS: ${JSON.stringify(sortCommands(concatCommands))}`);
         return sortCommands(concatCommands);
     }
     _doCommand(command, context, timlineObjId) {

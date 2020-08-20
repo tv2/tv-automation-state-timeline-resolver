@@ -22,6 +22,7 @@ const httpWatcher_1 = require("./devices/httpWatcher");
 const quantel_1 = require("./devices/quantel");
 const sisyfos_1 = require("./devices/sisyfos");
 const singularLive_1 = require("./devices/singularLive");
+const vmix_1 = require("./devices/vmix");
 const vizMSE_1 = require("./devices/vizMSE");
 const p_queue_1 = require("p-queue");
 const PAll = require("p-all");
@@ -153,6 +154,12 @@ class Conductor extends events_1.EventEmitter {
         // After that, we'll move further ahead in time, creating commands ready for scheduling
         this.resetResolver();
     }
+    get timelineHash() {
+        return this._timelineHash;
+    }
+    set timelineHash(hash) {
+        this._timelineHash = hash;
+    }
     get logDebug() {
         return this._logDebug;
     }
@@ -231,6 +238,9 @@ class Conductor extends events_1.EventEmitter {
             }
             else if (deviceOptions.type === src_1.DeviceType.SINGULAR_LIVE) {
                 newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/singularLive.js', singularLive_1.SingularLiveDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
+            else if (deviceOptions.type === src_1.DeviceType.VMIX) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/vmix.js', vmix_1.VMixDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else {
                 // @ts-ignore deviceOptions.type is of type "never"
@@ -478,12 +488,13 @@ class Conductor extends events_1.EventEmitter {
             if (this.getCurrentTime() > resolveTime) {
                 this.emit('warn', `Resolver is ${this.getCurrentTime() - resolveTime} ms late`);
             }
+            const layersPerDevice = this.filterLayersPerDevice(tlState.layers, _.values(this.devices));
             // Push state to the right device:
             await this._mapAllDevices(async (device) => {
                 // The subState contains only the parts of the state relevant to that device:
                 let subState = {
                     time: tlState.time,
-                    layers: this.getFilteredLayers(tlState.layers, device),
+                    layers: layersPerDevice[device.deviceId] || {},
                     nextEvents: []
                 };
                 const removeParent = (o) => {
@@ -568,7 +579,12 @@ class Conductor extends events_1.EventEmitter {
             this._doOnTime.queue(tlState.time, undefined, (sentCallbacksNew) => {
                 this._diffStateForCallbacks(sentCallbacksNew);
             }, activeObjects);
-            this.emit('debug', 'resolveTimeline at time ' + resolveTime + ' done in ' + (Date.now() - startTime) + 'ms (size: ' + timeline.length + ')');
+            const resolveDuration = (Date.now() - startTime);
+            // Special / hack: report back, for latency statitics:
+            if (this._timelineHash) {
+                this.emit('resolveDone', this._timelineHash, resolveDuration);
+            }
+            this.emit('debug', 'resolveTimeline at time ' + resolveTime + ' done in ' + resolveDuration + 'ms (size: ' + timeline.length + ')');
         }
         catch (e) {
             this.emit('error', 'resolveTimeline' + e + '\nStack: ' + e.stack);
@@ -793,10 +809,12 @@ class Conductor extends events_1.EventEmitter {
     /**
      * Split the state into substates that are relevant for each device
      */
-    getFilteredLayers(layers, device) {
-        let filteredState = {};
-        const deviceId = device.deviceId;
-        const deviceType = device.deviceType;
+    filterLayersPerDevice(layers, devices) {
+        const filteredStates = {};
+        const deviceIdAndTypes = {};
+        _.each(devices, device => {
+            deviceIdAndTypes[device.deviceId + '__' + device.deviceType] = device.deviceId;
+        });
         _.each(layers, (o, layerId) => {
             const oExt = o;
             let mapping = this._mapping[o.layer + ''];
@@ -804,13 +822,16 @@ class Conductor extends events_1.EventEmitter {
                 mapping = this._mapping[oExt.lookaheadForLayer];
             }
             if (mapping) {
-                if (mapping.deviceId === deviceId &&
-                    mapping.device === deviceType) {
-                    filteredState[layerId] = o;
+                const deviceIdAndType = mapping.deviceId + '__' + mapping.device;
+                if (deviceIdAndTypes[deviceIdAndType]) {
+                    if (!filteredStates[mapping.deviceId]) {
+                        filteredStates[mapping.deviceId] = {};
+                    }
+                    filteredStates[mapping.deviceId][layerId] = o;
                 }
             }
         });
-        return filteredState;
+        return filteredStates;
     }
 }
 exports.Conductor = Conductor;

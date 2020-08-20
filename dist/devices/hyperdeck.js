@@ -200,7 +200,7 @@ class HyperdeckDevice extends device_1.DeviceWithState {
         _.each(sortedLayers, ({ tlObject, layerName }) => {
             const hyperdeckObj = tlObject;
             const mapping = this.getMapping()[layerName];
-            if (mapping) {
+            if (mapping && mapping.deviceId === this.deviceId) {
                 switch (mapping.mappingType) {
                     case src_1.MappingHyperdeckType.TRANSPORT:
                         if (hyperdeckObj.content.type === src_1.TimelineContentTypeHyperdeck.TRANSPORT) {
@@ -280,7 +280,8 @@ class HyperdeckDevice extends device_1.DeviceWithState {
         }
         return {
             statusCode,
-            messages
+            messages,
+            active: this.isActive
         };
     }
     /**
