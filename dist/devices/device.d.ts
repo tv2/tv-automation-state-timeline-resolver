@@ -4,6 +4,7 @@ import { Mappings, DeviceType, ExpectedPlayoutItemContent } from '../types/src';
 import { EventEmitter } from 'events';
 import { CommandReport, DoOnTime } from '../doOnTime';
 import { DeviceInitOptions, DeviceOptionsAny } from '../types/src/device';
+import { MediaObject } from '../types/src/mediaObject';
 export interface DeviceCommand {
     time: number;
     deviceId: string;
@@ -126,8 +127,12 @@ export declare abstract class Device extends EventEmitter implements IDevice {
     /** A report that a command was sent too late */
     ((event: 'slowCommand', listener: (commandInfo: string) => void) => this) & 
     /** Something went wrong when executing a command  */
-    ((event: 'commandError', listener: (error: Error, context: CommandWithContext) => void) => this);
-    emit: ((event: 'info', info: string) => boolean) & ((event: 'warning', warning: string) => boolean) & ((event: 'error', context: string, err: Error) => boolean) & ((event: 'debug', ...debug: any[]) => boolean) & ((event: 'connectionChanged', status: DeviceStatus) => boolean) & ((event: 'resetResolver') => boolean) & ((event: 'slowCommand', commandInfo: string) => boolean) & ((event: 'commandReport', commandReport: CommandReport) => boolean) & ((event: 'commandError', error: Error, context: CommandWithContext) => boolean);
+    ((event: 'commandError', listener: (error: Error, context: CommandWithContext) => void) => this) & 
+    /** Update a MediaObject  */
+    ((event: 'updateMediaObject', listener: (collectionId: string, docId: string, doc: MediaObject | null) => void) => this) & 
+    /** Clear a MediaObjects collection */
+    ((event: 'clearMediaObjects', listener: (collectionId: string) => void) => this);
+    emit: ((event: 'info', info: string) => boolean) & ((event: 'warning', warning: string) => boolean) & ((event: 'error', context: string, err: Error) => boolean) & ((event: 'debug', ...debug: any[]) => boolean) & ((event: 'connectionChanged', status: DeviceStatus) => boolean) & ((event: 'resetResolver') => boolean) & ((event: 'slowCommand', commandInfo: string) => boolean) & ((event: 'commandReport', commandReport: CommandReport) => boolean) & ((event: 'commandError', error: Error, context: CommandWithContext) => boolean) & ((event: 'updateMediaObject', collectionId: string, docId: string, doc: MediaObject | null) => boolean) & ((event: 'clearMediaObjects', collectionId: string) => boolean);
     readonly instanceId: number;
     readonly startTime: number;
     protected handleDoOnTime(doOnTime: DoOnTime, deviceType: string): void;

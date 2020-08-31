@@ -36,6 +36,7 @@ import { TimelineObjVMixAny } from './vmix';
 export { Timeline };
 export * from './mapping';
 export * from './expectedPlayoutItems';
+export * from './mediaObject';
 export declare type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
 export declare enum DeviceType {
     ABSTRACT = 0,

@@ -57,6 +57,8 @@ class VizMSEDevice extends device_1.DeviceWithState {
         this._vizMSE = v_connection_1.createMSE(this._initOptions.host, this._initOptions.restPort, this._initOptions.wsPort);
         this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements, this._initOptions.autoLoadInternalElements, initOptions.showID, initOptions.profile, initOptions.playlistID);
         this._vizmseManager.on('connectionChanged', (connected) => this.connectionChanged(connected));
+        this._vizmseManager.on('updateMediaObject', (collectionId, docId, doc) => this.emit('updateMediaObject', collectionId, docId, doc));
+        this._vizmseManager.on('clearMediaObjects', (collectionId) => this.emit('clearMediaObjects', collectionId));
         this._vizmseManager.on('info', str => this.emit('info', 'VizMSE: ' + str));
         this._vizmseManager.on('warning', str => this.emit('warning', 'VizMSE' + str));
         this._vizmseManager.on('error', e => this.emit('error', 'VizMSE', e));
@@ -722,6 +724,7 @@ class VizMSEManager extends events_1.EventEmitter {
             this.emit('error', error);
         }
         this._clearCache();
+        this._clearMediaObjects();
         this._triggerCommandSent();
         await this._triggerLoadAllElements(true);
         this._triggerCommandSent();
@@ -737,9 +740,13 @@ class VizMSEManager extends events_1.EventEmitter {
         await rundown.deactivate();
         this._triggerCommandSent();
         this.standDownActiveRundown();
+        this._clearMediaObjects();
     }
     standDownActiveRundown() {
         this._hasActiveRundown = false;
+    }
+    _clearMediaObjects() {
+        this.emit('clearMediaObjects', this._parentVizMSEDevice.deviceId);
     }
     /**
      * Prepare an element
@@ -1120,6 +1127,26 @@ class VizMSEManager extends events_1.EventEmitter {
                             isLoading: this._isElementLoading(newEl)
                         };
                         this.emit('debug', `Element ${elementRef}: ${JSON.stringify(newEl)}`);
+                        if (this._isExternalElement(newEl)) {
+                            if (this._elementsLoaded[e.hash].isLoaded) {
+                                const mediaObject = {
+                                    _id: e.hash,
+                                    mediaId: 'PILOT_' + e.item.templateName.toString().toUpperCase(),
+                                    mediaPath: e.item.templateInstance,
+                                    mediaSize: 0,
+                                    mediaTime: 0,
+                                    thumbSize: 0,
+                                    thumbTime: 0,
+                                    cinf: '',
+                                    tinf: '',
+                                    _rev: ''
+                                };
+                                this.emit('updateMediaObject', this._parentVizMSEDevice.deviceId, e.hash, mediaObject);
+                            }
+                            else if (!cachedEl) {
+                                this.emit('updateMediaObject', this._parentVizMSEDevice.deviceId, e.hash, null);
+                            }
+                        }
                     }
                     catch (e) {
                         this.emit('error', `Error in updateElementsLoadedStatus: ${e.toString()}`);
