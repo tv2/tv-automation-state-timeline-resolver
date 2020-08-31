@@ -21,6 +21,7 @@ export interface MappingLawo extends Mapping {
 }
 export declare enum MappingLawoType {
     SOURCE = "source",
+    SOURCES = "sources",
     FULL_PATH = "fullpath",
     TRIGGER_VALUE = "triggerValue"
 }
@@ -57,17 +58,32 @@ export interface LawoCommand {
 }
 export declare enum TimelineContentTypeLawo {
     SOURCE = "lawosource",
+    SOURCES = "lawosources",
     EMBER_PROPERTY = "lawofullpathemberproperty",
     TRIGGER_VALUE = "triggervalue"
 }
-export declare type TimelineObjLawoAny = TimelineObjLawoSource | TimelineObjLawoEmberProperty | TimelineObjLawoEmberRetrigger;
+export declare type TimelineObjLawoAny = TimelineObjLawoSources | TimelineObjLawoSource | TimelineObjLawoSourceDeprecated | TimelineObjLawoEmberProperty | TimelineObjLawoEmberRetrigger;
+export interface ContentTimelineObjLawoSource {
+    faderValue: number;
+    transitionDuration?: number;
+}
 export interface TimelineObjLawoBase extends TSRTimelineObjBase {
     content: {
         deviceType: DeviceType.LAWO;
         type: TimelineContentTypeLawo;
     };
 }
-export interface TimelineObjLawoSource extends TimelineObjLawoBase {
+export interface TimelineObjLawoSources extends TimelineObjLawoBase {
+    content: {
+        deviceType: DeviceType.LAWO;
+        type: TimelineContentTypeLawo.SOURCES;
+        sources: Array<{
+            mappingName: string;
+        } & ContentTimelineObjLawoSource>;
+        overridePriority?: number;
+    };
+}
+export interface TimelineObjLawoSourceDeprecated extends TimelineObjLawoBase {
     content: {
         deviceType: DeviceType.LAWO;
         type: TimelineContentTypeLawo.SOURCE;
@@ -76,6 +92,13 @@ export interface TimelineObjLawoSource extends TimelineObjLawoBase {
             transitionDuration?: number;
         };
     };
+}
+export interface TimelineObjLawoSource extends TimelineObjLawoBase {
+    content: {
+        deviceType: DeviceType.LAWO;
+        type: TimelineContentTypeLawo.SOURCE;
+        overridePriority?: number;
+    } & ContentTimelineObjLawoSource;
 }
 export interface TimelineObjLawoEmberProperty extends TimelineObjLawoBase {
     content: {

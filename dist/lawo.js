@@ -14,6 +14,7 @@ var ParameterType;
 var MappingLawoType;
 (function (MappingLawoType) {
     MappingLawoType["SOURCE"] = "source";
+    MappingLawoType["SOURCES"] = "sources";
     MappingLawoType["FULL_PATH"] = "fullpath";
     MappingLawoType["TRIGGER_VALUE"] = "triggerValue";
 })(MappingLawoType = exports.MappingLawoType || (exports.MappingLawoType = {}));
@@ -28,6 +29,7 @@ var LawoDeviceMode;
 var TimelineContentTypeLawo;
 (function (TimelineContentTypeLawo) {
     TimelineContentTypeLawo["SOURCE"] = "lawosource";
+    TimelineContentTypeLawo["SOURCES"] = "lawosources";
     TimelineContentTypeLawo["EMBER_PROPERTY"] = "lawofullpathemberproperty";
     TimelineContentTypeLawo["TRIGGER_VALUE"] = "triggervalue";
 })(TimelineContentTypeLawo = exports.TimelineContentTypeLawo || (exports.TimelineContentTypeLawo = {}));

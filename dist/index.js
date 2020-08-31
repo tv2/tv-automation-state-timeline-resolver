@@ -14,6 +14,7 @@ tslib_1.__exportStar(require("./quantel"), exports);
 tslib_1.__exportStar(require("./tcpSend"), exports);
 tslib_1.__exportStar(require("./vizMSE"), exports);
 tslib_1.__exportStar(require("./singularLive"), exports);
+tslib_1.__exportStar(require("./vmix"), exports);
 const Timeline = require("./superfly-timeline");
 exports.Timeline = Timeline;
 var DeviceType;
@@ -33,5 +34,6 @@ var DeviceType;
     DeviceType[DeviceType["QUANTEL"] = 12] = "QUANTEL";
     DeviceType[DeviceType["VIZMSE"] = 13] = "VIZMSE";
     DeviceType[DeviceType["SINGULAR_LIVE"] = 14] = "SINGULAR_LIVE";
+    DeviceType[DeviceType["VMIX"] = 20] = "VMIX";
 })(DeviceType = exports.DeviceType || (exports.DeviceType = {}));
 //# sourceMappingURL=index.js.map
