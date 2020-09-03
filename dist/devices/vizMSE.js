@@ -1059,7 +1059,7 @@ class VizMSEManager extends events_1.EventEmitter {
         const expectedPlayoutItems = _.filter(this._expectedPlayoutItems, expectedPlayoutItem => {
             const templateName = typeof expectedPlayoutItem.templateName;
             return ((!this.activeRundownId ||
-                this.activeRundownId === expectedPlayoutItem.rundownId) &&
+                this.activeRundownId === expectedPlayoutItem.playlistId) &&
                 typeof templateName !== 'undefined');
         });
         await Promise.all(_.map(expectedPlayoutItems, async (expectedPlayoutItem) => {

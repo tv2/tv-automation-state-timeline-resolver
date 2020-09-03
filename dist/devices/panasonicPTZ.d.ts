@@ -85,6 +85,9 @@ export declare class PanasonicPtzDevice extends DeviceWithState<TimelineState> i
     readonly deviceName: string;
     readonly queue: {
         id: string;
+        /**
+         * Initiates the device: set up ping for connection logic.
+         */
         queueId: string;
         time: number;
         args: any[];
