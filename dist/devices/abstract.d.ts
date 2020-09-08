@@ -55,6 +55,7 @@ export declare class AbstractDevice extends DeviceWithState<TimelineState> imple
         args: any[];
     }[];
     getStatus(): DeviceStatus;
+    doCustomCommand(commandName: string, args: any[]): Promise<any>;
     /**
      * Add commands to queue, to be executed at the right time
      */

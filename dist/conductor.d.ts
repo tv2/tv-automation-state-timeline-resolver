@@ -36,6 +36,7 @@ export interface ConductorOptions {
     getCurrentTime?: () => number;
     autoInit?: boolean;
     multiThreadedResolver?: boolean;
+    useCacheWhenResolving?: boolean;
     proActiveResolve?: boolean;
 }
 export interface StatReport {
@@ -63,6 +64,7 @@ export declare class Conductor extends EventEmitter {
     private _isInitialized;
     private _doOnTime;
     private _multiThreadedResolver;
+    private _useCacheWhenResolving;
     private _callbackInstances;
     private _triggerSendStartStopCallbacksTimeout;
     private _sentCallbacks;

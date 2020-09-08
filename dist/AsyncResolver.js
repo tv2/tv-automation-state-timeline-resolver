@@ -4,14 +4,16 @@ const superfly_timeline_1 = require("superfly-timeline");
 const _ = require("underscore");
 class AsyncResolver {
     constructor(onSetTimelineTriggerTime) {
+        this.cache = {};
         this.onSetTimelineTriggerTime = onSetTimelineTriggerTime;
     }
-    async resolveTimeline(resolveTime, timeline, limitTime) {
+    async resolveTimeline(resolveTime, timeline, limitTime, useCache) {
         let objectsFixed = this._fixNowObjects(timeline, resolveTime);
         const resolvedTimeline = superfly_timeline_1.Resolver.resolveTimeline(timeline, {
             limitCount: 999,
             limitTime: limitTime,
-            time: resolveTime
+            time: resolveTime,
+            cache: useCache ? this.cache : undefined
         });
         const resolvedStates = superfly_timeline_1.Resolver.resolveAllStates(resolvedTimeline);
         return {
@@ -26,23 +28,27 @@ class AsyncResolver {
         let objectsFixed = [];
         const timeLineMap = {};
         let setObjectTime = (o, time) => {
-            o.enable.start = time; // set the objects to "now" so that they are resolved correctly temporarily
-            const o2 = timeLineMap[o.id];
-            if (o2) {
-                o2.enable.start = time;
+            if (!_.isArray(o.enable)) {
+                o.enable.start = time; // set the objects to "now" so that they are resolved correctly temporarily
+                const o2 = timeLineMap[o.id];
+                if (o2 && !_.isArray(o2.enable)) {
+                    o2.enable.start = time;
+                }
+                objectsFixed.push({
+                    id: o.id,
+                    time: time
+                });
             }
-            objectsFixed.push({
-                id: o.id,
-                time: time
-            });
         };
         _.each(timeline, (obj) => {
             timeLineMap[obj.id] = obj;
         });
         // First: fix the ones on the first level (i e not in groups), because they are easy (this also saves us one iteration time later):
         _.each(timeLineMap, (o) => {
-            if (o.enable.start === 'now') {
-                setObjectTime(o, now);
+            if (!_.isArray(o.enable)) {
+                if (o.enable.start === 'now') {
+                    setObjectTime(o, now);
+                }
             }
         });
         // Then, resolve the timeline to be able to set "now" inside groups, relative to parents:
@@ -51,7 +57,8 @@ class AsyncResolver {
         let resolvedTimeline;
         let fixObjects = (objs, parentObject) => {
             _.each(objs, (o) => {
-                if (o.enable.start === 'now') {
+                if (!_.isArray(o.enable) &&
+                    o.enable.start === 'now') {
                     // find parent, and set relative to that
                     if (parentObject) {
                         let resolvedParent = resolvedTimeline.objects[parentObject.id];

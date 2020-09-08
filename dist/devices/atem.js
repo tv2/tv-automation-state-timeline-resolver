@@ -245,6 +245,12 @@ class AtemDevice extends device_1.DeviceWithState {
     get queue() {
         return this._doOnTime.getQueue();
     }
+    doCustomCommand(commandName, args) {
+        const fcn = this._atem[commandName];
+        if (!fcn)
+            throw new Error(`Method Atem.${commandName} not found!`);
+        return Promise.resolve(fcn(...args));
+    }
     /**
      * Check status and return it with useful messages appended.
      */

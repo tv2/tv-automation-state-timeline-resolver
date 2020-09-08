@@ -71,6 +71,7 @@ export declare class AtemDevice extends DeviceWithState<DeviceState> implements 
         time: number;
         args: any[];
     }[];
+    doCustomCommand(commandName: string, args: any[]): Promise<any>;
     /**
      * Check status and return it with useful messages appended.
      */
