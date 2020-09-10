@@ -249,7 +249,7 @@ class AtemDevice extends device_1.DeviceWithState {
         const fcn = this._atem[commandName];
         if (!fcn)
             throw new Error(`Method Atem.${commandName} not found!`);
-        return Promise.resolve(fcn(...args));
+        return Promise.resolve(fcn.apply(this._atem, args));
     }
     /**
      * Check status and return it with useful messages appended.
