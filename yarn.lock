@@ -6186,12 +6186,12 @@ stubs@^3.0.0:
   resolved "https://registry.yarnpkg.com/stubs/-/stubs-3.0.0.tgz#e8d2ba1fa9c90570303c030b6900f7d5f89abe5b"
   integrity sha1-6NK6H6nJBXAwPAMLaQD31fiavls=
 
-superfly-timeline@^7.3.1:
-  version "7.3.1"
-  resolved "https://registry.yarnpkg.com/superfly-timeline/-/superfly-timeline-7.3.1.tgz#6a7aa04a768be198c677ad8a1e8eacdfc603c8fb"
-  integrity sha512-xmg9GgVNWUPA48MGwrwicwP/yEw7gZSl5nVnwcf3p50GZx1ChOxa5rCJQyTpPoyKG8pqwXKZkbJsq2ylk2p4iQ==
+superfly-timeline@^8.1.1:
+  version "8.1.1"
+  resolved "https://registry.yarnpkg.com/superfly-timeline/-/superfly-timeline-8.1.1.tgz#8b0896bba6fcf495cdc831b21f9ddd815009d5cb"
+  integrity sha512-ahLJz2/udclXVXJllNJbirx/5f+/oMMwbvQCPcoMrUM55hS7bJBDg8k6Yik7+FO5GJCfes/ly/GL9dxSaQS5Gg==
   dependencies:
-    tslib "^1.10.0"
+    tslib "^1.13.0"
     underscore "^1.9.1"
 
 supports-color@^5.3.0:
