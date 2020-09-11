@@ -25,7 +25,7 @@ export interface ResolveOptions {
 }
 export interface TimelineObject {
     id: ObjectId;
-    enable: TimelineEnable | TimelineEnable[];
+    enable: TimelineEnable;
     layer: string | number;
     /** Group children */
     children?: Array<TimelineObject>;
@@ -64,7 +64,7 @@ export interface TimelineEnable {
 }
 export interface TimelineKeyframe {
     id: string;
-    enable: TimelineEnable | TimelineEnable[];
+    enable: TimelineEnable;
     duration?: number | string;
     classes?: Array<string>;
     content: Content;
@@ -98,8 +98,6 @@ export interface ResolvedTimeline {
         resolvedGroupCount: number;
         /** Number of resolved keyframes */
         resolvedKeyframeCount: number;
-        /** How many objects that was actually resolved (is affected when using cache) */
-        resolvingCount: number;
     };
 }
 export interface ResolvedTimelineObjects {
@@ -119,10 +117,6 @@ export interface ResolvedTimelineObject extends TimelineObject {
         parentId?: string;
         /** True if object is a keyframe */
         isKeyframe?: boolean;
-        /** True if object is referencing itself (only directly, not indirectly via another object) */
-        isSelfReferencing?: boolean;
-        /** Ids of all other objects that directly affects this object (ie through direct reference, classes, etc) */
-        directReferences: string[];
     };
 }
 export interface TimelineObjectInstance {
