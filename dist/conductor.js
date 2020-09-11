@@ -56,7 +56,6 @@ class Conductor extends events_1.EventEmitter {
         };
         this._isInitialized = false;
         this._multiThreadedResolver = false;
-        this._useCacheWhenResolving = false;
         this._callbackInstances = {};
         this._triggerSendStartStopCallbacksTimeout = null;
         this._sentCallbacks = {};
@@ -70,7 +69,6 @@ class Conductor extends events_1.EventEmitter {
         this._resolveTimelineOnQueue = false;
         this._options = options;
         this._multiThreadedResolver = !!options.multiThreadedResolver;
-        this._useCacheWhenResolving = !!options.useCacheWhenResolving;
         if (options.getCurrentTime)
             this._getCurrentTime = options.getCurrentTime;
         this._interval = setInterval(() => {
@@ -472,21 +470,16 @@ class Conductor extends events_1.EventEmitter {
             }
             else {
                 // No, we need to resolve the timeline again:
-                let o = await this._resolver.resolveTimeline(resolveTime, timeline, resolveTime + RESOLVE_LIMIT_TIME, this._useCacheWhenResolving);
+                let o = await this._resolver.resolveTimeline(resolveTime, timeline, resolveTime + RESOLVE_LIMIT_TIME);
                 resolvedStates = o.resolvedStates;
                 this._resolvedStates.resolvedStates = resolvedStates;
                 this._resolvedStates.resolveTime = resolveTime;
                 // Apply changes to fixed objects (set "now" triggers to an actual time):
                 // This gets persisted on this.timeline, so we only have to do this once
-                const nowIdsTime = {};
-                _.each(o.objectsFixed, (o) => nowIdsTime[o.id] = o.time);
-                const fixNow = (o) => {
-                    if (nowIdsTime[o.id]) {
-                        if (!_.isArray(o.enable)) {
-                            o.enable.start = nowIdsTime[o.id];
-                        }
-                    }
-                };
+                const nowIds = {};
+                _.each(o.objectsFixed, (o) => nowIds[o.id] = o.time);
+                const fixNow = (o) => { if (nowIds[o.id])
+                    o.enable.start = nowIds[o.id]; };
                 _.each(timeline, (o) => applyRecursively(o, fixNow));
             }
             let tlState = await this._resolver.getState(resolvedStates, resolveTime);
