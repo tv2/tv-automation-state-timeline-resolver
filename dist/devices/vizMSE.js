@@ -495,7 +495,8 @@ class VizMSEDevice extends device_1.DeviceWithState {
             concatCommands.forEach((command, index) => {
                 if (command.type === VizMSECommandType.TAKE_ELEMENT
                     && command.layerId
-                    && newState.layer[command.layerId].contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL) {
+                    && (newState.layer[command.layerId].contentType === src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL ||
+                        !!newState.layer[command.layerId].delayTakeAfterOutTransition)) {
                     concatCommands[index].transition = {
                         type: src_1.VIZMSETransitionType.DELAY,
                         delay: highestDelay + 20
@@ -1441,7 +1442,8 @@ function content2StateLayer(timelineObjId, content) {
             outTransition: content.outTransition,
             templateName: content.templateName,
             templateData: content.templateData,
-            channelName: content.channelName
+            channelName: content.channelName,
+            delayTakeAfterOutTransition: content.delayTakeAfterOutTransition
         };
         return o;
     }
@@ -1453,7 +1455,8 @@ function content2StateLayer(timelineObjId, content) {
             cue: content.cue,
             outTransition: content.outTransition,
             templateVcpId: content.templateVcpId,
-            channelName: content.channelName
+            channelName: content.channelName,
+            delayTakeAfterOutTransition: content.delayTakeAfterOutTransition
         };
         return o;
     }

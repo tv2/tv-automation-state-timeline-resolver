@@ -99,6 +99,8 @@ declare type VizMSEStateLayer = VizMSEStateLayerInternal | VizMSEStateLayerPilot
 interface VizMSEStateLayerBase {
     timelineObjId: string;
     lookahead?: boolean;
+    /** Whether this element should have its take delayed until after an out transition has finished */
+    delayTakeAfterOutTransition?: boolean;
 }
 interface VizMSEStateLayerElementBase extends VizMSEStateLayerBase {
     contentType: TimelineContentTypeVizMSE;
