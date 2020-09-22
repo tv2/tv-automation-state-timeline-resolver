@@ -366,7 +366,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
                     layerId: layerId,
                     templateInstance: VizMSEManager.getTemplateInstance(newLayer),
                     templateName: VizMSEManager.getTemplateName(newLayer),
-                    templateData: VizMSEManager.getTemplateData(newLayer),
+                    templateData: VizMSEManager.getTemplateData(newLayer).map((x) => _.escape(x)),
                     channelName: newLayer.channelName
                 };
                 if (!oldLayer ||
@@ -1075,7 +1075,7 @@ class VizMSEManager extends events_1.EventEmitter {
                         deviceType: src_1.DeviceType.VIZMSE,
                         type: src_1.TimelineContentTypeVizMSE.ELEMENT_INTERNAL,
                         templateName: expectedPlayoutItem.templateName,
-                        templateData: expectedPlayoutItem.templateData
+                        templateData: expectedPlayoutItem.templateData ? expectedPlayoutItem.templateData.map((x) => _.escape(x)) : undefined
                     }));
                 if (stateLayer) {
                     const item = {
