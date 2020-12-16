@@ -1,5 +1,5 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, TCPSendOptions, TcpSendCommandContent, DeviceOptionsTCPSend } from '../types/src';
+import { DeviceType, TCPSendOptions, TcpSendCommandContent, DeviceOptionsTCPSend, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 export interface DeviceOptionsTCPSendInternal extends DeviceOptionsTCPSend {
     options: (DeviceOptionsTCPSend['options'] & {
@@ -8,10 +8,11 @@ export interface DeviceOptionsTCPSendInternal extends DeviceOptionsTCPSend {
 }
 export declare type CommandReceiver = (time: number, cmd: TcpSendCommandContent, context: CommandContext, timelineObjId: string) => Promise<any>;
 declare type CommandContext = string;
+declare type TSCSendState = TimelineState;
 /**
  * This is a TCPSendDevice, it sends commands over tcp when it feels like it
  */
-export declare class TCPSendDevice extends DeviceWithState<TimelineState> implements IDevice {
+export declare class TCPSendDevice extends DeviceWithState<TSCSendState> implements IDevice {
     private _makeReadyCommands;
     private _makeReadyDoesReset;
     private _doOnTime;
@@ -27,7 +28,7 @@ export declare class TCPSendDevice extends DeviceWithState<TimelineState> implem
     init(initOptions: TCPSendOptions): Promise<boolean>;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime: number): void;
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     clearFuture(clearAfterTime: number): void;
     makeReady(okToDestroyStuff?: boolean): Promise<void>;
     terminate(): Promise<boolean>;

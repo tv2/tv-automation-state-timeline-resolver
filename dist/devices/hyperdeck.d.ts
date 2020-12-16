@@ -1,6 +1,6 @@
 import { TimelineState } from 'superfly-timeline';
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, HyperdeckOptions, DeviceOptionsHyperdeck } from '../types/src';
+import { DeviceType, HyperdeckOptions, DeviceOptionsHyperdeck, Mappings } from '../types/src';
 import { Commands as HyperdeckCommands, TransportStatus } from 'hyperdeck-connection';
 export interface DeviceOptionsHyperdeckInternal extends DeviceOptionsHyperdeck {
     options: (DeviceOptionsHyperdeck['options'] & {
@@ -64,7 +64,7 @@ export declare class HyperdeckDevice extends DeviceWithState<DeviceState> implem
      * that state at that time.
      * @param newState
      */
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     /**
      * Clears any scheduled commands after this time
      * @param clearAfterTime
@@ -76,7 +76,7 @@ export declare class HyperdeckDevice extends DeviceWithState<DeviceState> implem
      * Converts a timeline state to a device state.
      * @param state
      */
-    convertStateToHyperdeck(state: TimelineState): DeviceState;
+    convertStateToHyperdeck(state: TimelineState, mappings: Mappings): DeviceState;
     readonly deviceType: DeviceType;
     readonly deviceName: string;
     readonly queue: {

@@ -1,5 +1,5 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, AbstractOptions, DeviceOptionsAbstract } from '../types/src';
+import { DeviceType, AbstractOptions, DeviceOptionsAbstract, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 export interface Command {
     commandName: string;
@@ -15,7 +15,8 @@ export interface DeviceOptionsAbstractInternal extends DeviceOptionsAbstract {
     });
 }
 export declare type CommandReceiver = (time: number, cmd: Command, context: CommandContext, timelineObjId: string) => Promise<any>;
-export declare class AbstractDevice extends DeviceWithState<TimelineState> implements IDevice {
+declare type AbstractState = TimelineState;
+export declare class AbstractDevice extends DeviceWithState<AbstractState> implements IDevice {
     private _doOnTime;
     private _commandReceiver;
     constructor(deviceId: string, deviceOptions: DeviceOptionsAbstractInternal, options: any);
@@ -29,7 +30,7 @@ export declare class AbstractDevice extends DeviceWithState<TimelineState> imple
      * Handle a new state, at the point in time specified
      * @param newState
      */
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     /**
      * Clear any scheduled commands after this time
      * @param clearAfterTime
@@ -51,7 +52,9 @@ export declare class AbstractDevice extends DeviceWithState<TimelineState> imple
     readonly queue: {
         id: string;
         queueId: string;
-        time: number;
+        time: number; /**
+         * Dispose of the device so it can be garbage collected.
+         */
         args: any[];
     }[];
     getStatus(): DeviceStatus;

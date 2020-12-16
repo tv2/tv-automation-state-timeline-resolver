@@ -103,14 +103,18 @@ export interface TimelineObjAtemBase extends TSRTimelineObjBase {
         type: TimelineContentTypeAtem;
     };
 }
+declare type Without<T, U> = {
+    [P in Exclude<keyof T, keyof U>]?: never;
+};
+declare type XOR<T, U> = (T | U) extends object ? (Without<T, U> & U) | (Without<U, T> & T) : T | U;
 export interface TimelineObjAtemME extends TimelineObjAtemBase {
     content: {
         deviceType: DeviceType.ATEM;
         type: TimelineContentTypeAtem.ME;
-        me: {
-            /** Must be used with transition property, sets input to transition to */
-            input?: number;
-            transition?: AtemTransitionStyle;
+        me: XOR<{
+            input: number;
+            transition: AtemTransitionStyle;
+        }, {
             /** Cut directly to program */
             programInput?: number;
             /**
@@ -119,6 +123,7 @@ export interface TimelineObjAtemME extends TimelineObjAtemBase {
              * `programInput` must be used instead if control of program and preview are both needed.
              */
             previewInput?: number;
+        }> & {
             /** Is ME in transition state */
             inTransition?: boolean;
             /** Should preview transition */
@@ -276,3 +281,4 @@ export interface TimelineObjAtemMacroPlayer extends TimelineObjAtemBase {
         };
     };
 }
+export {};

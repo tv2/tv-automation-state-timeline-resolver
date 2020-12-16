@@ -1,5 +1,5 @@
 import { DeviceWithState, DeviceStatus } from './device';
-import { DeviceType, DeviceOptionsVMix, VMixOptions } from '../types/src';
+import { DeviceType, DeviceOptionsVMix, VMixOptions, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 import { VMixStateCommand } from './vmixAPI';
 import { VMixTransition, VMixInputType, VMixTransform, VMixInputOverlays } from '../types/src/vmix';
@@ -34,14 +34,14 @@ export declare class VMixDevice extends DeviceWithState<VMixStateExtended> {
     private _getDefaultState;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime: number): void;
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     clearFuture(clearAfterTime: number): void;
     terminate(): Promise<boolean>;
     getStatus(): DeviceStatus;
     makeReady(okToDestroyStuff?: boolean): Promise<void>;
     readonly canConnect: boolean;
     readonly connected: boolean;
-    convertStateToVMix(state: TimelineState): VMixStateExtended;
+    convertStateToVMix(state: TimelineState, mappings: Mappings): VMixStateExtended;
     getFilename(filePath: string): string;
     modifyInput(deviceState: VMixStateExtended, newInput: VMixInput, input: {
         key?: string | number;

@@ -1,5 +1,5 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, TimelineContentTypeLawo, DeviceOptionsLawo, LawoCommand, LawoOptions } from '../types/src';
+import { DeviceType, TimelineContentTypeLawo, DeviceOptionsLawo, LawoCommand, LawoOptions, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 import { Types as EmberTypes, Model as EmberModel } from 'emberplus-connection';
 export interface DeviceOptionsLawoInternal extends DeviceOptionsLawo {
@@ -36,11 +36,12 @@ declare type CommandContext = string;
  *
  * It controls mutes and fades over Ember Plus.
  */
-export declare class LawoDevice extends DeviceWithState<TimelineState> implements IDevice {
+export declare class LawoDevice extends DeviceWithState<LawoState> implements IDevice {
     private _doOnTime;
     private _lawo;
     private _lastSentValue;
     private _connected;
+    private _initialized;
     private _commandReceiver;
     private _sourcesPath;
     private _rampMotorFunctionPath;
@@ -48,6 +49,8 @@ export declare class LawoDevice extends DeviceWithState<TimelineState> implement
     private _setValueFn;
     private _faderIntervalTime;
     private _faderThreshold;
+    private _sourceNamePath;
+    private _sourceNameToNodeName;
     private transitions;
     private transitionInterval;
     constructor(deviceId: string, deviceOptions: DeviceOptionsLawoInternal, options: any);
@@ -61,7 +64,7 @@ export declare class LawoDevice extends DeviceWithState<TimelineState> implement
      * Handles a state such that the device will reflect that state at the given time.
      * @param newState
      */
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     /**
      * Clear any scheduled commands after this time
      * @param clearAfterTime
@@ -78,7 +81,7 @@ export declare class LawoDevice extends DeviceWithState<TimelineState> implement
      * Converts a timeline state into a device state.
      * @param state
      */
-    convertStateToLawo(state: TimelineState): LawoState;
+    convertStateToLawo(state: TimelineState, mappings: Mappings): LawoState;
     readonly deviceType: DeviceType;
     readonly deviceName: string;
     readonly queue: {
@@ -104,6 +107,7 @@ export declare class LawoDevice extends DeviceWithState<TimelineState> implement
      * @param path
      */
     private _getNodeByPath;
+    private _identifierToNodeName;
     /**
      * Returns an attribute path
      * @param identifier
@@ -114,5 +118,6 @@ export declare class LawoDevice extends DeviceWithState<TimelineState> implement
     private setValueWrapper;
     private _connectionChanged;
     private runAnimation;
+    private _mapSourcesToNodeNames;
 }
 export {};

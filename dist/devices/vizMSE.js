@@ -86,7 +86,8 @@ class VizMSEDevice extends device_1.DeviceWithState {
     /**
      * Generates an array of VizMSE commands by comparing the newState against the oldState, or the current device state.
      */
-    handleState(newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
         // check if initialized:
         if (!this._vizmseManager || !this._vizmseManager.initialized) {
             this.emit('warning', 'VizMSE.v-connection not initialized yet');
@@ -95,7 +96,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
         let oldVizMSEState = (this.getStateBefore(previousStateTime) ||
             { state: { time: 0, layer: {} } }).state;
-        let newVizMSEState = this.convertStateToVizMSE(newState);
+        let newVizMSEState = this.convertStateToVizMSE(newState, newMappings);
         let commandsToAchieveState = this._diffStates(oldVizMSEState, newVizMSEState, newState.time);
         // clear any queued commands later than this time:
         this._doOnTime.clearQueueNowAndAfter(previousStateTime);
@@ -148,12 +149,11 @@ class VizMSEDevice extends device_1.DeviceWithState {
      * Takes a timeline state and returns a VizMSE State that will work with the state lib.
      * @param timelineState The timeline state to generate from.
      */
-    convertStateToVizMSE(timelineState) {
+    convertStateToVizMSE(timelineState, mappings) {
         const state = {
             time: timelineState.time,
             layer: {}
         };
-        const mappings = this.getMapping();
         _.each(timelineState.layers, (layer, layerName) => {
             const layerExt = layer;
             let foundMapping = mappings[layerName];

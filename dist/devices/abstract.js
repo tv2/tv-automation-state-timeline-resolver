@@ -43,7 +43,8 @@ class AbstractDevice extends device_1.DeviceWithState {
      * Handle a new state, at the point in time specified
      * @param newState
      */
-    handleState(newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
         let oldState = (this.getStateBefore(previousStateTime) || { state: { time: 0, layers: {}, nextEvents: [] } }).state;
         let oldAbstractState = this.convertStateToAbstract(oldState);

@@ -1,5 +1,5 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, PharosOptions, TimelineObjPharos, DeviceOptionsPharos } from '../types/src';
+import { DeviceType, PharosOptions, TimelineObjPharos, DeviceOptionsPharos, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 export interface DeviceOptionsPharosInternal extends DeviceOptionsPharos {
     options: (DeviceOptionsPharos['options'] & {
@@ -26,7 +26,7 @@ declare type CommandContext = string;
  * This is a wrapper for a Pharos-devices,
  * https://www.pharoscontrols.com/downloads/documentation/application-notes/
  */
-export declare class PharosDevice extends DeviceWithState<TimelineState> implements IDevice {
+export declare class PharosDevice extends DeviceWithState<PharosState> implements IDevice {
     private _doOnTime;
     private _pharos;
     private _pharosProjectInfo?;
@@ -43,7 +43,7 @@ export declare class PharosDevice extends DeviceWithState<TimelineState> impleme
      * in time.
      * @param newState
      */
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     clearFuture(clearAfterTime: number): void;
     terminate(): Promise<boolean>;
     readonly canConnect: boolean;

@@ -81,7 +81,8 @@ class HTTPWatcherDevice extends device_1.Device {
     prepareForHandleState(_newStateTime) {
         // NOP
     }
-    handleState(_newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
         // NOP
     }
     clearFuture(_clearAfterTime) {

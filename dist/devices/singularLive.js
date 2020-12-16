@@ -40,19 +40,19 @@ class SingularLiveDevice extends device_1.DeviceWithState {
         this._doOnTime.clearQueueNowAndAfter(newStateTime);
         this.cleanUpStates(0, newStateTime);
     }
-    handleState(newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
         // Handle this new state, at the point in time specified
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
-        let oldState = (this.getStateBefore(previousStateTime) || { state: { time: 0, layers: {}, nextEvents: [] } }).state;
-        let oldAbstractState = this.convertStateToSingularLive(oldState);
-        let newAbstractState = this.convertStateToSingularLive(newState);
-        let commandsToAchieveState = this._diffStates(oldAbstractState, newAbstractState);
+        let oldSingularState = (this.getStateBefore(previousStateTime) || { state: { compositions: {} } }).state;
+        let newSingularState = this.convertStateToSingularLive(newState, newMappings);
+        let commandsToAchieveState = this._diffStates(oldSingularState, newSingularState);
         // clear any queued commands later than this time:
         this._doOnTime.clearQueueNowAndAfter(previousStateTime);
         // add the new commands to the queue:
         this._addToQueue(commandsToAchieveState, newState.time);
         // store the new state, for later use:
-        this.setState(newState, newState.time);
+        this.setState(newSingularState, newState.time);
     }
     clearFuture(clearAfterTime) {
         // Clear any scheduled commands after this time
@@ -88,12 +88,12 @@ class SingularLiveDevice extends device_1.DeviceWithState {
             compositions: {}
         };
     }
-    convertStateToSingularLive(state) {
+    convertStateToSingularLive(state, newMappings) {
         // convert the timeline state into something we can use
         // (won't even use this.mapping)
         const singularState = this._getDefaultState();
         _.each(state.layers, (tlObject, layerName) => {
-            const mapping = this.getMapping()[layerName];
+            const mapping = newMappings[layerName];
             if (mapping && mapping.device === src_1.DeviceType.SINGULAR_LIVE && mapping.deviceId === this.deviceId) {
                 let tlObjectSource = tlObject;
                 if (tlObjectSource.content.type === src_1.TimelineContentTypeSingularLive.COMPOSITION) {

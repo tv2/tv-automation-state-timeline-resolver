@@ -27,6 +27,7 @@ const vizMSE_1 = require("./devices/vizMSE");
 const p_queue_1 = require("p-queue");
 const PAll = require("p-all");
 const p_timeout_1 = require("p-timeout");
+const shotoku_1 = require("./devices/shotoku");
 exports.LOOKAHEADTIME = 5000; // Will look ahead this far into the future
 exports.PREPARETIME = 2000; // Will prepare commands this time before the event is to happen
 exports.MINTRIGGERTIME = 10; // Minimum time between triggers
@@ -47,7 +48,7 @@ class Conductor extends events_1.EventEmitter {
         super();
         this._logDebug = false;
         this._timeline = [];
-        this._mapping = {};
+        this._mappings = {};
         this.devices = {};
         this._nextResolveTime = 0;
         this._resolvedStates = {
@@ -66,8 +67,6 @@ class Conductor extends events_1.EventEmitter {
         this._statMeasureStart = 0;
         this._statMeasureReason = '';
         this._statReports = [];
-        this._resolveTimelineRunning = false;
-        this._resolveTimelineOnQueue = false;
         this._options = options;
         this._multiThreadedResolver = !!options.multiThreadedResolver;
         this._useCacheWhenResolving = !!options.useCacheWhenResolving;
@@ -123,21 +122,7 @@ class Conductor extends events_1.EventEmitter {
      * Returns the mappings
      */
     get mapping() {
-        return this._mapping;
-    }
-    /**
-     * Updates the mappings in the Conductor class and all devices and forces
-     * a resolve timeline.
-     * @param mapping The new mappings
-     */
-    async setMapping(mapping) {
-        // Set mapping
-        // re-resolve timeline
-        this._mapping = mapping;
-        await this._mapAllDevices(d => d.device.setMapping(mapping));
-        if (this._timeline) {
-            this._resolveTimeline();
-        }
+        return this._mappings;
     }
     /**
      * Returns the current timeline
@@ -148,9 +133,11 @@ class Conductor extends events_1.EventEmitter {
     /**
      * Sets a new timeline and resets the resolver.
      */
-    set timeline(timeline) {
+    setTimelineAndMappings(timeline, mappings) {
         this.statStartMeasure('timeline received');
         this._timeline = timeline;
+        if (mappings)
+            this._mappings = mappings;
         // We've got a new timeline, anything could've happened at this point
         // Highest priority right now is to determine if any commands have to be sent RIGHT NOW
         // After that, we'll move further ahead in time, creating commands ready for scheduling
@@ -232,6 +219,9 @@ class Conductor extends events_1.EventEmitter {
             else if (deviceOptions.type === src_1.DeviceType.QUANTEL) {
                 newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/quantel.js', quantel_1.QuantelDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
+            else if (deviceOptions.type === src_1.DeviceType.SHOTOKU) {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/shotoku.js', shotoku_1.ShotokuDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+            }
             else if (deviceOptions.type === src_1.DeviceType.SISYFOS) {
                 newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/sisyfos.js', sisyfos_1.SisyfosMessageDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
@@ -268,8 +258,6 @@ class Conductor extends events_1.EventEmitter {
             newDevice.device.on('debug', onDeviceDebug).catch(console.error);
             this.emit('info', `Initializing device ${newDevice.deviceId} (${newDevice.instanceId}) of type ${src_1.DeviceType[deviceOptions.type]}...`);
             this.devices[deviceId] = newDevice;
-            // @ts-ignore
-            await newDevice.device.setMapping(this.mapping);
             // TODO - should the device be on this.devices yet? sounds like we could instruct it to do things before it has initialised?
             await newDevice.device.init(deviceOptions.options);
             await newDevice.reloadProps(); // because the device name might have changed after init
@@ -321,11 +309,16 @@ class Conductor extends events_1.EventEmitter {
      * next time
      */
     resetResolver() {
-        this._nextResolveTime = 0; // This will cause _resolveTimeline() to generate the state for NOW
-        this._resolvedStates = {
-            resolvedStates: null,
-            resolveTime: 0
-        };
+        // reset the resolver through the action queue to make sure it is reset after any currently running timelineResolves
+        this._actionQueue.add(async () => {
+            this._nextResolveTime = 0; // This will cause _resolveTimeline() to generate the state for NOW
+            this._resolvedStates = {
+                resolvedStates: null,
+                resolveTime: 0
+            };
+        }).catch(() => {
+            this.emit('error', 'Failed to reset the resolvedStates, timeline may not be updated appropriately!');
+        });
         this._triggerResolveTimeline();
     }
     /**
@@ -373,31 +366,17 @@ class Conductor extends events_1.EventEmitter {
      * Resolves the timeline for the next resolve-time, generates the commands and passes on the commands.
      */
     _resolveTimeline() {
-        if (this._resolveTimelineRunning) {
-            // If a resolve is already running, put in queue to run later:
-            this._resolveTimelineOnQueue = true;
-            return;
-        }
-        this._resolveTimelineRunning = true;
+        // this adds it to a queue, make sure it never runs more than once at a time:
         this._actionQueue.add(() => {
             return this._resolveTimelineInner()
+                .then((nextResolveTime) => {
+                this._nextResolveTime = nextResolveTime || 0;
+            })
                 .catch(e => {
                 this.emit('error', 'Caught error in _resolveTimelineInner' + e);
             });
         })
-            .then((nextResolveTime) => {
-            this._resolveTimelineRunning = false;
-            if (this._resolveTimelineOnQueue) {
-                // re-run the resolver right away, again
-                this._resolveTimelineOnQueue = false;
-                this._triggerResolveTimeline(0);
-            }
-            else {
-                this._nextResolveTime = nextResolveTime || 0;
-            }
-        })
             .catch(e => {
-            this._resolveTimelineRunning = false;
             this.emit('error', 'Caught error in _resolveTimeline.then' + e);
         });
     }
@@ -517,7 +496,7 @@ class Conductor extends events_1.EventEmitter {
                 };
                 // Pass along the state to the device, it will generate its commands and execute them:
                 try {
-                    await device.device.handleState(removeParent(subState));
+                    await device.device.handleState(removeParent(subState), this._mappings);
                 }
                 catch (e) {
                     this.emit('error', 'Error in device "' + device.deviceId + '"' + e + ' ' + e.stack);
@@ -824,9 +803,9 @@ class Conductor extends events_1.EventEmitter {
         });
         _.each(layers, (o, layerId) => {
             const oExt = o;
-            let mapping = this._mapping[o.layer + ''];
+            let mapping = this._mappings[o.layer + ''];
             if (!mapping && oExt.isLookahead && oExt.lookaheadForLayer) {
-                mapping = this._mapping[oExt.lookaheadForLayer];
+                mapping = this._mappings[oExt.lookaheadForLayer];
             }
             if (mapping) {
                 const deviceIdAndType = mapping.deviceId + '__' + mapping.device;

@@ -32,11 +32,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
             if (deviceOptions.options.timeBase)
                 this._timeBase = deviceOptions.options.timeBase;
         }
-        this._ccgState = new casparcg_state_1.CasparCGState({
-            externalLog: (...args) => {
-                this.emit('debug', ...args);
-            }
-        });
+        this._ccgState = new casparcg_state_1.CasparCGState();
         this._doOnTime = new doOnTime_1.DoOnTime(() => {
             return this.getCurrentTime();
         }, doOnTime_1.SendMode.BURST, this._deviceOptions);
@@ -112,16 +108,16 @@ class CasparCGDevice extends device_1.DeviceWithState {
     /**
      * Generates an array of CasparCG commands by comparing the newState against the oldState, or the current device state.
      */
-    handleState(newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
         // check if initialized:
         if (!this._ccgState.isInitialised) {
             this.emit('warning', 'CasparCG State not initialized yet');
             return;
         }
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
-        let oldState = (this.getStateBefore(previousStateTime) || ({ state: { time: 0, layers: {}, nextEvents: [] } })).state;
-        let newCasparState = this.convertStateToCaspar(newState);
-        let oldCasparState = this.convertStateToCaspar(oldState);
+        let oldCasparState = (this.getStateBefore(previousStateTime) || { state: { channels: {} } }).state;
+        let newCasparState = this.convertStateToCaspar(newState, newMappings);
         let commandsToAchieveState = this._diffStates(oldCasparState, newCasparState, newState.time);
         // clear any queued commands later than this time:
         if (this._useScheduling) {
@@ -133,7 +129,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
         // add the new commands to the queue:
         this._addToQueue(commandsToAchieveState, newState.time);
         // store the new state, for later use:
-        this.setState(newState, newState.time);
+        this.setState(newCasparState, newState.time);
     }
     /**
      * Clear any scheduled commands after this time
@@ -177,7 +173,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
             return [];
         }
     }
-    convertObjectToCasparState(layer, mapping, isForeground) {
+    convertObjectToCasparState(mappings, layer, mapping, isForeground) {
         let startTime = layer.instance.originalStart || layer.instance.start;
         if (startTime === 0)
             startTime = 1; // @todo: startTime === 0 will make ccg-state seek to the current time
@@ -189,7 +185,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
             stateLayer = device_1.literal({
                 id: layer.id,
                 layerNo: mapping.layer,
-                content: casparcg_state_1.CasparCG.LayerContentType.MEDIA,
+                content: casparcg_state_1.LayerContentType.MEDIA,
                 media: mediaObj.content.file,
                 playTime: (!holdOnFirstFrame && (mediaObj.content.noStarttime || loopingPlayTime) ?
                     null :
@@ -209,7 +205,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
             stateLayer = device_1.literal({
                 id: layer.id,
                 layerNo: mapping.layer,
-                content: casparcg_state_1.CasparCG.LayerContentType.MEDIA,
+                content: casparcg_state_1.LayerContentType.MEDIA,
                 media: ipObj.content.uri,
                 channelLayout: ipObj.content.channelLayout,
                 playTime: null,
@@ -222,7 +218,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
             stateLayer = device_1.literal({
                 id: layer.id,
                 layerNo: mapping.layer,
-                content: casparcg_state_1.CasparCG.LayerContentType.INPUT,
+                content: casparcg_state_1.LayerContentType.INPUT,
                 media: 'decklink',
                 input: {
                     device: inputObj.content.device,
@@ -239,7 +235,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
             stateLayer = device_1.literal({
                 id: layer.id,
                 layerNo: mapping.layer,
-                content: casparcg_state_1.CasparCG.LayerContentType.TEMPLATE,
+                content: casparcg_state_1.LayerContentType.TEMPLATE,
                 media: recordObj.content.name,
                 playTime: startTime || null,
                 playing: true,
@@ -253,7 +249,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
             stateLayer = device_1.literal({
                 id: layer.id,
                 layerNo: mapping.layer,
-                content: casparcg_state_1.CasparCG.LayerContentType.HTMLPAGE,
+                content: casparcg_state_1.LayerContentType.HTMLPAGE,
                 media: htmlObj.content.url,
                 playTime: startTime || null,
                 playing: true
@@ -262,7 +258,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
         else if (layer.content.type === src_1.TimelineContentTypeCasparCg.ROUTE) {
             const routeObj = layer;
             if (routeObj.content.mappedLayer) {
-                let routeMapping = this.getMapping()[routeObj.content.mappedLayer];
+                let routeMapping = mappings[routeObj.content.mappedLayer];
                 if (routeMapping && routeMapping.deviceId === this.deviceId) {
                     routeObj.content.channel = routeMapping.channel;
                     routeObj.content.layer = routeMapping.layer;
@@ -271,7 +267,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
             stateLayer = device_1.literal({
                 id: layer.id,
                 layerNo: mapping.layer,
-                content: casparcg_state_1.CasparCG.LayerContentType.ROUTE,
+                content: casparcg_state_1.LayerContentType.ROUTE,
                 media: 'route',
                 route: {
                     channel: routeObj.content.channel || 0,
@@ -290,7 +286,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 stateLayer = device_1.literal({
                     id: layer.id,
                     layerNo: mapping.layer,
-                    content: casparcg_state_1.CasparCG.LayerContentType.RECORD,
+                    content: casparcg_state_1.LayerContentType.RECORD,
                     media: recordObj.content.file,
                     encoderOptions: recordObj.content.encoderOptions,
                     playing: true,
@@ -303,9 +299,8 @@ class CasparCGDevice extends device_1.DeviceWithState {
             let l = {
                 id: layer.id,
                 layerNo: mapping.layer,
-                content: casparcg_state_1.CasparCG.LayerContentType.NOTHING,
-                playing: false,
-                pauseTime: 0
+                content: casparcg_state_1.LayerContentType.NOTHING,
+                playing: false
             };
             stateLayer = l;
         } // now it holds that stateLayer is truthy
@@ -321,12 +316,12 @@ class CasparCGDevice extends device_1.DeviceWithState {
                     let media = stateLayer.media;
                     let transitions = {};
                     if (baseContent.transitions.inTransition) {
-                        transitions.inTransition = new casparcg_state_1.CasparCG.Transition(baseContent.transitions.inTransition);
+                        transitions.inTransition = new casparcg_state_1.Transition(baseContent.transitions.inTransition);
                     }
                     if (baseContent.transitions.outTransition) {
-                        transitions.outTransition = new casparcg_state_1.CasparCG.Transition(baseContent.transitions.outTransition);
+                        transitions.outTransition = new casparcg_state_1.Transition(baseContent.transitions.outTransition);
                     }
-                    stateLayer.media = new casparcg_state_1.CasparCG.TransitionObject(media, {
+                    stateLayer.media = new casparcg_state_1.TransitionObject(media, {
                         inTransition: transitions.inTransition,
                         outTransition: transitions.outTransition
                     });
@@ -351,9 +346,11 @@ class CasparCGDevice extends device_1.DeviceWithState {
      * Takes a timeline state and returns a CasparCG State that will work with the state lib.
      * @param timelineState The timeline state to generate from.
      */
-    convertStateToCaspar(timelineState) {
-        const caspar = new casparcg_state_1.CasparCG.State();
-        _.each(this.getMapping(), (foundMapping, layerName) => {
+    convertStateToCaspar(timelineState, mappings) {
+        const caspar = {
+            channels: {}
+        };
+        _.each(mappings, (foundMapping, layerName) => {
             if (foundMapping &&
                 foundMapping.device === src_1.DeviceType.CASPARCG &&
                 foundMapping.deviceId === this.deviceId &&
@@ -363,13 +360,12 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 mapping.channel = mapping.channel || 0;
                 mapping.layer = mapping.layer || 0;
                 // create a channel in state if necessary, or reuse existing channel
-                const channelId = Number(mapping.channel);
-                if (!channelId || isNaN(channelId))
-                    return;
-                const channel = caspar.channels[mapping.channel] ? caspar.channels[mapping.channel] : new casparcg_state_1.CasparCG.Channel();
-                channel.channelNo = mapping.channel;
+                const channel = caspar.channels[mapping.channel] || { channelNo: mapping.channel, layers: {} };
+                channel.channelNo = Number(mapping.channel) || 1;
+                channel.fps = 25;
+                caspar.channels[channel.channelNo] = channel;
                 // @todo: check if we need to get fps.
-                channel.fps = 25 / 1000; // 25 fps over 1000ms
+                channel.fps = 25;
                 caspar.channels[mapping.channel] = channel;
                 let foregroundObj = timelineState.layers[layerName];
                 let backgroundObj = _.last(_.filter(timelineState.layers, obj => {
@@ -383,8 +379,8 @@ class CasparCGDevice extends device_1.DeviceWithState {
                     foregroundObj = undefined;
                 }
                 // create layer of appropriate type
-                const foregroundStateLayer = foregroundObj ? this.convertObjectToCasparState(foregroundObj, mapping, true) : undefined;
-                const backgroundStateLayer = backgroundObj ? this.convertObjectToCasparState(backgroundObj, mapping, false) : undefined;
+                const foregroundStateLayer = foregroundObj ? this.convertObjectToCasparState(mappings, foregroundObj, mapping, true) : undefined;
+                const backgroundStateLayer = backgroundObj ? this.convertObjectToCasparState(mappings, backgroundObj, mapping, false) : undefined;
                 if (foregroundStateLayer) {
                     channel.layers[mapping.layer] = {
                         ...foregroundStateLayer,
@@ -405,9 +401,8 @@ class CasparCGDevice extends device_1.DeviceWithState {
                         channel.layers[mapping.layer] = device_1.literal({
                             id: `${backgroundStateLayer.id}_empty_base`,
                             layerNo: mapping.layer,
-                            content: casparcg_state_1.CasparCG.LayerContentType.NOTHING,
+                            content: casparcg_state_1.LayerContentType.NOTHING,
                             playing: false,
-                            pauseTime: 0,
                             nextUp: device_1.literal({
                                 ...backgroundStateLayer,
                                 auto: false
@@ -516,7 +511,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
      */
     _diffStates(oldState, newState, time) {
         // @todo: this is a tmp fix for the command order. should be removed when ccg-state has been refactored.
-        return this._ccgState.diffStatesOrderedCommands(oldState, newState, time);
+        return casparcg_state_1.CasparCGState.diffStatesOrderedCommands(oldState, newState, time);
     }
     _doCommand(command, context, timlineObjId) {
         let time = this.getCurrentTime();
@@ -636,7 +631,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 resCommand.layer) {
                 const currentState = this.getState(time);
                 if (currentState) {
-                    const currentCasparState = this.convertStateToCaspar(currentState.state);
+                    const currentCasparState = currentState.state;
                     const trackedState = this._ccgState.getState();
                     const channel = currentCasparState.channels[resCommand.channel];
                     if (channel) {
@@ -692,7 +687,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
         const tlState = this.getState(this.getCurrentTime());
         if (!tlState)
             return; // no state implies any state is correct
-        const ccgState = this.convertStateToCaspar(tlState.state);
+        const ccgState = tlState.state;
         const diff = this._ccgState.getDiff(ccgState, this.getCurrentTime());
         const cmd = [];
         for (const layer of diff) {

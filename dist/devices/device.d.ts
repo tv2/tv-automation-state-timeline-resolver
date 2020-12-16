@@ -37,15 +37,13 @@ export interface IDevice {
     init: (initOptions: DeviceInitOptions) => Promise<boolean>;
     getCurrentTime: () => number;
     prepareForHandleState: (newStateTime: number) => void;
-    handleState: (newState: TimelineState) => void;
+    handleState: (newState: TimelineState, mappings: Mappings) => void;
     clearFuture: (clearAfterTime: number) => void;
     canConnect: boolean;
     connected: boolean;
     makeReady: (_okToDestroyStuff?: boolean, activeRundownId?: string) => Promise<void>;
     standDown: (_okToDestroyStuff?: boolean) => Promise<void>;
     getStatus: () => DeviceStatus;
-    getMapping: () => Mappings;
-    setMapping: (mappings: Mappings) => void;
     deviceId: string;
     deviceName: string;
     deviceType: DeviceType;
@@ -60,8 +58,6 @@ export interface IDevice {
 export declare abstract class Device extends EventEmitter implements IDevice {
     private _getCurrentTime;
     private _deviceId;
-    private _mappings;
-    private _ownMappings;
     private _currentTimeDiff;
     private _currentTimeUpdated;
     private _instanceId;
@@ -81,7 +77,9 @@ export declare abstract class Device extends EventEmitter implements IDevice {
     /** Called from Conductor when a new state is about to be handled soon */
     abstract prepareForHandleState(newStateTime: number): any;
     /** Called from Conductor when a new state is to be handled */
-    abstract handleState(newState: TimelineState): any;
+    abstract handleState(newState: TimelineState, mappings: Mappings): any;
+    /** To be called by children first in .handleState */
+    protected onHandleState(_newState: TimelineState, mappings: Mappings): void;
     /**
      * Clear any scheduled commands after this time
      * @param clearAfterTime
@@ -103,11 +101,6 @@ export declare abstract class Device extends EventEmitter implements IDevice {
      */
     standDown(_okToDestroyStuff?: boolean): Promise<void>;
     abstract getStatus(): DeviceStatus;
-    /** Get all mappings */
-    getMapping(): Mappings;
-    /** Get mappings that are tied to this device */
-    getOwnMapping(): Mappings;
-    setMapping(mappings: Mappings): void;
     readonly deviceId: string;
     /**
      * A human-readable name for this device

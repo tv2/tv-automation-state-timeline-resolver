@@ -1,8 +1,8 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
 import { Command as CommandNS } from 'casparcg-connection';
-import { DeviceType, CasparCGOptions, DeviceOptionsCasparCG } from '../types/src';
+import { DeviceType, CasparCGOptions, DeviceOptionsCasparCG, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
-import { CasparCG as StateNS } from 'casparcg-state';
+import { State } from 'casparcg-state';
 export interface DeviceOptionsCasparCGInternal extends DeviceOptionsCasparCG {
     options: (DeviceOptionsCasparCG['options'] & {
         commandReceiver?: CommandReceiver;
@@ -15,7 +15,7 @@ export declare type CommandReceiver = (time: number, cmd: CommandNS.IAMCPCommand
  * commands. It depends on the DoOnTime class to execute the commands timely or,
  * optionally, uses the CasparCG command scheduling features.
  */
-export declare class CasparCGDevice extends DeviceWithState<TimelineState> implements IDevice {
+export declare class CasparCGDevice extends DeviceWithState<State> implements IDevice {
     private _ccg;
     private _ccgState;
     private _queue;
@@ -43,7 +43,7 @@ export declare class CasparCGDevice extends DeviceWithState<TimelineState> imple
     /**
      * Generates an array of CasparCG commands by comparing the newState against the oldState, or the current device state.
      */
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     /**
      * Clear any scheduled commands after this time
      * @param clearAfterTime
@@ -62,7 +62,7 @@ export declare class CasparCGDevice extends DeviceWithState<TimelineState> imple
      * Takes a timeline state and returns a CasparCG State that will work with the state lib.
      * @param timelineState The timeline state to generate from.
      */
-    convertStateToCaspar(timelineState: TimelineState): StateNS.State;
+    convertStateToCaspar(timelineState: TimelineState, mappings: Mappings): State;
     /**
      * Prepares the physical device for playout. If amcp scheduling is used this
      * tries to sync the timecode. If {@code okToDestroyStuff === true} this clears

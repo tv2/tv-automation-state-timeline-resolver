@@ -50,20 +50,20 @@ class OSCMessageDevice extends device_1.DeviceWithState {
      * in time.
      * @param newState
      */
-    handleState(newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
         // Transform timeline states into device states
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
-        let oldState = (this.getStateBefore(previousStateTime) || { state: { time: 0, layers: {}, nextEvents: [] } }).state;
-        let oldAbstractState = this.convertStateToOSCMessage(oldState);
-        let newAbstractState = this.convertStateToOSCMessage(newState);
+        let oldOSCState = (this.getStateBefore(previousStateTime) || { state: {} }).state;
+        let newOSCState = this.convertStateToOSCMessage(newState);
         // Generate commands necessary to transition to the new state
-        let commandsToAchieveState = this._diffStates(oldAbstractState, newAbstractState);
+        let commandsToAchieveState = this._diffStates(oldOSCState, newOSCState);
         // clear any queued commands later than this time:
         this._doOnTime.clearQueueNowAndAfter(previousStateTime);
         // add the new commands to the queue:
         this._addToQueue(commandsToAchieveState, newState.time);
         // store the new state, for later use:
-        this.setState(newState, newState.time);
+        this.setState(newOSCState, newState.time);
     }
     /**
      * Clear any scheduled commands after this time

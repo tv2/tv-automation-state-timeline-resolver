@@ -1,5 +1,5 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, VizMSEOptions, TimelineContentTypeVizMSE, ExpectedPlayoutItemContent, VIZMSEPlayoutItemContent, DeviceOptionsVizMSE, VIZMSEOutTransition } from '../types/src';
+import { DeviceType, VizMSEOptions, TimelineContentTypeVizMSE, ExpectedPlayoutItemContent, VIZMSEPlayoutItemContent, DeviceOptionsVizMSE, VIZMSEOutTransition, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 export declare function getHash(str: string): string;
 export interface DeviceOptionsVizMSEInternal extends DeviceOptionsVizMSE {
@@ -31,7 +31,7 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implement
     /**
      * Generates an array of VizMSE commands by comparing the newState against the oldState, or the current device state.
      */
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     /**
      * Clear any scheduled commands after this time
      * @param clearAfterTime
@@ -55,7 +55,7 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implement
      * Takes a timeline state and returns a VizMSE State that will work with the state lib.
      * @param timelineState The timeline state to generate from.
      */
-    convertStateToVizMSE(timelineState: TimelineState): VizMSEState;
+    convertStateToVizMSE(timelineState: TimelineState, mappings: Mappings): VizMSEState;
     /**
      * Prepares the physical device for playout.
      * @param okToDestroyStuff Whether it is OK to do things that affects playout visibly

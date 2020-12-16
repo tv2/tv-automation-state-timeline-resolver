@@ -1,5 +1,5 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, TimelineContentTypePanasonicPtz, PanasonicPTZOptions, DeviceOptionsPanasonicPTZ } from '../types/src';
+import { DeviceType, TimelineContentTypePanasonicPtz, PanasonicPTZOptions, DeviceOptionsPanasonicPTZ, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 export interface DeviceOptionsPanasonicPTZInternal extends DeviceOptionsPanasonicPTZ {
     options: (DeviceOptionsPanasonicPTZ['options'] & {
@@ -43,7 +43,7 @@ declare type CommandContext = any;
  * executes commands to achieve such states. Depends on PanasonicPTZAPI class for
  * connection with the physical device.
  */
-export declare class PanasonicPtzDevice extends DeviceWithState<TimelineState> implements IDevice {
+export declare class PanasonicPtzDevice extends DeviceWithState<PanasonicPtzState> implements IDevice {
     private _doOnTime;
     private _device;
     private _connected;
@@ -57,7 +57,7 @@ export declare class PanasonicPtzDevice extends DeviceWithState<TimelineState> i
      * Converts a timeline state into a device state.
      * @param state
      */
-    convertStateToPtz(state: TimelineState): PanasonicPtzState;
+    convertStateToPtz(state: TimelineState, mappings: Mappings): PanasonicPtzState;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime: number): void;
     /**
@@ -65,7 +65,7 @@ export declare class PanasonicPtzDevice extends DeviceWithState<TimelineState> i
      * in time.
      * @param newState
      */
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     clearFuture(clearAfterTime: number): void;
     terminate(): Promise<boolean>;
     getStatus(): DeviceStatus;

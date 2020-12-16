@@ -1,5 +1,5 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, DeviceOptionsSisyfos } from '../types/src';
+import { DeviceType, DeviceOptionsSisyfos, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 import { SisyfosOptions } from '../types/src/sisyfos';
 import { SisyfosCommand, SisyfosState, SisyfosChannel } from './sisyfosAPI';
@@ -27,7 +27,7 @@ export declare class SisyfosMessageDevice extends DeviceWithState<SisyfosState> 
      * in time.
      * @param newState
      */
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     private _handleStateInner;
     /**
      * Clear any scheduled commands after this time
@@ -47,7 +47,7 @@ export declare class SisyfosMessageDevice extends DeviceWithState<SisyfosState> 
      * a timeline state.
      * @param state
      */
-    convertStateToSisyfosState(state: TimelineState): SisyfosState;
+    convertStateToSisyfosState(state: TimelineState, mappings: Mappings): SisyfosState;
     readonly deviceType: DeviceType;
     readonly deviceName: string;
     readonly queue: {

@@ -20,8 +20,6 @@ exports.literal = literal;
 class Device extends events_1.EventEmitter {
     constructor(deviceId, deviceOptions, getCurrentTime) {
         super();
-        this._mappings = {};
-        this._ownMappings = {};
         this._currentTimeDiff = 0;
         this._currentTimeUpdated = 0;
         this.useDirectTime = false;
@@ -61,6 +59,10 @@ class Device extends events_1.EventEmitter {
         }
         return Date.now() - this._currentTimeDiff;
     }
+    /** To be called by children first in .handleState */
+    onHandleState(_newState, mappings) {
+        this.updateIsActive(mappings);
+    }
     /**
      * The makeReady method could be triggered at a time before broadcast
      * Whenever we know that the user want's to make sure things are ready for broadcast
@@ -79,18 +81,6 @@ class Device extends events_1.EventEmitter {
     standDown(_okToDestroyStuff) {
         // This method should be overwritten by child
         return Promise.resolve();
-    }
-    /** Get all mappings */
-    getMapping() {
-        return this._mappings;
-    }
-    /** Get mappings that are tied to this device */
-    getOwnMapping() {
-        return this._ownMappings;
-    }
-    setMapping(mappings) {
-        this._mappings = mappings;
-        this.updateIsActive();
     }
     get deviceId() {
         return this._deviceId;
@@ -138,18 +128,17 @@ class Device extends events_1.EventEmitter {
             }
         });
     }
-    updateIsActive() {
+    updateIsActive(mappings) {
         // If there are no mappings assigned to this device, it is considered inactive
         const ownMappings = {};
         let isActive = false;
-        _.each(this._mappings, (mapping, layerId) => {
+        _.each(mappings, (mapping, layerId) => {
             if (mapping.deviceId === this.deviceId) {
                 isActive = true;
                 ownMappings[layerId] = mapping;
             }
         });
         this._isActive = isActive;
-        this._ownMappings = ownMappings;
     }
 }
 exports.Device = Device;

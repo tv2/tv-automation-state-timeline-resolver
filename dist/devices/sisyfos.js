@@ -55,26 +55,27 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
      * in time.
      * @param newState
      */
-    handleState(newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
         if (!this._sisyfos.state) {
             this.emit('warning', 'Sisyfos State not initialized yet');
             return;
         }
         // Transform timeline states into device states
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
-        let oldState = (this.getStateBefore(previousStateTime) || { state: { channels: {}, resync: false } }).state;
-        let newAbstractState = this.convertStateToSisyfosState(newState);
-        this._handleStateInner(oldState, newAbstractState, previousStateTime, newState.time);
+        let oldSisyfosState = (this.getStateBefore(previousStateTime) || { state: { channels: {}, resync: false } }).state;
+        let newSisyfosState = this.convertStateToSisyfosState(newState, newMappings);
+        this._handleStateInner(oldSisyfosState, newSisyfosState, previousStateTime, newState.time);
     }
-    _handleStateInner(oldState, newAbstractState, previousStateTime, newTime) {
+    _handleStateInner(oldSisyfosState, newSisyfosState, previousStateTime, newTime) {
         // Generate commands necessary to transition to the new state
-        let commandsToAchieveState = this._diffStates(oldState, newAbstractState);
+        let commandsToAchieveState = this._diffStates(oldSisyfosState, newSisyfosState);
         // clear any queued commands later than this time:
         this._doOnTime.clearQueueNowAndAfter(previousStateTime);
         // add the new commands to the queue:
         this._addToQueue(commandsToAchieveState, newTime);
         // store the new state, for later use:
-        this.setState(newAbstractState, newTime);
+        this.setState(newSisyfosState, newTime);
     }
     /**
      * Clear any scheduled commands after this time
@@ -181,9 +182,8 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
      * a timeline state.
      * @param state
      */
-    convertStateToSisyfosState(state) {
+    convertStateToSisyfosState(state, mappings) {
         const deviceState = this.getDeviceState();
-        const mappings = this.getMapping();
         _.each(state.layers, (tlObject, layerName) => {
             const layer = tlObject;
             let foundMapping = mappings[layerName];

@@ -59,11 +59,11 @@ class PharosDevice extends device_1.DeviceWithState {
      * in time.
      * @param newState
      */
-    handleState(newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
         // Handle this new state, at the point in time specified
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
-        let oldState = (this.getStateBefore(previousStateTime) || { state: { time: 0, layers: {}, nextEvents: [] } }).state;
-        let oldPharosState = this.convertStateToPharos(oldState);
+        let oldPharosState = (this.getStateBefore(previousStateTime) || { state: { Layers: {}, time: 0, layers: {}, nextEvents: [] } }).state;
         let newPharosState = this.convertStateToPharos(newState);
         let commandsToAchieveState = this._diffStates(oldPharosState, newPharosState);
         // clear any queued commands later than this time:
@@ -71,7 +71,7 @@ class PharosDevice extends device_1.DeviceWithState {
         // add the new commands to the queue:
         this._addToQueue(commandsToAchieveState, newState.time);
         // store the new state, for later use:
-        this.setState(newState, newState.time);
+        this.setState(newPharosState, newState.time);
     }
     clearFuture(clearAfterTime) {
         // Clear any scheduled commands after this time

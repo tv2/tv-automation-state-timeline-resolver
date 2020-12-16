@@ -1,10 +1,9 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, AtemOptions, DeviceOptionsAtem } from '../types/src';
+import { DeviceType, AtemOptions, DeviceOptionsAtem, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
-import { Commands as AtemCommands } from 'atem-connection';
-import { State as DeviceState } from 'atem-state';
+import { State as DeviceState, AtemConnection } from 'atem-state';
 export interface AtemCommandWithContext {
-    command: AtemCommands.AbstractCommand;
+    command: AtemConnection.Commands.ISerializableCommand;
     context: CommandContext;
     timelineObjId: string;
 }
@@ -14,7 +13,7 @@ export interface DeviceOptionsAtemInternal extends DeviceOptionsAtem {
         commandReceiver?: CommandReceiver;
     });
 }
-export declare type CommandReceiver = (time: number, command: AtemCommands.AbstractCommand, context: CommandContext, timelineObjId: string) => Promise<any>;
+export declare type CommandReceiver = (time: number, command: AtemConnection.Commands.ISerializableCommand, context: CommandContext, timelineObjId: string) => Promise<any>;
 /**
  * This is a wrapper for the Atem Device. Commands to any and all atem devices will be sent through here.
  */
@@ -50,7 +49,7 @@ export declare class AtemDevice extends DeviceWithState<DeviceState> implements 
      * be executed at the state's time.
      * @param newState The state to handle
      */
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     /**
      * Clear any scheduled commands after `clearAfterTime`
      * @param clearAfterTime
@@ -62,7 +61,7 @@ export declare class AtemDevice extends DeviceWithState<DeviceState> implements 
      * Convert a timeline state into an Atem state.
      * @param state The state to be converted
      */
-    convertStateToAtem(state: TimelineState): DeviceState;
+    convertStateToAtem(state: TimelineState, newMappings: Mappings): DeviceState;
     readonly deviceType: DeviceType;
     readonly deviceName: string;
     readonly queue: {
@@ -86,11 +85,6 @@ export declare class AtemDevice extends DeviceWithState<DeviceState> implements 
      * @param newAtemState
      */
     private _diffStates;
-    /**
-     * Returns the default state of an atem device, partially base on the topology and partially based on reported
-     * properties. This can be used to augment with device state info.
-     */
-    private _getDefaultState;
     private _defaultCommandReceiver;
     private _onAtemStateChanged;
     private _connectionChanged;

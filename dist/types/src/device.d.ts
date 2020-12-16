@@ -1,4 +1,5 @@
 import { DeviceType, AtemOptions, CasparCGOptions, HTTPSendOptions, HyperdeckOptions, OSCOptions, PharosOptions, QuantelOptions, SingularLiveOptions, SisyfosOptions, TCPSendOptions, AbstractOptions, LawoOptions, PanasonicPTZOptions, HTTPWatcherOptions, VizMSEOptions, VMixOptions } from '.';
+import { ShotokuOptions } from './shotoku';
 export interface DeviceOptionsBase extends SlowReportOptions {
     type: DeviceType;
     isMultiThreaded?: boolean;
@@ -13,7 +14,7 @@ export interface SlowReportOptions {
     /** If set, report back that a command was slow if not fullfilled (sent + ack:ed) at this time */
     limitSlowFulfilledCommand?: number;
 }
-export declare type DeviceOptionsAny = DeviceOptionsAbstract | DeviceOptionsCasparCG | DeviceOptionsAtem | DeviceOptionsLawo | DeviceOptionsHTTPSend | DeviceOptionsPanasonicPTZ | DeviceOptionsTCPSend | DeviceOptionsHyperdeck | DeviceOptionsPharos | DeviceOptionsOSC | DeviceOptionsHTTPpWatcher | DeviceOptionsSisyfos | DeviceOptionsQuantel | DeviceOptionsSingularLive | DeviceOptionsVMix | DeviceOptionsVizMSE | DeviceOptionsSingularLive;
+export declare type DeviceOptionsAny = DeviceOptionsAbstract | DeviceOptionsCasparCG | DeviceOptionsAtem | DeviceOptionsLawo | DeviceOptionsHTTPSend | DeviceOptionsPanasonicPTZ | DeviceOptionsTCPSend | DeviceOptionsHyperdeck | DeviceOptionsPharos | DeviceOptionsOSC | DeviceOptionsHTTPpWatcher | DeviceOptionsSisyfos | DeviceOptionsQuantel | DeviceOptionsSingularLive | DeviceOptionsVMix | DeviceOptionsVizMSE | DeviceOptionsSingularLive | DeviceOptionsShotoku;
 export declare type DeviceInitOptions = AbstractOptions | CasparCGOptions | AtemOptions | LawoOptions | HTTPSendOptions | PanasonicPTZOptions | TCPSendOptions | HyperdeckOptions | PharosOptions | OSCOptions | HTTPWatcherOptions | SisyfosOptions | QuantelOptions | SingularLiveOptions | VMixOptions | VizMSEOptions | SingularLiveOptions;
 export interface DeviceOptionsAbstract extends DeviceOptionsBase {
     type: DeviceType.ABSTRACT;
@@ -74,6 +75,10 @@ export interface DeviceOptionsVizMSE extends DeviceOptionsBase {
 export interface DeviceOptionsSingularLive extends DeviceOptionsBase {
     type: DeviceType.SINGULAR_LIVE;
     options: SingularLiveOptions;
+}
+export interface DeviceOptionsShotoku extends DeviceOptionsBase {
+    type: DeviceType.SHOTOKU;
+    options: ShotokuOptions;
 }
 export interface DeviceOptionsVMix extends DeviceOptionsBase {
     type: DeviceType.VMIX;

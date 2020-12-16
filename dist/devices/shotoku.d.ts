@@ -1,33 +1,28 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, OSCMessageCommandContent, OSCOptions, DeviceOptionsOSC, Mappings } from '../types/src';
+import { DeviceType, ShotokuCommandContent, ShotokuOptions, DeviceOptionsShotoku, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
-import * as osc from 'osc';
-export interface DeviceOptionsOSCInternal extends DeviceOptionsOSC {
-    options: (DeviceOptionsOSC['options'] & {
+import { ShotokuCommand } from './shotokuAPI';
+export interface DeviceOptionsShotokuInternal extends DeviceOptionsShotoku {
+    options: (DeviceOptionsShotoku['options'] & {
         commandReceiver?: CommandReceiver;
-        oscSender?: (msg: osc.OscMessage, address?: string | undefined, port?: number | undefined) => void;
     });
 }
-export declare type CommandReceiver = (time: number, cmd: OSCMessageCommandContent, context: CommandContext, timelineObjId: string) => Promise<any>;
+export declare type CommandReceiver = (time: number, cmd: ShotokuCommand, context: CommandContext, timelineObjId: string) => Promise<any>;
 declare type CommandContext = string;
-interface OSCDeviceState {
-    [address: string]: OSCDeviceStateContent;
-}
-interface OSCDeviceStateContent extends OSCMessageCommandContent {
-    fromTlObject: string;
-}
+declare type ShotokuDeviceState = {
+    [index: string]: ShotokuCommandContent & {
+        fromTlObject: string;
+    };
+};
 /**
  * This is a generic wrapper for any osc-enabled device.
  */
-export declare class OSCMessageDevice extends DeviceWithState<OSCDeviceState> implements IDevice {
+export declare class ShotokuDevice extends DeviceWithState<TimelineState> implements IDevice {
     private _doOnTime;
-    private _oscClient;
-    private transitions;
-    private transitionInterval;
+    private _shotoku;
     private _commandReceiver;
-    private _oscSender;
-    constructor(deviceId: string, deviceOptions: DeviceOptionsOSCInternal, options: any);
-    init(initOptions: OSCOptions): Promise<boolean>;
+    constructor(deviceId: string, deviceOptions: DeviceOptionsShotokuInternal, options: any);
+    init(initOptions: ShotokuOptions): Promise<boolean>;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime: number): void;
     /**
@@ -51,7 +46,7 @@ export declare class OSCMessageDevice extends DeviceWithState<OSCDeviceState> im
      * a timeline state.
      * @param state
      */
-    convertStateToOSCMessage(state: TimelineState): OSCDeviceState;
+    convertStateToShotokuShots(state: TimelineState): ShotokuDeviceState;
     readonly deviceType: DeviceType;
     readonly deviceName: string;
     readonly queue: {
@@ -66,12 +61,10 @@ export declare class OSCMessageDevice extends DeviceWithState<OSCDeviceState> im
     private _addToQueue;
     /**
      * Compares the new timeline-state with the old one, and generates commands to account for the difference
-     * @param oldOscSendState The assumed current state
-     * @param newOscSendState The desired state of the device
+     * @param oldShots The assumed current state
+     * @param newShots The desired state of the device
      */
     private _diffStates;
     private _defaultCommandReceiver;
-    private _defaultOscSender;
-    private runAnimation;
 }
 export {};

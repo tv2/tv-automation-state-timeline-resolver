@@ -1,5 +1,5 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, SingularLiveOptions, DeviceOptionsSingularLive, SingularCompositionAnimation, SingularCompositionControlNode } from '../types/src';
+import { DeviceType, SingularLiveOptions, DeviceOptionsSingularLive, SingularCompositionAnimation, SingularCompositionControlNode, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 export interface DeviceOptionsSingularLiveInternal extends DeviceOptionsSingularLive {
     options: (DeviceOptionsSingularLive['options'] & {
@@ -37,7 +37,7 @@ export interface SingularLiveState {
 /**
  * This is a Singular.Live device, it talks to a Singular.Live App Instance using an Access Token
  */
-export declare class SingularLiveDevice extends DeviceWithState<TimelineState> implements IDevice {
+export declare class SingularLiveDevice extends DeviceWithState<SingularLiveState> implements IDevice {
     private _accessToken;
     private _doOnTime;
     private _deviceStatus;
@@ -46,7 +46,7 @@ export declare class SingularLiveDevice extends DeviceWithState<TimelineState> i
     init(initOptions: SingularLiveOptions): Promise<boolean>;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(newStateTime: number): void;
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     clearFuture(clearAfterTime: number): void;
     terminate(): Promise<boolean>;
     getStatus(): DeviceStatus;
@@ -54,7 +54,7 @@ export declare class SingularLiveDevice extends DeviceWithState<TimelineState> i
     readonly canConnect: boolean;
     readonly connected: boolean;
     private _getDefaultState;
-    convertStateToSingularLive(state: TimelineState): SingularLiveState;
+    convertStateToSingularLive(state: TimelineState, newMappings: Mappings): SingularLiveState;
     readonly deviceType: DeviceType;
     readonly deviceName: string;
     readonly queue: {

@@ -153,7 +153,8 @@ class HyperdeckDevice extends device_1.DeviceWithState {
      * that state at that time.
      * @param newState
      */
-    handleState(newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
         if (!this._initialized) {
             // before it's initialized don't do anything
             this.emit('info', 'Hyperdeck not initialized yet');
@@ -163,7 +164,7 @@ class HyperdeckDevice extends device_1.DeviceWithState {
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
         let oldState = (this.getStateBefore(previousStateTime) || { state: this._getDefaultState() }).state;
         let oldHyperdeckState = oldState;
-        let newHyperdeckState = this.convertStateToHyperdeck(newState);
+        let newHyperdeckState = this.convertStateToHyperdeck(newState, newMappings);
         // Generate commands to transition to new state
         let commandsToAchieveState = this._diffStates(oldHyperdeckState, newHyperdeckState);
         // clear any queued commands later than this time:
@@ -190,7 +191,7 @@ class HyperdeckDevice extends device_1.DeviceWithState {
      * Converts a timeline state to a device state.
      * @param state
      */
-    convertStateToHyperdeck(state) {
+    convertStateToHyperdeck(state, mappings) {
         if (!this._initialized)
             throw Error('convertStateToHyperdeck cannot be used before inititialized');
         // Convert the timeline state into something we can use easier:
@@ -199,7 +200,7 @@ class HyperdeckDevice extends device_1.DeviceWithState {
             .sort((a, b) => a.layerName.localeCompare(b.layerName));
         _.each(sortedLayers, ({ tlObject, layerName }) => {
             const hyperdeckObj = tlObject;
-            const mapping = this.getMapping()[layerName];
+            const mapping = mappings[layerName];
             if (mapping && mapping.deviceId === this.deviceId) {
                 switch (mapping.mappingType) {
                     case src_1.MappingHyperdeckType.TRANSPORT:

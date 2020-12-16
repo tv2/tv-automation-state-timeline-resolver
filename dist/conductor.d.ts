@@ -19,6 +19,7 @@ import { DeviceOptionsSisyfosInternal } from './devices/sisyfos';
 import { DeviceOptionsSingularLiveInternal } from './devices/singularLive';
 import { DeviceOptionsVMixInternal } from './devices/vmix';
 import { DeviceOptionsVizMSEInternal } from './devices/vizMSE';
+import { DeviceOptionsShotokuInternal } from './devices/shotoku';
 export { DeviceContainer };
 export { CommandWithContext };
 export declare const LOOKAHEADTIME = 5000;
@@ -54,7 +55,7 @@ export interface StatReport {
 export declare class Conductor extends EventEmitter {
     private _logDebug;
     private _timeline;
-    private _mapping;
+    private _mappings;
     private _options;
     private devices;
     private _getCurrentTime?;
@@ -72,8 +73,6 @@ export declare class Conductor extends EventEmitter {
     private _statMeasureStart;
     private _statMeasureReason;
     private _statReports;
-    private _resolveTimelineRunning;
-    private _resolveTimelineOnQueue;
     private _resolver;
     private _interval;
     private _timelineHash;
@@ -91,18 +90,13 @@ export declare class Conductor extends EventEmitter {
      */
     readonly mapping: Mappings;
     /**
-     * Updates the mappings in the Conductor class and all devices and forces
-     * a resolve timeline.
-     * @param mapping The new mappings
-     */
-    setMapping(mapping: Mappings): Promise<void>;
-    /**
      * Returns the current timeline
      */
+    readonly timeline: TSRTimeline;
     /**
-    * Sets a new timeline and resets the resolver.
-    */
-    timeline: TSRTimeline;
+     * Sets a new timeline and resets the resolver.
+     */
+    setTimelineAndMappings(timeline: TSRTimeline, mappings?: Mappings): void;
     timelineHash: string | undefined;
     logDebug: boolean;
     getDevices(): Array<DeviceContainer>;
@@ -163,4 +157,4 @@ export declare class Conductor extends EventEmitter {
      */
     private filterLayersPerDevice;
 }
-export declare type DeviceOptionsAnyInternal = (DeviceOptionsAbstractInternal | DeviceOptionsCasparCGInternal | DeviceOptionsAtemInternal | DeviceOptionsLawoInternal | DeviceOptionsHTTPSendInternal | DeviceOptionsHTTPWatcherInternal | DeviceOptionsPanasonicPTZInternal | DeviceOptionsTCPSendInternal | DeviceOptionsHyperdeckInternal | DeviceOptionsPharosInternal | DeviceOptionsOSCInternal | DeviceOptionsSisyfosInternal | DeviceOptionsQuantelInternal | DeviceOptionsSingularLiveInternal | DeviceOptionsVMixInternal | DeviceOptionsVizMSEInternal | DeviceOptionsSingularLiveInternal | DeviceOptionsVizMSEInternal);
+export declare type DeviceOptionsAnyInternal = (DeviceOptionsAbstractInternal | DeviceOptionsCasparCGInternal | DeviceOptionsAtemInternal | DeviceOptionsLawoInternal | DeviceOptionsHTTPSendInternal | DeviceOptionsHTTPWatcherInternal | DeviceOptionsPanasonicPTZInternal | DeviceOptionsTCPSendInternal | DeviceOptionsHyperdeckInternal | DeviceOptionsPharosInternal | DeviceOptionsOSCInternal | DeviceOptionsSisyfosInternal | DeviceOptionsQuantelInternal | DeviceOptionsSingularLiveInternal | DeviceOptionsVMixInternal | DeviceOptionsShotokuInternal | DeviceOptionsVizMSEInternal | DeviceOptionsSingularLiveInternal | DeviceOptionsVizMSEInternal);

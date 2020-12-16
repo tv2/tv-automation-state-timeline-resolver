@@ -44,13 +44,13 @@ class TCPSendDevice extends device_1.DeviceWithState {
         this._doOnTime.clearQueueNowAndAfter(newStateTime);
         this.cleanUpStates(0, newStateTime);
     }
-    handleState(newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
         // Handle this new state, at the point in time specified
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
-        let oldState = (this.getStateBefore(previousStateTime) || { state: { time: 0, layers: {}, nextEvents: [] } }).state;
-        let oldAbstractState = this.convertStateToTCPSend(oldState);
-        let newAbstractState = this.convertStateToTCPSend(newState);
-        let commandsToAchieveState = this._diffStates(oldAbstractState, newAbstractState);
+        let oldTCPSendState = (this.getStateBefore(previousStateTime) || { state: { time: 0, layers: {}, nextEvents: [] } }).state;
+        let newTCPSendState = this.convertStateToTCPSend(newState);
+        let commandsToAchieveState = this._diffStates(oldTCPSendState, newTCPSendState);
         // clear any queued commands later than this time:
         this._doOnTime.clearQueueNowAndAfter(previousStateTime);
         // add the new commands to the queue:

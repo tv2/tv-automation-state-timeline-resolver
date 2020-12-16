@@ -74,11 +74,11 @@ class PanasonicPtzDevice extends device_1.DeviceWithState {
      * Converts a timeline state into a device state.
      * @param state
      */
-    convertStateToPtz(state) {
+    convertStateToPtz(state, mappings) {
         // convert the timeline state into something we can use
         const ptzState = this._getDefaultState();
         _.each(state.layers, (tlObject, layerName) => {
-            const mapping = this.getMapping()[layerName];
+            const mapping = mappings[layerName];
             if (mapping && mapping.device === src_1.DeviceType.PANASONIC_PTZ && mapping.deviceId === this.deviceId) {
                 if (mapping.mappingType === src_1.MappingPanasonicPtzType.PRESET) {
                     let tlObjectSource = tlObject;
@@ -123,12 +123,12 @@ class PanasonicPtzDevice extends device_1.DeviceWithState {
      * in time.
      * @param newState
      */
-    handleState(newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
         // Create device states
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
-        let oldState = (this.getStateBefore(previousStateTime) || { state: { time: 0, layers: {}, nextEvents: [] } }).state;
-        let oldPtzState = this.convertStateToPtz(oldState);
-        let newPtzState = this.convertStateToPtz(newState);
+        let oldPtzState = (this.getStateBefore(previousStateTime) || { state: this._getDefaultState() }).state;
+        let newPtzState = this.convertStateToPtz(newState, newMappings);
         // Generate commands needed to reach new state
         let commandsToAchieveState = this._diffStates(oldPtzState, newPtzState);
         // clear any queued commands later than this time:
@@ -136,7 +136,7 @@ class PanasonicPtzDevice extends device_1.DeviceWithState {
         // add the new commands to the queue:
         this._addToQueue(commandsToAchieveState, newState.time);
         // store the new state, for later use:
-        this.setState(newState, newState.time);
+        this.setState(newPtzState, newState.time);
     }
     clearFuture(clearAfterTime) {
         // Clear any scheduled commands after this time

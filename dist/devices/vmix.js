@@ -143,14 +143,15 @@ class VMixDevice extends device_1.DeviceWithState {
         this._doOnTime.clearQueueNowAndAfter(newStateTime + 0.1);
         this.cleanUpStates(0, newStateTime + 0.1);
     }
-    handleState(newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
         if (!this._initialized) { // before it's initialized don't do anything
             this.emit('warning', 'VMix not initialized yet');
             return;
         }
         let previousStateTime = Math.max(this.getCurrentTime() + 0.1, newState.time);
         let oldState = (this.getStateBefore(previousStateTime) || { state: this._getDefaultState() }).state;
-        let newVMixState = this.convertStateToVMix(newState);
+        let newVMixState = this.convertStateToVMix(newState, newMappings);
         let commandsToAchieveState = this._diffStates(oldState, newVMixState);
         // clear any queued commands later than this time:
         this._doOnTime.clearQueueNowAndAfter(previousStateTime);
@@ -192,12 +193,12 @@ class VMixDevice extends device_1.DeviceWithState {
     get connected() {
         return false;
     }
-    convertStateToVMix(state) {
+    convertStateToVMix(state, mappings) {
         if (!this._initialized)
             throw Error('convertStateToVMix cannot be used before inititialized');
         let deviceState = this._getDefaultState();
         // Sort layer based on Mapping type (to make sure audio is after inputs) and Layer name
-        const sortedLayers = _.sortBy(_.map(state.layers, (tlObject, layerName) => ({ layerName, tlObject, mapping: this.getMapping()[layerName] }))
+        const sortedLayers = _.sortBy(_.map(state.layers, (tlObject, layerName) => ({ layerName, tlObject, mapping: mappings[layerName] }))
             .sort((a, b) => a.layerName.localeCompare(b.layerName)), o => o.mapping.mappingType);
         _.each(sortedLayers, ({ tlObject, layerName, mapping }) => {
             if (mapping) {

@@ -1,5 +1,5 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, QuantelOptions, QuantelControlMode, QuantelOutTransition, DeviceOptionsQuantel } from '../types/src';
+import { DeviceType, QuantelOptions, QuantelControlMode, QuantelOutTransition, DeviceOptionsQuantel, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 export interface DeviceOptionsQuantelInternal extends DeviceOptionsQuantel {
     options: (DeviceOptionsQuantel['options'] & {
@@ -34,7 +34,7 @@ export declare class QuantelDevice extends DeviceWithState<QuantelState> impleme
     /**
      * Generates an array of Quantel commands by comparing the newState against the oldState, or the current device state.
      */
-    handleState(newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     /**
      * Attempts to restart the gateway
      */
@@ -59,7 +59,7 @@ export declare class QuantelDevice extends DeviceWithState<QuantelState> impleme
      * Takes a timeline state and returns a Quantel State that will work with the state lib.
      * @param timelineState The timeline state to generate from.
      */
-    convertStateToQuantel(timelineState: TimelineState): QuantelState;
+    convertStateToQuantel(timelineState: TimelineState, mappings: Mappings): QuantelState;
     /**
      * Prepares the physical device for playout.
      * @param okToDestroyStuff Whether it is OK to do things that affects playout visibly

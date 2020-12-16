@@ -1,5 +1,5 @@
 import { DeviceStatus, Device, IDevice } from './device';
-import { DeviceType, HTTPWatcherOptions, DeviceOptionsHTTPpWatcher } from '../types/src';
+import { DeviceType, HTTPWatcherOptions, DeviceOptionsHTTPpWatcher, Mappings } from '../types/src';
 import * as request from 'request';
 import { TimelineState } from 'superfly-timeline';
 export interface DeviceOptionsHTTPWatcherInternal extends DeviceOptionsHTTPpWatcher {
@@ -26,7 +26,7 @@ export declare class HTTPWatcherDevice extends Device implements IDevice {
     init(_initOptions: HTTPWatcherOptions): Promise<boolean>;
     /** Called by the Conductor a bit before a .handleState is called */
     prepareForHandleState(_newStateTime: number): void;
-    handleState(_newState: TimelineState): void;
+    handleState(newState: TimelineState, newMappings: Mappings): void;
     clearFuture(_clearAfterTime: number): void;
     getStatus(): DeviceStatus;
     terminate(): Promise<boolean>;

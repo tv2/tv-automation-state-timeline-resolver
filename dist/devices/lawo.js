@@ -16,6 +16,8 @@ class LawoDevice extends device_1.DeviceWithState {
         super(deviceId, deviceOptions, options);
         this._lastSentValue = {};
         this._connected = false;
+        this._initialized = false;
+        this._sourceNameToNodeName = new Map();
         this.transitions = {};
         if (deviceOptions.options) {
             if (deviceOptions.options.commandReceiver) {
@@ -48,6 +50,7 @@ class LawoDevice extends device_1.DeviceWithState {
                     this._sourcesPath = 'Channels.Inputs';
                     this._dbPropertyName = 'Fader.Fader Level';
                     this._faderThreshold = -90;
+                    this._sourceNamePath = 'General.Inherited Label';
                     break;
                 case src_1.LawoDeviceMode.R3lay:
                     this._sourcesPath = 'R3LAYVRX4.Ex.Sources';
@@ -92,6 +95,10 @@ class LawoDevice extends device_1.DeviceWithState {
                 try {
                     const req = await this._lawo.getDirectory(this._lawo.tree);
                     await req.response;
+                    await this._mapSourcesToNodeNames();
+                    this._initialized = true;
+                    this.emit('info', 'finished device initalization');
+                    this.emit('resetResolver');
                 }
                 catch (e) {
                     this.emit('error', 'Error while expanding root', e);
@@ -122,12 +129,14 @@ class LawoDevice extends device_1.DeviceWithState {
      * Handles a state such that the device will reflect that state at the given time.
      * @param newState
      */
-    handleState(newState) {
+    handleState(newState, newMappings) {
+        super.onHandleState(newState, newMappings);
+        if (!this._initialized)
+            return;
         // Convert timeline states to device states
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
-        let oldState = (this.getStateBefore(previousStateTime) || { state: { time: 0, layers: {}, nextEvents: [] } }).state;
-        let oldLawoState = this.convertStateToLawo(oldState);
-        let newLawoState = this.convertStateToLawo(newState);
+        let oldLawoState = (this.getStateBefore(previousStateTime) || { state: { nodes: {} } }).state;
+        let newLawoState = this.convertStateToLawo(newState, newMappings);
         // generate commands to transition to new state
         let commandsToAchieveState = this._diffStates(oldLawoState, newLawoState);
         // clear any queued commands later than this time:
@@ -135,7 +144,7 @@ class LawoDevice extends device_1.DeviceWithState {
         // add the new commands to the queue:
         this._addToQueue(commandsToAchieveState, newState.time);
         // store the new state, for later use:
-        this.setState(newState, newState.time);
+        this.setState(newLawoState, newState.time);
     }
     /**
      * Clear any scheduled commands after this time
@@ -176,7 +185,7 @@ class LawoDevice extends device_1.DeviceWithState {
      * Converts a timeline state into a device state.
      * @param state
      */
-    convertStateToLawo(state) {
+    convertStateToLawo(state, mappings) {
         const lawoState = {
             nodes: {}
         };
@@ -201,14 +210,14 @@ class LawoDevice extends device_1.DeviceWithState {
         _.each(state.layers, (tlObject, layerName) => {
             // for every layer
             const lawoObj = tlObject;
-            const mapping = this.getMapping()[layerName];
+            const mapping = mappings[layerName];
             if (mapping && mapping.device === src_1.DeviceType.LAWO && mapping.deviceId === this.deviceId) {
                 // Mapping is for Lawo
                 if (mapping.mappingType === src_1.MappingLawoType.SOURCES && lawoObj.content.type === src_1.TimelineContentTypeLawo.SOURCES) {
                     // mapping implies a composite of sources
                     for (const fader of lawoObj.content.sources) {
                         // for every mapping in the composite
-                        const sourceMapping = this.getMapping()[fader.mappingName];
+                        const sourceMapping = mappings[fader.mappingName];
                         if (!sourceMapping || !sourceMapping.identifier || sourceMapping.mappingType !== src_1.MappingLawoType.SOURCE || mapping.deviceId !== this.deviceId)
                             continue;
                         // mapped mapping is a source mapping
@@ -346,6 +355,17 @@ class LawoDevice extends device_1.DeviceWithState {
         const node = await this._lawo.getElementByPath(path);
         return node;
     }
+    _identifierToNodeName(identifier) {
+        if (this._sourceNamePath) {
+            const s = this._sourceNameToNodeName.get(identifier);
+            if (!s)
+                this.emit('warning', `Source identifier "${identifier}" could not be found`);
+            return s || identifier;
+        }
+        else {
+            return identifier;
+        }
+    }
     /**
      * Returns an attribute path
      * @param identifier
@@ -354,7 +374,7 @@ class LawoDevice extends device_1.DeviceWithState {
     _sourceNodeAttributePath(identifier, attributePath) {
         return _.compact([
             this._sourcesPath,
-            identifier,
+            this._identifierToNodeName(identifier),
             attributePath
         ]).join('.');
     }
@@ -404,18 +424,33 @@ class LawoDevice extends device_1.DeviceWithState {
                     if (fn.contents.type !== emberplus_connection_1.Model.ElementType.Function)
                         throw new Error('Node at specified path for function is not a function');
                     const req = await this._lawo.invoke(fn, { type: emberplus_connection_1.Model.ParameterType.String, value: command.identifier }, { type: emberplus_connection_1.Model.ParameterType.Real, value: command.value }, { type: emberplus_connection_1.Model.ParameterType.Real, value: command.transitionDuration / 1000 });
-                    this.emit('debug', `Ember function invoked (${timelineObjId})`);
+                    this.emit('debug', `Ember function invoked (${timelineObjId}, ${command.identifier}, ${command.value})`);
                     const res = await req.response;
-                    this.emit('debug', `Ember function result (${timelineObjId}): ${(JSON.stringify(res))}`, res);
                     if (res && res.success === false) {
-                        if (res.result && res.result[0].value === 6 && this._lastSentValue[command.path] <= startSend) { // result 6 and no new command fired for this path in meantime
+                        const reasons = {
+                            1: 'Incorrect number of parameters',
+                            2: 'Incorrect datatype',
+                            3: 'Input value out of range',
+                            4: 'Source / sum not found',
+                            5: 'Source / sum not assigned to fader',
+                            6: 'Combination of values not allowed',
+                            7: 'Touch active'
+                        };
+                        const result = res.result[0].value;
+                        if (res.result
+                            && (result === 6 || result === 5)
+                            && this._lastSentValue[command.path] <= startSend) { // result 5 / 6 and no new command fired for this path in meantime
                             // Lawo rejected the command, so ensure the value gets set
-                            this.emit('info', `Ember function result (${timelineObjId}) was 6, running a direct setValue now`);
-                            await this._setValueFn(command, timelineObjId);
+                            this.emit('info', `Ember function result (${timelineObjId}, ${command.identifier}) was ${result}, running a direct setValue now`);
+                            await this._setValueFn(command, timelineObjId, false); // result 6 is quite likely to cause a timeout
                         }
                         else {
-                            this.emit('error', `Lawo: Ember function success false (${timelineObjId}, ${command.identifier})`, new Error('Lawo Result ' + res.result[0].value));
+                            this.emit('error', `Lawo: Ember function success false (${timelineObjId}, ${command.identifier}), result ${res.result[0].value}`, new Error('Lawo Result ' + res.result[0].value));
                         }
+                        this.emit('debug', `Lawo: Ember fn error ${command.identifier}): result ${result}: ${reasons[result]}`, { ...res, source: command.identifier });
+                    }
+                    else {
+                        this.emit('debug', `Ember function result (${timelineObjId}, ${command.identifier}): ${(JSON.stringify(res))}`, res);
                     }
                 }
                 else { // withouth timed fader movement
@@ -434,6 +469,8 @@ class LawoDevice extends device_1.DeviceWithState {
         try {
             const node = await this._getNodeByPath(command.path);
             const value = node.contents.factor ? command.value * node.contents.factor : command.value;
+            if (node.contents.value === value)
+                return; // no need to do another setValue
             const req = await this._lawo.setValue(node, value, logResult);
             if (logResult) {
                 const res = await req.response;
@@ -473,6 +510,52 @@ class LawoDevice extends device_1.DeviceWithState {
             clearInterval(this.transitionInterval);
             this.transitionInterval = undefined;
         }
+    }
+    async _mapSourcesToNodeNames() {
+        if (!this._sourceNamePath)
+            return;
+        this.emit('info', 'Start mapping source identifiers to channel node identifiers');
+        // get the node that contains the sources
+        const sourceNode = await this._lawo.getElementByPath(this._sourcesPath);
+        if (!sourceNode) {
+            this.emit('warning', 'Could not map source names to node names because source node could not be found!');
+            return;
+        }
+        // get the sources
+        const req = await (this._lawo.getDirectory(sourceNode));
+        const sources = await req.response;
+        if (!sources)
+            return;
+        for (const child of Object.values(sources.children || {})) {
+            if (child.contents.type === emberplus_connection_1.Model.ElementType.Node) {
+                try { // get the identifier
+                    let previousNode = undefined;
+                    const node = await this._lawo.getElementByPath(this._sourcesPath + '.'
+                        + child.number + '.' + this._sourceNamePath, (node) => {
+                        if (!node)
+                            return;
+                        const sourceId = child.contents.identifier || child.number + '';
+                        // remove old mapping if it hasn't changed
+                        if (previousNode && this._sourceNameToNodeName.get(previousNode) === sourceId) {
+                            this.emit('info', `removing mapping ${previousNode}`);
+                            this._sourceNameToNodeName.delete(previousNode);
+                        }
+                        // set new mapping
+                        this._sourceNameToNodeName.set(node.contents.value, sourceId);
+                        previousNode = node.contents.value;
+                        this.emit('info', `mapping ${node.contents.value} to channel ${sourceId}`);
+                    });
+                    if (!node)
+                        continue;
+                    this._sourceNameToNodeName.set(node.contents.value, child.contents.identifier || child.number + '');
+                    previousNode = node.contents.value;
+                }
+                catch (e) {
+                    this.emit('error', 'lawo: map sources to node names', e);
+                }
+            }
+        }
+        this.emit('info', 'Mapped source identifiers to channel node identifiers');
     }
 }
 exports.LawoDevice = LawoDevice;
