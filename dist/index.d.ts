@@ -10,6 +10,7 @@ export * from './pharos';
 export * from './panasonicPTZ';
 export * from './sisyfos';
 export * from './quantel';
+export * from './shotoku';
 export * from './tcpSend';
 export * from './vizMSE';
 export * from './singularLive';
@@ -29,6 +30,7 @@ import { TimelineObjPanasonicPtzAny } from './panasonicPTZ';
 import { TimelineObjAbstractAny } from './abstract';
 import { TSRTimelineObjProps } from './mapping';
 import { TimelineObjQuantelAny } from './quantel';
+import { TimelineObjShotoku } from './shotoku';
 import { TimelineObjSisyfosAny } from './sisyfos';
 import { TimelineObjVIZMSEAny } from './vizMSE';
 import { TimelineObjSingularLiveAny } from './singularLive';
@@ -54,6 +56,7 @@ export declare enum DeviceType {
     QUANTEL = 12,
     VIZMSE = 13,
     SINGULAR_LIVE = 14,
+    SHOTOKU = 15,
     VMIX = 20
 }
 export interface TSRTimelineKeyframe<T> extends Timeline.TimelineKeyframe {
@@ -81,5 +84,5 @@ export interface TimelineObjEmpty extends TSRTimelineObjBase {
     };
     classes: Array<string>;
 }
-export declare type TSRTimelineObj = (TimelineObjEmpty | TimelineObjAbstractAny | TimelineObjAtemAny | TimelineObjCasparCGAny | TimelineObjHTTPSendAny | TimelineObjTCPSendAny | TimelineObjHyperdeckAny | TimelineObjLawoAny | TimelineObjOSCAny | TimelineObjPharosAny | TimelineObjPanasonicPtzAny | TimelineObjQuantelAny | TimelineObjSisyfosAny | TimelineObjSingularLiveAny | TimelineObjVMixAny | TimelineObjVIZMSEAny | TimelineObjSingularLiveAny);
+export declare type TSRTimelineObj = (TimelineObjEmpty | TimelineObjAbstractAny | TimelineObjAtemAny | TimelineObjCasparCGAny | TimelineObjHTTPSendAny | TimelineObjTCPSendAny | TimelineObjHyperdeckAny | TimelineObjLawoAny | TimelineObjOSCAny | TimelineObjPharosAny | TimelineObjPanasonicPtzAny | TimelineObjQuantelAny | TimelineObjShotoku | TimelineObjSisyfosAny | TimelineObjSingularLiveAny | TimelineObjVMixAny | TimelineObjVIZMSEAny | TimelineObjSingularLiveAny);
 export declare type TSRTimeline = Array<TSRTimelineObj>;

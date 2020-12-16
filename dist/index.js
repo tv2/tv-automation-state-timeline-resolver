@@ -11,6 +11,7 @@ tslib_1.__exportStar(require("./pharos"), exports);
 tslib_1.__exportStar(require("./panasonicPTZ"), exports);
 tslib_1.__exportStar(require("./sisyfos"), exports);
 tslib_1.__exportStar(require("./quantel"), exports);
+tslib_1.__exportStar(require("./shotoku"), exports);
 tslib_1.__exportStar(require("./tcpSend"), exports);
 tslib_1.__exportStar(require("./vizMSE"), exports);
 tslib_1.__exportStar(require("./singularLive"), exports);
@@ -34,6 +35,7 @@ var DeviceType;
     DeviceType[DeviceType["QUANTEL"] = 12] = "QUANTEL";
     DeviceType[DeviceType["VIZMSE"] = 13] = "VIZMSE";
     DeviceType[DeviceType["SINGULAR_LIVE"] = 14] = "SINGULAR_LIVE";
+    DeviceType[DeviceType["SHOTOKU"] = 15] = "SHOTOKU";
     DeviceType[DeviceType["VMIX"] = 20] = "VMIX";
 })(DeviceType = exports.DeviceType || (exports.DeviceType = {}));
 //# sourceMappingURL=index.js.map
