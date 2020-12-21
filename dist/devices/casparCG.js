@@ -382,7 +382,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 const foregroundStateLayer = foregroundObj ? this.convertObjectToCasparState(mappings, foregroundObj, mapping, true) : undefined;
                 const backgroundStateLayer = backgroundObj ? this.convertObjectToCasparState(mappings, backgroundObj, mapping, false) : undefined;
                 if (foregroundStateLayer) {
-                    channel.layers[mapping.layer] = {
+                    channel.layers[layerName] = {
                         ...foregroundStateLayer,
                         nextUp: backgroundStateLayer ? device_1.literal({
                             ...backgroundStateLayer,
@@ -392,13 +392,13 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 }
                 else if (backgroundStateLayer) {
                     if (mapping.previewWhenNotOnAir) {
-                        channel.layers[mapping.layer] = {
+                        channel.layers[layerName] = {
                             ...backgroundStateLayer,
                             playing: false
                         };
                     }
                     else {
-                        channel.layers[mapping.layer] = device_1.literal({
+                        channel.layers[layerName] = device_1.literal({
                             id: `${backgroundStateLayer.id}_empty_base`,
                             layerNo: mapping.layer,
                             content: casparcg_state_1.LayerContentType.NOTHING,

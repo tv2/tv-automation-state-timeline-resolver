@@ -52,9 +52,7 @@ export declare class AbstractDevice extends DeviceWithState<AbstractState> imple
     readonly queue: {
         id: string;
         queueId: string;
-        time: number; /**
-         * Dispose of the device so it can be garbage collected.
-         */
+        time: number;
         args: any[];
     }[];
     getStatus(): DeviceStatus;
