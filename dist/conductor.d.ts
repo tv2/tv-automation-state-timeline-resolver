@@ -13,6 +13,7 @@ import { DeviceOptionsTCPSendInternal } from './devices/tcpSend';
 import { DeviceOptionsPharosInternal } from './devices/pharos';
 import { DeviceOptionsOSCInternal } from './devices/osc';
 import { DeviceContainer } from './devices/deviceContainer';
+import { MemUsageReport } from 'threadedclass';
 import { DeviceOptionsHTTPWatcherInternal } from './devices/httpWatcher';
 import { DeviceOptionsQuantelInternal } from './devices/quantel';
 import { DeviceOptionsSisyfosInternal } from './devices/sisyfos';
@@ -130,6 +131,9 @@ export declare class Conductor extends EventEmitter {
      * Send a standDown-trigger to all devices
      */
     devicesStandDown(okToDestroyStuff?: boolean): Promise<void>;
+    getThreadsMemoryUsage(): Promise<{
+        [childId: string]: MemUsageReport;
+    }>;
     private _mapAllDevices;
     /**
      * This is the main resolve-loop.

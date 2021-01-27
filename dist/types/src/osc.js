@@ -1,5 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+var OSCDeviceType;
+(function (OSCDeviceType) {
+    OSCDeviceType["TCP"] = "tcp";
+    OSCDeviceType["UDP"] = "udp";
+})(OSCDeviceType = exports.OSCDeviceType || (exports.OSCDeviceType = {}));
 var TimelineContentTypeOSC;
 (function (TimelineContentTypeOSC) {
     TimelineContentTypeOSC["OSC"] = "osc";

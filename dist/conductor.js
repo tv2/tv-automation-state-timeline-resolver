@@ -1,33 +1,15 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const _ = require("underscore");
-const casparCG_1 = require("./devices/casparCG");
-const abstract_1 = require("./devices/abstract");
-const httpSend_1 = require("./devices/httpSend");
 const src_1 = require("./types/src");
-const atem_1 = require("./devices/atem");
 const events_1 = require("events");
-const lawo_1 = require("./devices/lawo");
-const panasonicPTZ_1 = require("./devices/panasonicPTZ");
-const hyperdeck_1 = require("./devices/hyperdeck");
 const doOnTime_1 = require("./doOnTime");
-const tcpSend_1 = require("./devices/tcpSend");
-const pharos_1 = require("./devices/pharos");
-const osc_1 = require("./devices/osc");
 const deviceContainer_1 = require("./devices/deviceContainer");
 exports.DeviceContainer = deviceContainer_1.DeviceContainer;
 const threadedclass_1 = require("threadedclass");
-const AsyncResolver_1 = require("./AsyncResolver");
-const httpWatcher_1 = require("./devices/httpWatcher");
-const quantel_1 = require("./devices/quantel");
-const sisyfos_1 = require("./devices/sisyfos");
-const singularLive_1 = require("./devices/singularLive");
-const vmix_1 = require("./devices/vmix");
-const vizMSE_1 = require("./devices/vizMSE");
 const p_queue_1 = require("p-queue");
 const PAll = require("p-all");
 const p_timeout_1 = require("p-timeout");
-const shotoku_1 = require("./devices/shotoku");
 exports.LOOKAHEADTIME = 5000; // Will look ahead this far into the future
 exports.PREPARETIME = 2000; // Will prepare commands this time before the event is to happen
 exports.MINTRIGGERTIME = 10; // Minimum time between triggers
@@ -95,7 +77,7 @@ class Conductor extends events_1.EventEmitter {
      * Initializates the resolver, with optional multithreading
      */
     async init() {
-        this._resolver = await threadedclass_1.threadedClass('../dist/AsyncResolver.js', AsyncResolver_1.AsyncResolver, [
+        this._resolver = await threadedclass_1.threadedClass('../dist/AsyncResolver.js', 'AsyncResolver', [
             r => { this.emit('setTimelineTriggerTime', r); }
         ], {
             threadUsage: this._multiThreadedResolver ? 1 : 0,
@@ -154,6 +136,7 @@ class Conductor extends events_1.EventEmitter {
     }
     set logDebug(val) {
         this._logDebug = val;
+        threadedclass_1.ThreadedClassManager.debug = this._logDebug;
     }
     getDevices() {
         return _.values(this.devices);
@@ -178,7 +161,7 @@ class Conductor extends events_1.EventEmitter {
             };
             let getCurrentTime = () => { return this.getCurrentTime(); };
             if (deviceOptions.type === src_1.DeviceType.ABSTRACT) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/abstract.js', abstract_1.AbstractDevice, deviceId, deviceOptions, getCurrentTime, {
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/abstract.js', 'AbstractDevice', deviceId, deviceOptions, getCurrentTime, {
                     threadUsage: deviceOptions.isMultiThreaded ? .1 : 0,
                     autoRestart: false,
                     disableMultithreading: !deviceOptions.isMultiThreaded,
@@ -187,52 +170,52 @@ class Conductor extends events_1.EventEmitter {
             }
             else if (deviceOptions.type === src_1.DeviceType.CASPARCG) {
                 // Add CasparCG device:
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/casparCG.js', casparCG_1.CasparCGDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/casparCG.js', 'CasparCGDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.ATEM) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/atem.js', atem_1.AtemDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/atem.js', 'AtemDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.HTTPSEND) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/httpSend.js', httpSend_1.HTTPSendDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/httpSend.js', 'HTTPSendDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.HTTPWATCHER) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/httpWatcher.js', httpWatcher_1.HTTPWatcherDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/httpWatcher.js', 'HTTPWatcherDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.LAWO) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/lawo.js', lawo_1.LawoDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/lawo.js', 'LawoDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.TCPSEND) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/tcpSend.js', tcpSend_1.TCPSendDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/tcpSend.js', 'TCPSendDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.PANASONIC_PTZ) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/panasonicPTZ.js', panasonicPTZ_1.PanasonicPtzDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/panasonicPTZ.js', 'PanasonicPtzDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.HYPERDECK) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/hyperdeck.js', hyperdeck_1.HyperdeckDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/hyperdeck.js', 'HyperdeckDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.PHAROS) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/pharos.js', pharos_1.PharosDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/pharos.js', 'PharosDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.OSC) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/osc.js', osc_1.OSCMessageDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/osc.js', 'OSCMessageDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.QUANTEL) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/quantel.js', quantel_1.QuantelDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/quantel.js', 'QuantelDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.SHOTOKU) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/shotoku.js', shotoku_1.ShotokuDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/shotoku.js', 'ShotokuDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.SISYFOS) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/sisyfos.js', sisyfos_1.SisyfosMessageDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/sisyfos.js', 'SisyfosMessageDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.VIZMSE) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/vizMSE.js', vizMSE_1.VizMSEDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/vizMSE.js', 'VizMSEDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.SINGULAR_LIVE) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/singularLive.js', singularLive_1.SingularLiveDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/singularLive.js', 'SingularLiveDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else if (deviceOptions.type === src_1.DeviceType.VMIX) {
-                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/vmix.js', vmix_1.VMixDevice, deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
+                newDevice = await new deviceContainer_1.DeviceContainer().create('../../dist/devices/vmix.js', 'VMixDevice', deviceId, deviceOptions, getCurrentTime, threadedClassOptions);
             }
             else {
                 // @ts-ignore deviceOptions.type is of type "never"
@@ -337,6 +320,9 @@ class Conductor extends events_1.EventEmitter {
         await this._actionQueue.add(async () => {
             await this._mapAllDevices((d) => p_timeout_1.default(d.device.standDown(okToDestroyStuff), 10000, `standDown for "${d.deviceId}" timed out`));
         });
+    }
+    async getThreadsMemoryUsage() {
+        return threadedclass_1.ThreadedClassManager.getThreadsMemoryUsage();
     }
     _mapAllDevices(fcn) {
         return PAll(_.map(_.values(this.devices), d => () => fcn(d)), {

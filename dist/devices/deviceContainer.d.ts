@@ -17,7 +17,7 @@ export declare class DeviceContainer {
     private _instanceId;
     private _startTime;
     private _onEventListener;
-    create<T extends Device, TCtor extends new (...args: any) => T>(orgModule: string, orgClass: TCtor, deviceId: string, deviceOptions: DeviceOptionsAny, getCurrentTime: () => number, threadConfig?: ThreadedClassConfig): Promise<this>;
+    create<T extends Device, TCtor extends new (...args: any) => T>(orgModule: string, orgClassExport: string, deviceId: string, deviceOptions: DeviceOptionsAny, getCurrentTime: () => number, threadConfig?: ThreadedClassConfig): Promise<this>;
     reloadProps(): Promise<void>;
     terminate(): Promise<void>;
     readonly device: ThreadedClass<Device>;

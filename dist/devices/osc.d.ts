@@ -22,6 +22,7 @@ interface OSCDeviceStateContent extends OSCMessageCommandContent {
 export declare class OSCMessageDevice extends DeviceWithState<OSCDeviceState> implements IDevice {
     private _doOnTime;
     private _oscClient;
+    private _oscClientStatus;
     private transitions;
     private transitionInterval;
     private _commandReceiver;

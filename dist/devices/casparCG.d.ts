@@ -26,6 +26,7 @@ export declare class CasparCGDevice extends DeviceWithState<State> implements ID
     private _doOnTime;
     private initOptions?;
     private _connected;
+    private _transitionHandler;
     private _retryTimeout;
     private _retryTime;
     constructor(deviceId: string, deviceOptions: DeviceOptionsCasparCGInternal, options: any);
@@ -110,4 +111,11 @@ export declare class CasparCGDevice extends DeviceWithState<State> implements ID
      */
     private convertTimeToTimecode;
     private _connectionChanged;
+    /**
+     * Intercept the casparcg-connection commands, for internal transitions
+     * Returns the command if it's not intercepted along the way
+     */
+    _interceptCommand(command: CommandNS.IAMCPCommand): CommandNS.IAMCPCommand | undefined;
+    private _getTransitionId;
+    private _getTransitions;
 }

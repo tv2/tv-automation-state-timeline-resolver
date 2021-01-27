@@ -5,13 +5,14 @@ const device_1 = require("./device");
 const src_1 = require("../types/src");
 const doOnTime_1 = require("../doOnTime");
 const osc = require("osc");
-const easings_1 = require("../easings");
+const easings_1 = require("./transitions/easings");
 /**
  * This is a generic wrapper for any osc-enabled device.
  */
 class OSCMessageDevice extends device_1.DeviceWithState {
     constructor(deviceId, deviceOptions, options) {
         super(deviceId, deviceOptions, options);
+        this._oscClientStatus = 'disconnected';
         this.transitions = {};
         if (deviceOptions.options) {
             if (deviceOptions.options.commandReceiver)
@@ -29,14 +30,33 @@ class OSCMessageDevice extends device_1.DeviceWithState {
         this.handleDoOnTime(this._doOnTime, 'OSC');
     }
     init(initOptions) {
-        this._oscClient = new osc.UDPPort({
-            localAddress: '0.0.0.0',
-            localPort: 0,
-            remoteAddress: initOptions.host,
-            remotePort: initOptions.port,
-            metadata: true
-        });
-        this._oscClient.open();
+        if (initOptions.type === src_1.OSCDeviceType.TCP) {
+            const client = new osc.TCPSocketPort({
+                address: initOptions.host,
+                port: initOptions.port,
+                metadata: true
+            });
+            this._oscClient = client;
+            client.open(); // creates client.socket
+            client.socket.on('connect', () => {
+                this._oscClientStatus = 'connected';
+                this.emit('connectionChanged', this.getStatus());
+            });
+            client.socket.on('close', () => {
+                this._oscClientStatus = 'disconnected';
+                this.emit('connectionChanged', this.getStatus());
+            });
+        }
+        else if (initOptions.type === src_1.OSCDeviceType.UDP) {
+            this._oscClient = new osc.UDPPort({
+                localAddress: '0.0.0.0',
+                localPort: 0,
+                remoteAddress: initOptions.host,
+                remotePort: initOptions.port,
+                metadata: true
+            });
+            this._oscClient.open();
+        }
         return Promise.resolve(true); // This device doesn't have any initialization procedure
     }
     /** Called by the Conductor a bit before a .handleState is called */
@@ -77,9 +97,16 @@ class OSCMessageDevice extends device_1.DeviceWithState {
         return Promise.resolve(true);
     }
     getStatus() {
-        // Good, since this device has no status, really
+        if (this.deviceOptions.options.type === src_1.OSCDeviceType.TCP) {
+            return {
+                statusCode: this._oscClientStatus === 'disconnected' ? device_1.StatusCode.BAD : device_1.StatusCode.GOOD,
+                messages: this._oscClientStatus === 'disconnected' ? ['Disconnected'] : [],
+                active: this.isActive
+            };
+        }
+        // Unknown? since this device has no status, really
         return {
-            statusCode: device_1.StatusCode.GOOD,
+            statusCode: device_1.StatusCode.UNKNOWN,
             active: this.isActive
         };
     }
@@ -232,6 +259,7 @@ class OSCMessageDevice extends device_1.DeviceWithState {
         }
     }
     _defaultOscSender(msg, address, port) {
+        this.emit('debug', 'sending ' + msg.address);
         this._oscClient.send(msg, address, port);
     }
     runAnimation() {

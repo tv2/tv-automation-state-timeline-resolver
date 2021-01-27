@@ -13,7 +13,7 @@ class DeviceContainer {
         this._instanceId = -1;
         this._startTime = -1;
     }
-    async create(orgModule, orgClass, deviceId, deviceOptions, getCurrentTime, threadConfig) {
+    async create(orgModule, orgClassExport, deviceId, deviceOptions, getCurrentTime, threadConfig) {
         this._deviceOptions = deviceOptions;
         // this._options = options
         this._threadConfig = threadConfig;
@@ -22,7 +22,7 @@ class DeviceContainer {
             // hack: we need to work around the mangling performed by threadedClass, as getCurrentTime needs to not return a promise
             getCurrentTime = { inner: getCurrentTime };
         }
-        this._device = await threadedclass_1.threadedClass(orgModule, orgClass, [deviceId, deviceOptions, getCurrentTime], // TODO types
+        this._device = await threadedclass_1.threadedClass(orgModule, orgClassExport, [deviceId, deviceOptions, getCurrentTime], // TODO types
         threadConfig);
         if (deviceOptions.isMultiThreaded) {
             this._onEventListener = threadedclass_1.ThreadedClassManager.onEvent(this._device, 'thread_closed', () => {

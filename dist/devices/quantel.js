@@ -34,9 +34,9 @@ class QuantelDevice extends device_1.DeviceWithState {
         this._quantelManager = new QuantelManager(this._quantel, () => this.getCurrentTime(), {
             allowCloneClips: deviceOptions.options.allowCloneClips
         });
-        this._quantelManager.on('info', str => this.emit('info', 'Quantel: ' + str));
-        this._quantelManager.on('warning', str => this.emit('warning', 'Quantel' + str));
-        this._quantelManager.on('error', e => this.emit('error', 'Quantel', e));
+        this._quantelManager.on('info', x => this.emit('info', `Quantel: ${typeof x === 'string' ? x : JSON.stringify(x)}`));
+        this._quantelManager.on('warning', x => this.emit('warning', `Quantel: ${typeof x === 'string' ? x : JSON.stringify(x)}`));
+        this._quantelManager.on('error', e => this.emit('error', 'Quantel: ', e));
         this._quantelManager.on('debug', (...args) => this.emit('debug', ...args));
         this._doOnTime = new doOnTime_1.DoOnTime(() => {
             return this.getCurrentTime();

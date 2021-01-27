@@ -7,6 +7,7 @@ const src_1 = require("../types/src");
 const casparcg_state_1 = require("casparcg-state");
 const doOnTime_1 = require("../doOnTime");
 const request = require("request");
+const transitionHandler_1 = require("./transitions/transitionHandler");
 const MAX_TIMESYNC_TRIES = 5;
 const MAX_TIMESYNC_DURATION = 40;
 const MEDIA_RETRY_INTERVAL = 10 * 1000; // default time in ms between checking whether a file needs to be retried loading
@@ -23,6 +24,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
         this._timeToTimecodeMap = { time: 0, timecode: 0 };
         this._timeBase = {};
         this._connected = false;
+        this._transitionHandler = new transitionHandler_1.InternalTransitionHandler();
         this._retryTime = null;
         if (deviceOptions.options) {
             if (deviceOptions.options.commandReceiver)
@@ -85,6 +87,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
      */
     terminate() {
         this._doOnTime.dispose();
+        this._transitionHandler.terminate();
         clearTimeout(this._retryTimeout);
         return new Promise((resolve) => {
             this._ccg.disconnect();
@@ -197,8 +200,11 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 inPoint: mediaObj.content.inPoint,
                 length: mediaObj.content.length,
                 channelLayout: mediaObj.content.channelLayout,
-                clearOn404: true
+                clearOn404: true,
+                vfilter: mediaObj.content.videoFilter,
+                afilter: mediaObj.content.audioFilter
             });
+            // this.emit('debug', stateLayer)
         }
         else if (layer.content.type === src_1.TimelineContentTypeCasparCg.IP) {
             const ipObj = layer;
@@ -210,7 +216,9 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 channelLayout: ipObj.content.channelLayout,
                 playTime: null,
                 playing: true,
-                seek: 0 // ip inputs can't be seeked
+                seek: 0,
+                vfilter: ipObj.content.videoFilter,
+                afilter: ipObj.content.audioFilter
             });
         }
         else if (layer.content.type === src_1.TimelineContentTypeCasparCg.INPUT) {
@@ -227,7 +235,9 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 },
                 filter: inputObj.content.filter,
                 playing: true,
-                playTime: null
+                playTime: null,
+                vfilter: inputObj.content.videoFilter,
+                afilter: inputObj.content.audioFilter
             });
         }
         else if (layer.content.type === src_1.TimelineContentTypeCasparCg.TEMPLATE) {
@@ -277,7 +287,9 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 mode: routeObj.content.mode || undefined,
                 delay: routeObj.content.delay || undefined,
                 playing: true,
-                playTime: null // layer.resolved.startTime || null,
+                playTime: null,
+                vfilter: routeObj.content.videoFilter,
+                afilter: routeObj.content.audioFilter
             });
         }
         else if (layer.content.type === src_1.TimelineContentTypeCasparCg.RECORD) {
@@ -312,6 +324,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 case src_1.TimelineContentTypeCasparCg.TEMPLATE:
                 case src_1.TimelineContentTypeCasparCg.INPUT:
                 case src_1.TimelineContentTypeCasparCg.ROUTE:
+                case src_1.TimelineContentTypeCasparCg.HTMLPAGE:
                     // create transition object
                     let media = stateLayer.media;
                     let transitions = {};
@@ -362,10 +375,10 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 // create a channel in state if necessary, or reuse existing channel
                 const channel = caspar.channels[mapping.channel] || { channelNo: mapping.channel, layers: {} };
                 channel.channelNo = Number(mapping.channel) || 1;
-                channel.fps = 25;
+                channel.fps = this.initOptions ? this.initOptions.fps || 25 : 25;
                 caspar.channels[channel.channelNo] = channel;
                 // @todo: check if we need to get fps.
-                channel.fps = 25;
+                channel.fps = this.initOptions ? this.initOptions.fps || 25 : 25;
                 caspar.channels[mapping.channel] = channel;
                 let foregroundObj = timelineState.layers[layerName];
                 let backgroundObj = _.last(_.filter(timelineState.layers, obj => {
@@ -382,7 +395,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 const foregroundStateLayer = foregroundObj ? this.convertObjectToCasparState(mappings, foregroundObj, mapping, true) : undefined;
                 const backgroundStateLayer = backgroundObj ? this.convertObjectToCasparState(mappings, backgroundObj, mapping, false) : undefined;
                 if (foregroundStateLayer) {
-                    channel.layers[mapping.layer] = {
+                    channel.layers[layerName] = {
                         ...foregroundStateLayer,
                         nextUp: backgroundStateLayer ? device_1.literal({
                             ...backgroundStateLayer,
@@ -392,13 +405,13 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 }
                 else if (backgroundStateLayer) {
                     if (mapping.previewWhenNotOnAir) {
-                        channel.layers[mapping.layer] = {
+                        channel.layers[layerName] = {
                             ...backgroundStateLayer,
                             playing: false
                         };
                     }
                     else {
-                        channel.layers[mapping.layer] = device_1.literal({
+                        channel.layers[layerName] = device_1.literal({
                             id: `${backgroundStateLayer.id}_empty_base`,
                             layerNo: mapping.layer,
                             content: casparcg_state_1.LayerContentType.NOTHING,
@@ -515,7 +528,13 @@ class CasparCGDevice extends device_1.DeviceWithState {
     }
     _doCommand(command, context, timlineObjId) {
         let time = this.getCurrentTime();
-        return this._commandReceiver(time, command, context, timlineObjId);
+        const interceptedCommand = this._interceptCommand(command);
+        if (interceptedCommand) {
+            return this._commandReceiver(time, interceptedCommand, context, timlineObjId);
+        }
+        else {
+            return Promise.resolve();
+        }
     }
     /**
      * Clear future commands after {@code time} if they are not in {@code commandsToSendNow}.
@@ -717,7 +736,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
         let timecodeTime = this._timeToTimecodeMap.timecode + relTime;
         let timeBase = (typeof this._timeBase === 'object' ?
             this._timeBase[channel + ''] :
-            this._timeBase) || 25;
+            this._timeBase) || (this.initOptions ? this.initOptions.fps || 25 : 25);
         let timecode = [
             ('0' + (Math.floor(timecodeTime / 3.6e6) % 24)).substr(-2),
             ('0' + (Math.floor(timecodeTime / 6e4) % 60)).substr(-2),
@@ -728,6 +747,169 @@ class CasparCGDevice extends device_1.DeviceWithState {
     }
     _connectionChanged() {
         this.emit('connectionChanged', this.getStatus());
+    }
+    /**
+     * Intercept the casparcg-connection commands, for internal transitions
+     * Returns the command if it's not intercepted along the way
+     */
+    _interceptCommand(command) {
+        // Intercept internal commands:
+        const objectParams = command['_objectParams'];
+        if (objectParams) {
+            let transitionOptions = objectParams.customOptions;
+            if (transitionOptions) {
+                if (objectParams.keyword === 'FILL') {
+                    if (objectParams.transition === src_1.Transition.TSR_TRANSITION) {
+                        // Handle transitions internally:
+                        this._transitionHandler.activateTransition(this._getTransitionId('FILL', command.channel, command.layer), [0, 0, 1, 1], [objectParams.x, objectParams.y, objectParams.xScale, objectParams.yScale], ['position', 'position', 'scale', 'scale'], transitionOptions, {
+                            'position': {
+                                type: 'physical'
+                            },
+                            'scale': {
+                                type: 'linear',
+                                options: {
+                                    linearSpeed: 0.0003 // tmp: todo: remove hard-coding of this
+                                }
+                            }
+                        }, (newValues) => {
+                            const c = new casparcg_connection_1.AMCP.MixerFillCommand({
+                                channel: command.channel,
+                                layer: command.layer,
+                                x: newValues[0],
+                                y: newValues[1],
+                                xScale: newValues[2],
+                                yScale: newValues[3]
+                            });
+                            this._commandReceiver(this.getCurrentTime(), c, 'Internal transition', 'internalTransition')
+                                .catch((e => this.emit('error', 'CasparCG.InternalTransition', e)));
+                        });
+                        // Abort: don't send the original command
+                        return undefined;
+                    }
+                    else {
+                        this._transitionHandler.stopAndSnapTransition(this._getTransitionId('FILL', command.channel, command.layer), [objectParams.x, objectParams.y, objectParams.xScale, objectParams.yScale]);
+                    }
+                }
+                else if (objectParams.keyword === 'PERSPECTIVE') {
+                    if (objectParams.transition === src_1.Transition.TSR_TRANSITION) {
+                        // Handle transitions internally:
+                        this._transitionHandler.activateTransition(this._getTransitionId('PERSPECTIVE', command.channel, command.layer), [0, 0, 1, 0, 1, 1, 0, 1], [
+                            objectParams.topLeftX,
+                            objectParams.topLeftY,
+                            objectParams.topRightX,
+                            objectParams.topRightY,
+                            objectParams.bottomRightX,
+                            objectParams.bottomRightY,
+                            objectParams.bottomLeftX,
+                            objectParams.bottomLeftY
+                        ], ['tl', 'tl', 'tr', 'tr', 'br', 'br', 'bl', 'bl'], transitionOptions, {
+                            'tl': { type: 'physical' },
+                            'tr': { type: 'physical' },
+                            'bl': { type: 'physical' },
+                            'br': { type: 'physical' } // bottom left corner
+                        }, (newValues) => {
+                            const c = new casparcg_connection_1.AMCP.MixerPerspectiveCommand({
+                                channel: command.channel,
+                                layer: command.layer,
+                                topLeftX: newValues[0],
+                                topLeftY: newValues[1],
+                                topRightX: newValues[2],
+                                topRightY: newValues[3],
+                                bottomRightX: newValues[4],
+                                bottomRightY: newValues[5],
+                                bottomLeftX: newValues[6],
+                                bottomLeftY: newValues[7]
+                            });
+                            this._commandReceiver(this.getCurrentTime(), c, 'Internal transition', 'internalTransition')
+                                .catch((e => this.emit('error', 'CasparCG.InternalTransition', e)));
+                        });
+                        // Abort: don't send the original command
+                        return undefined;
+                    }
+                    else {
+                        this._transitionHandler.stopAndSnapTransition(this._getTransitionId('PERSPECTIVE', command.channel, command.layer), [
+                            objectParams.topLeftX,
+                            objectParams.topLeftY,
+                            objectParams.topRightX,
+                            objectParams.topRightY,
+                            objectParams.bottomRightX,
+                            objectParams.bottomRightY,
+                            objectParams.bottomLeftX,
+                            objectParams.bottomLeftY
+                        ]);
+                    }
+                }
+                else if (objectParams.keyword === 'OPACITY' ||
+                    objectParams.keyword === 'VOLUME') {
+                    const opt = (objectParams.keyword === 'OPACITY' ?
+                        {
+                            initial: 1,
+                            prop: 'opacity'
+                        } :
+                        objectParams.keyword === 'VOLUME' ?
+                            {
+                                initial: 1,
+                                prop: 'volume'
+                            } :
+                            {
+                                initial: 0,
+                                prop: 'N/A'
+                            });
+                    if (objectParams.transition === src_1.Transition.TSR_TRANSITION) {
+                        // Handle transitions internally:
+                        this._transitionHandler.activateTransition(this._getTransitionId(objectParams.keyword, command.channel, command.layer), [opt.initial], [objectParams[opt.prop]], ['v'], transitionOptions, {
+                            'v': { type: 'linear' } // tmp hack: for these, a linear would be better that physical
+                        }, (newValues) => {
+                            const properties = {
+                                channel: command.channel,
+                                layer: command.layer
+                            };
+                            properties[opt.prop] = newValues[0];
+                            const c = new casparcg_connection_1.AMCP[command.name](properties);
+                            this._commandReceiver(this.getCurrentTime(), c, 'Internal transition', 'internalTransition')
+                                .catch((e => this.emit('error', 'CasparCG.InternalTransition', e)));
+                        });
+                        // Abort: don't send the original command
+                        return undefined;
+                    }
+                    else {
+                        this._transitionHandler.stopAndSnapTransition(this._getTransitionId(objectParams.keyword, command.channel, command.layer), [objectParams[opt.prop]]);
+                    }
+                }
+                else if (objectParams.keyword === 'CLEAR') {
+                    if (command.layer) {
+                        this._getTransitions(undefined, command.channel, command.layer)
+                            .forEach(identifier => this._transitionHandler.clearTransition(identifier));
+                    }
+                    else {
+                        // Clear the whole channel:
+                        this._getTransitions(undefined, command.channel)
+                            .forEach(identifier => this._transitionHandler.clearTransition(identifier));
+                    }
+                }
+            }
+        }
+        return command;
+    }
+    _getTransitionId(keyword, channel, layer) {
+        return `${keyword}_${channel}-${layer || ''}`;
+    }
+    _getTransitions(keyword, channel, layer) {
+        let regex = '';
+        if (keyword) {
+            regex = `^${keyword}_`;
+        }
+        if (channel) {
+            regex += `_${channel}-`;
+        }
+        if (layer) {
+            regex += `-${layer}$`;
+        }
+        regex = regex
+            .replace(/__/, '_')
+            .replace(/--/, '--');
+        return this._transitionHandler.getIdentifiers()
+            .filter(i => i.match(new RegExp(regex)));
     }
 }
 exports.CasparCGDevice = CasparCGDevice;
