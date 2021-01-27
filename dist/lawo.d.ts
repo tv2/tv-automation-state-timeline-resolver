@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { Mapping } from './mapping';
 import { TSRTimelineObjBase, DeviceType } from '.';
-declare type EmberValue = number | string | boolean | Buffer | null;
+export declare type EmberValue = number | string | boolean | Buffer | null;
 declare enum ParameterType {
     Null = "NULL",
     Integer = "INTEGER",

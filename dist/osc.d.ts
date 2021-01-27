@@ -1,9 +1,14 @@
 import { Mapping } from './mapping';
 import { TSRTimelineObjBase, DeviceType } from '.';
 export declare type OSCEasingType = 'Linear' | 'Quadratic' | 'Cubic' | 'Quartic' | 'Quintic' | 'Sinusoidal' | 'Exponential' | 'Circular' | 'Elastic' | 'Back' | 'Bounce';
+export declare enum OSCDeviceType {
+    TCP = "tcp",
+    UDP = "udp"
+}
 export interface OSCOptions {
     host: string;
     port: number;
+    type: OSCDeviceType;
 }
 export interface MappingOSC extends Mapping {
     device: DeviceType.OSC;

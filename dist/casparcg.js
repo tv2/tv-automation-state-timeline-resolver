@@ -19,6 +19,7 @@ var Transition;
     Transition["WIPE"] = "WIPE";
     Transition["SLIDE"] = "SLIDE";
     Transition["STING"] = "STING";
+    Transition["TSR_TRANSITION"] = "TSR_TRANSITION"; // handled by tsr on its own
 })(Transition = exports.Transition || (exports.Transition = {}));
 var Ease;
 (function (Ease) {
@@ -105,6 +106,7 @@ var Ease;
     Ease["OUT_QUAD"] = "OUT_QUAD";
     Ease["OUT_QUART"] = "OUT_QUART";
     Ease["OUT_QUINT"] = "OUT_QUINT";
+    Ease["INTERNAL_PHYSICAL"] = "INTERNAL_PHYSICAL"; // Handled by TSR on its own
 })(Ease = exports.Ease || (exports.Ease = {}));
 var Direction;
 (function (Direction) {
