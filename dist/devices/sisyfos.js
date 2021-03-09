@@ -184,6 +184,8 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
      */
     convertStateToSisyfosState(state, mappings) {
         const deviceState = this.getDeviceState();
+        // Preparation: put all channels that comes from the state in an array:
+        const newChannels = [];
         _.each(state.layers, (tlObject, layerName) => {
             const layer = tlObject;
             let foundMapping = mappings[layerName];
@@ -196,8 +198,6 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             if (!foundMapping && layer.isLookahead && layer.lookaheadForLayer) {
                 foundMapping = mappings[layer.lookaheadForLayer];
             }
-            // Preparation: put all channels that comes from the state in an array:
-            const newChannels = [];
             if (foundMapping && foundMapping.deviceId === this.deviceId) {
                 // @ts-ignore backwards-compatibility:
                 if (!foundMapping.mappingType)
@@ -232,28 +232,28 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                 }
                 deviceState.resync = deviceState.resync || content.resync || false;
             }
-            // Sort by overridePriority, so that those with highest overridePriority will be applied last
-            _.each(_.sortBy(newChannels, channel => channel.overridePriority), newChannel => {
-                if (!deviceState.channels[newChannel.channel]) {
-                    deviceState.channels[newChannel.channel] = this.getDefaultStateChannel();
+        });
+        // Sort by overridePriority, so that those with highest overridePriority will be applied last
+        _.each(_.sortBy(newChannels, channel => channel.overridePriority), newChannel => {
+            if (!deviceState.channels[newChannel.channel]) {
+                deviceState.channels[newChannel.channel] = this.getDefaultStateChannel();
+            }
+            const channel = deviceState.channels[newChannel.channel];
+            if (newChannel.isPgm !== undefined) {
+                if (newChannel.isLookahead) {
+                    channel.pstOn = newChannel.isPgm || 0;
                 }
-                const channel = deviceState.channels[newChannel.channel];
-                if (newChannel.isPgm !== undefined) {
-                    if (newChannel.isLookahead) {
-                        channel.pstOn = newChannel.isPgm || 0;
-                    }
-                    else {
-                        channel.pgmOn = newChannel.isPgm || 0;
-                    }
+                else {
+                    channel.pgmOn = newChannel.isPgm || 0;
                 }
-                if (newChannel.faderLevel !== undefined)
-                    channel.faderLevel = newChannel.faderLevel;
-                if (newChannel.label !== undefined)
-                    channel.label = newChannel.label;
-                if (newChannel.visible !== undefined)
-                    channel.visible = newChannel.visible;
-                channel.tlObjIds.push(tlObject.id);
-            });
+            }
+            if (newChannel.faderLevel !== undefined)
+                channel.faderLevel = newChannel.faderLevel;
+            if (newChannel.label !== undefined)
+                channel.label = newChannel.label;
+            if (newChannel.visible !== undefined)
+                channel.visible = newChannel.visible;
+            channel.tlObjIds.push(newChannel.tlObjId);
         });
         return deviceState;
     }
