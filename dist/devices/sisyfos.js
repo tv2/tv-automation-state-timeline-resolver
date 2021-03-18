@@ -262,7 +262,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             }
             if (newChannel.faderLevel !== undefined)
                 channel.faderLevel = newChannel.faderLevel;
-            if (newChannel.label !== undefined)
+            if (newChannel.label !== undefined && newChannel.label !== '')
                 channel.label = newChannel.label;
             if (newChannel.visible !== undefined)
                 channel.visible = newChannel.visible;
