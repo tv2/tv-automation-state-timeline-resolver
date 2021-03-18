@@ -184,6 +184,19 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
      */
     convertStateToSisyfosState(state, mappings) {
         const deviceState = this.getDeviceState();
+        for (const mapping of Object.values(mappings)) {
+            const sisyfosMapping = mapping;
+            if (sisyfosMapping.mappingType !== sisyfos_1.MappingSisyfosType.CHANNEL)
+                continue;
+            if (!sisyfosMapping.layerName)
+                continue;
+            let channel = deviceState.channels[sisyfosMapping.channel];
+            if (!channel) {
+                channel = this.getDefaultStateChannel();
+            }
+            channel.label = sisyfosMapping.layerName;
+            deviceState.channels[sisyfosMapping.channel] = channel;
+        }
         // Preparation: put all channels that comes from the state in an array:
         const newChannels = [];
         _.each(state.layers, (tlObject, layerName) => {
