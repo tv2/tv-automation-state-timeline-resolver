@@ -11,5 +11,6 @@ var TimelineContentTypeSisyfos;
     TimelineContentTypeSisyfos["SISYFOS"] = "sisyfos";
     TimelineContentTypeSisyfos["CHANNEL"] = "channel";
     TimelineContentTypeSisyfos["CHANNELS"] = "channels";
+    TimelineContentTypeSisyfos["TRIGGERVALUE"] = "triggerValue";
 })(TimelineContentTypeSisyfos = exports.TimelineContentTypeSisyfos || (exports.TimelineContentTypeSisyfos = {}));
 //# sourceMappingURL=sisyfos.js.map
