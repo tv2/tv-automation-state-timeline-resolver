@@ -93,6 +93,38 @@ class SisyfosApi extends events_1.EventEmitter {
                         value: command.value
                     }] });
         }
+        else if (command.type === SisyfosCommandType.SET_CHANNEL) {
+            if (command.values.label) {
+                this._oscClient.send({ address: `/ch/${command.channel + 1}/label`, args: [{
+                            type: 's',
+                            value: command.values.label
+                        }] });
+            }
+            if (command.values.pgmOn !== undefined) {
+                this._oscClient.send({ address: `/ch/${command.channel + 1}/pgm`, args: [{
+                            type: 'i',
+                            value: command.values.pgmOn
+                        }] });
+            }
+            if (command.values.pstOn !== undefined) {
+                this._oscClient.send({ address: `/ch/${command.channel + 1}/pst`, args: [{
+                            type: 'i',
+                            value: command.values.pstOn
+                        }] });
+            }
+            if (command.values.faderLevel !== undefined) {
+                this._oscClient.send({ address: `/ch/${command.channel + 1}/faderlevel`, args: [{
+                            type: 'f',
+                            value: command.values.faderLevel
+                        }] });
+            }
+            if (command.values.visible !== undefined) {
+                this._oscClient.send({ address: `/ch/${command.channel + 1}/visible`, args: [{
+                            type: 'i',
+                            value: command.values.visible
+                        }] });
+            }
+        }
     }
     disconnect() {
         this._oscClient.close();
@@ -231,5 +263,6 @@ var SisyfosCommandType;
     SisyfosCommandType["TAKE"] = "take";
     SisyfosCommandType["VISIBLE"] = "visible";
     SisyfosCommandType["RESYNC"] = "resync";
+    SisyfosCommandType["SET_CHANNEL"] = "setChannel";
 })(SisyfosCommandType = exports.SisyfosCommandType || (exports.SisyfosCommandType = {}));
 //# sourceMappingURL=sisyfosAPI.js.map

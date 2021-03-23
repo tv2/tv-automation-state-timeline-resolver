@@ -24,9 +24,10 @@ export declare enum TimelineContentTypeSisyfos {
     /** @deprecated use CHANNEL instead */
     SISYFOS = "sisyfos",
     CHANNEL = "channel",
-    CHANNELS = "channels"
+    CHANNELS = "channels",
+    TRIGGERVALUE = "triggerValue"
 }
-export declare type TimelineObjSisyfosAny = TimelineObjSisyfosChannel | TimelineObjSisyfosChannels;
+export declare type TimelineObjSisyfosAny = TimelineObjSisyfosChannel | TimelineObjSisyfosChannels | TimelineObjSisyfosTriggerValue;
 export interface TimelineObjSisyfos extends TSRTimelineObjBase {
     content: {
         deviceType: DeviceType.SISYFOS;
@@ -38,6 +39,13 @@ export interface SisyfosChannelOptions {
     faderLevel?: number;
     label?: string;
     visible?: boolean;
+}
+export interface TimelineObjSisyfosTriggerValue extends TimelineObjSisyfos {
+    content: {
+        deviceType: DeviceType.SISYFOS;
+        type: TimelineContentTypeSisyfos.TRIGGERVALUE;
+        triggerValue: string;
+    };
 }
 export interface TimelineObjSisyfosChannel extends TimelineObjSisyfos {
     content: {
@@ -57,6 +65,7 @@ export interface TimelineObjSisyfosChannels extends TimelineObjSisyfos {
         } & SisyfosChannelOptions)[];
         resync?: boolean;
         overridePriority?: number;
+        triggerValue?: string;
     };
 }
 /** @deprecated use TimelineObjSisyfosChannel instead */

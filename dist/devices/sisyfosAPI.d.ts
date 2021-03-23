@@ -40,10 +40,16 @@ export declare enum SisyfosCommandType {
     LABEL = "label",
     TAKE = "take",
     VISIBLE = "visible",
-    RESYNC = "resync"
+    RESYNC = "resync",
+    SET_CHANNEL = "setChannel"
 }
 export interface BaseCommand {
     type: SisyfosCommandType;
+}
+export interface SetChannelCommand {
+    type: SisyfosCommandType.SET_CHANNEL;
+    channel: number;
+    values: Partial<SisyfosAPIChannel>;
 }
 export interface ChannelCommand {
     type: SisyfosCommandType.SET_FADER | SisyfosCommandType.TOGGLE_PGM | SisyfosCommandType.TOGGLE_PST | SisyfosCommandType.LABEL | SisyfosCommandType.VISIBLE;
@@ -65,7 +71,7 @@ export interface StringCommand extends ChannelCommand {
 export interface ResyncCommand extends BaseCommand {
     type: SisyfosCommandType.RESYNC;
 }
-export declare type SisyfosCommand = BaseCommand | ValueCommand | BoolCommand | StringCommand | ResyncCommand;
+export declare type SisyfosCommand = BaseCommand | ValueCommand | BoolCommand | StringCommand | ResyncCommand | SetChannelCommand;
 export interface SisyfosChannel extends SisyfosAPIChannel {
     tlObjIds: string[];
 }
@@ -74,6 +80,7 @@ export interface SisyfosState {
         [index: string]: SisyfosChannel;
     };
     resync: boolean;
+    triggerValue?: string;
 }
 export interface SisyfosAPIChannel {
     faderLevel: number;

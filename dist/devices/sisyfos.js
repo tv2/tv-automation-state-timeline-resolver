@@ -207,6 +207,10 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             if (layer.content.resync !== undefined) {
                 deviceState.resync = deviceState.resync || layer.content.resync;
             }
+            // Allow retrigger without valid channel mapping
+            if (layer.content.triggerValue !== undefined) {
+                deviceState.triggerValue = layer.content.triggerValue;
+            }
             // if the tlObj is specifies to load to PST the original Layer is used to resolve the mapping
             if (!foundMapping && layer.isLookahead && layer.lookaheadForLayer) {
                 foundMapping = mappings[layer.lookaheadForLayer];
@@ -227,6 +231,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                         isLookahead: layer.isLookahead || false,
                         tlObjId: layer.id
                     });
+                    deviceState.resync = deviceState.resync || content.resync || false;
                 }
                 else if (foundMapping.mappingType === sisyfos_1.MappingSisyfosType.CHANNELS &&
                     content.type === sisyfos_1.TimelineContentTypeSisyfos.CHANNELS) {
@@ -242,8 +247,8 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                             });
                         }
                     });
+                    deviceState.resync = deviceState.resync || content.resync || false;
                 }
-                deviceState.resync = deviceState.resync || content.resync || false;
             }
         });
         // Sort by overridePriority, so that those with highest overridePriority will be applied last
@@ -307,6 +312,19 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
         }
         _.each(newOscSendState.channels, (newChannel, index) => {
             const oldChannel = oldOscSendState.channels[index];
+            if ((newOscSendState.triggerValue && newOscSendState.triggerValue !== oldOscSendState.triggerValue)) { // || (!oldChannel && Number(index) >= 0)) {
+                // push commands for everything
+                commands.push({
+                    context: `Channel ${index} reset`,
+                    content: {
+                        type: sisyfosAPI_1.SisyfosCommandType.SET_CHANNEL,
+                        channel: Number(index),
+                        values: newChannel
+                    },
+                    timelineObjId: newChannel.tlObjIds[0] || ''
+                });
+                return;
+            }
             if (oldChannel && oldChannel.pgmOn !== newChannel.pgmOn) {
                 commands.push({
                     context: `Channel ${index} pgm goes from "${oldChannel.pgmOn}" to "${newChannel.pgmOn}"`,
