@@ -36,15 +36,14 @@ import {
 	VRundown,
 	InternalElement,
 	ExternalElement,
-	VElement,
-	VProfile,
-	VizEngine
+	VElement
 } from 'v-connection'
 
 import { DoOnTime, SendMode } from '../doOnTime'
 
 import * as crypto from 'crypto'
 import * as net from 'net'
+import * as request from 'request'
 import { MediaObject } from '../types/src/mediaObject'
 
 /** The ideal time to prepare elements before going on air */
@@ -73,6 +72,8 @@ export interface DeviceOptionsVizMSEInternal extends DeviceOptionsVizMSE {
 	)
 }
 export type CommandReceiver = (time: number, cmd: VizMSECommand, context: string, timelineObjId: string) => Promise<any>
+export type Engine = {name: string, channel?: string, host: string, port: number}
+type EngineStatus = Engine & { alive: boolean }
 /**
  * This class is used to interface with a vizRT Media Sequence Editor, through the v-connection library.
  * It features playing both "internal" graphics element and vizPilot elements.
@@ -125,6 +126,7 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 			this._vizMSE,
 			this._initOptions.preloadAllElements,
 			this._initOptions.autoLoadInternalElements,
+			this._initOptions.engineRestPort,
 			initOptions.showID,
 			initOptions.profile,
 			initOptions.playlistID
@@ -397,15 +399,17 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 		if (!this._vizMSEConnected) {
 			statusCode = StatusCode.BAD
 			messages.push('Not connected')
-		} else if (
-			this._vizmseManager &&
-			(
-				this._vizmseManager.notLoadedCount > 0 ||
-				this._vizmseManager.loadingCount > 0
-			)
-		) {
-			statusCode = StatusCode.WARNING_MINOR
-			messages.push(`Got ${this._vizmseManager.notLoadedCount} elements not yet loaded to the Viz Engine (${this._vizmseManager.loadingCount} are currently loading)`)
+		} else if (this._vizmseManager) {
+			if (this._vizmseManager.notLoadedCount > 0 || this._vizmseManager.loadingCount > 0) {
+				statusCode = StatusCode.WARNING_MINOR
+				messages.push(`Got ${this._vizmseManager.notLoadedCount} elements not yet loaded to the Viz Engine (${this._vizmseManager.loadingCount} are currently loading)`)
+			}
+			if (this._vizmseManager.enginesDisconnected.length) {
+				statusCode = StatusCode.BAD
+				this._vizmseManager.enginesDisconnected.forEach(engine => {
+					messages.push(`Viz Engine ${engine} disconnected`)
+				})
+			}
 		}
 
 		return {
@@ -764,6 +768,7 @@ class VizMSEManager extends EventEmitter {
 	public initialized: boolean = false
 	public notLoadedCount: number = 0
 	public loadingCount: number = 0
+	public enginesDisconnected: Array<string> = []
 
 	private _rundown: VRundown | undefined
 	private _elementCache: {[hash: string]: CachedVElement } = {}
@@ -784,12 +789,14 @@ class VizMSEManager extends EventEmitter {
 	private _cacheInternalElementsSentLoaded: {[hash: string]: true} = {}
 	private _activeRundownPlaylistId: string | undefined
 	private _preloadedRundownPlaylistId: string | undefined
+	private _terminated: boolean = false
 
 	constructor (
 		private _parentVizMSEDevice: VizMSEDevice,
 		private _vizMSE: MSE,
 		public preloadAllElements: boolean = false,
 		public autoLoadInternalElements: boolean = false,
+		public engineRestPort: number | undefined,
 		private _showID: string,
 		private _profile: string,
 		private _playlistID?: string
@@ -832,10 +839,7 @@ class VizMSEManager extends EventEmitter {
 				})
 			}, MONITOR_INTERVAL)
 
-			if (this._monitorMSEConnection) {
-				clearInterval(this._monitorMSEConnection)
-			}
-			this._monitorMSEConnection = setInterval(() => this._monitorConnection(), MONITOR_INTERVAL)
+			this._setMonitorConnectionTimeout()
 
 			this.initialized = true
 		}
@@ -846,11 +850,12 @@ class VizMSEManager extends EventEmitter {
 	 * Close connections and die
 	 */
 	public async terminate () {
+		this._terminated = true
 		if (this._monitorAndLoadElementsInterval) {
 			clearInterval(this._monitorAndLoadElementsInterval)
 		}
 		if (this._monitorMSEConnection) {
-			clearInterval(this._monitorMSEConnection)
+			clearTimeout(this._monitorMSEConnection)
 		}
 		if (this._vizMSE) {
 			await this._vizMSE.close()
@@ -1081,9 +1086,8 @@ class VizMSEManager extends EventEmitter {
 	 */
 	public async clearEngines (cmd: VizMSECommandClearAllEngines): Promise<void> {
 		try {
-			const profile = await this._vizMSE.getProfile(this._profile)
-			const engines = await this._vizMSE.getEngines()
-			const enginesToClear = this._prepareEnginesToClear(profile, engines, cmd.channels)
+			const engines = await this._getEngines()
+			const enginesToClear = this._filterEnginesToClear(engines, cmd.channels)
 			enginesToClear.forEach(engine => {
 				const sender = new VizEngineTcpSender(engine.port, engine.host)
 				sender.on('warning', w => this.emit('warning', `clearEngines: ${w}`))
@@ -1094,8 +1098,10 @@ class VizMSEManager extends EventEmitter {
 			this.emit('warning', `Sending Clear-all command failed ${e}`)
 		}
 	}
-	private _prepareEnginesToClear (profile: VProfile, engines: VizEngine[], channels: string[] | 'all'): Array<{host: string, port: number}> {
-		const enginesToClear: Array<{host: string, port: number}> = []
+	private async _getEngines (): Promise<Engine[]> {
+		const profile = await this._vizMSE.getProfile(this._profile)
+		const engines = await this._vizMSE.getEngines()
+		const result: Engine[] = []
 		const outputs = new Map<string, string>() // engine name : channel name
 		_.each(profile.execution_groups, (group, groupName) => {
 			_.each(group, entry => {
@@ -1112,15 +1118,16 @@ class VizMSEManager extends EventEmitter {
 		outputEngines.forEach(engine => {
 			_.each(_.keys(engine.renderer), fullHost => {
 				const channelName = outputs.get(engine.name)
-				if (channels === 'all' || _.contains(channels, channelName)) {
-					const match = fullHost.match(/([^:]+):?(\d*)?/)
-					const port = (match && match[2]) ? parseInt(match[2], 10) : 6100
-					const host = (match && match[1]) ? match[1] : fullHost
-					enginesToClear.push({ host, port })
-				}
+				const match = fullHost.match(/([^:]+):?(\d*)?/)
+				const port = (match && match[2]) ? parseInt(match[2], 10) : 6100
+				const host = (match && match[1]) ? match[1] : fullHost
+				result.push({ name: engine.name, channel: channelName, host, port })
 			})
 		})
-		return enginesToClear
+		return result
+	}
+	private _filterEnginesToClear (engines: Engine[], channels: string[] | 'all'): Array<{host: string, port: number}> {
+		return engines.filter(engine => channels === 'all' || engine.channel && channels.includes(engine.channel))
 	}
 	/**
 	 * Load all elements: Trigger a loading of all pilot elements onto the vizEngine.
@@ -1485,24 +1492,65 @@ class VizMSEManager extends EventEmitter {
 			this._loadingAllElements = false
 		}
 	}
+	private _setMonitorConnectionTimeout (): void {
+		if (this._monitorMSEConnection) {
+			clearTimeout(this._monitorMSEConnection)
+		}
+		if (!this._terminated) {
+			this._monitorMSEConnection = setTimeout(() => this._monitorConnection(), MONITOR_INTERVAL)
+		}
+	}
 	private _monitorConnection (): void {
 		// (the ping will throuw on a timeout if ping doesn't return in time)
 		if (this.initialized) {
 			this._vizMSE.ping()
-			.then(() => {
+			.then(async () => {
 				// ok!
 				if (!this._msePingConnected) {
 					this._msePingConnected = true
 					this.onConnectionChanged()
 				}
-			}, () => {
+				await this._monitorEngines()
+				this._setMonitorConnectionTimeout()
+			}, async () => {
 				// not ok!
 				if (this._msePingConnected) {
 					this._msePingConnected = false
 					this.onConnectionChanged()
 				}
+				await this._monitorEngines()
+				this._setMonitorConnectionTimeout()
 			})
 		}
+	}
+	private async _monitorEngines () {
+		if (!this.engineRestPort) {
+			return
+		}
+		const engines = await this._getEngines()
+		const ps: Promise<EngineStatus>[] = []
+		engines.forEach(engine => {
+			return ps.push(this._pingEngine(engine))
+		})
+		const statuses = await Promise.all(ps)
+		const enginesDisconnected: string[] = []
+		statuses.forEach((status) => {
+			if (!status.alive) {
+				enginesDisconnected.push(`${status.name} (${status.host})`)
+			}
+		})
+		if (!_.isEqual(enginesDisconnected, this.enginesDisconnected)) {
+			this.enginesDisconnected = enginesDisconnected
+			this.onConnectionChanged()
+		}
+	}
+	private async _pingEngine (engine: Engine): Promise<EngineStatus> {
+		return new Promise((resolve, _reject) => {
+			request.get(`http://${engine.host}:${this.engineRestPort}/#/status`, { timeout: 2000 }, (error, response) => {
+				const alive = !error && response.statusCode === 200
+				resolve({ ...engine, alive })
+			})
+		})
 	}
 	/** Monitor loading status of expected elements */
 	private async _monitorLoadedElements (): Promise<void> {
