@@ -10,7 +10,7 @@ export declare class VMix extends EventEmitter {
     private _disposed;
     private _socketKeepAliveTimeout;
     connect(options: VMixOptions): Promise<boolean>;
-    readonly connected: boolean;
+    get connected(): boolean;
     dispose(): Promise<void>;
     private _connectHTTP;
     private setConnected;

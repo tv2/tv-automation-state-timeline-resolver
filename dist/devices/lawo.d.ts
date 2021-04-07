@@ -75,16 +75,16 @@ export declare class LawoDevice extends DeviceWithState<LawoState> implements ID
      * can be garbage collected.
      */
     terminate(): Promise<boolean>;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
+    get canConnect(): boolean;
+    get connected(): boolean;
     /**
      * Converts a timeline state into a device state.
      * @param state
      */
     convertStateToLawo(state: TimelineState, mappings: Mappings): LawoState;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;

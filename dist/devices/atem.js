@@ -159,6 +159,7 @@ class AtemDevice extends device_1.DeviceWithState {
         // For every layer, augment the state
         _.each(sortedLayers, ({ tlObject, layerName }) => {
             // const content = tlObject.content
+            var _a;
             let mapping = newMappings[layerName];
             if (mapping && mapping.deviceId === this.deviceId) {
                 if (mapping.index !== undefined && mapping.index >= 0) { // index must be 0 or higher
@@ -231,9 +232,9 @@ class AtemDevice extends device_1.DeviceWithState {
                             break;
                         case src_1.MappingAtemType.AudioChannel:
                             if (tlObject.content.type === src_1.TimelineContentTypeAtem.AUDIOCHANNEL) {
-                                const chan = deviceState.audio.channels[mapping.index];
+                                const chan = (_a = deviceState.audio) === null || _a === void 0 ? void 0 : _a.channels[mapping.index];
                                 let atemObj = tlObject;
-                                if (chan) {
+                                if (chan && deviceState.audio) {
                                     deviceState.audio.channels[mapping.index] = {
                                         ...chan,
                                         ...atemObj.content.audioChannel
@@ -263,12 +264,6 @@ class AtemDevice extends device_1.DeviceWithState {
     }
     get queue() {
         return this._doOnTime.getQueue();
-    }
-    doCustomCommand(commandName, args) {
-        const fcn = this._atem[commandName];
-        if (!fcn)
-            throw new Error(`Method Atem.${commandName} not found!`);
-        return Promise.resolve(fcn.apply(this._atem, args));
     }
     /**
      * Check status and return it with useful messages appended.

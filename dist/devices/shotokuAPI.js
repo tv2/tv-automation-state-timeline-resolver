@@ -7,7 +7,7 @@ const RETRY_TIMEOUT = 5000; // ms
 class ShotokuAPI extends events_1.EventEmitter {
     constructor() {
         super(...arguments);
-        this._tcpClient = null;
+        this._tcpClient = undefined;
         this._connected = false;
         this._setDisconnected = false; // set to true if disconnect() has been called (then do not trye to reconnect)
     }
@@ -26,6 +26,19 @@ class ShotokuAPI extends events_1.EventEmitter {
     }
     get connected() {
         return this._connected;
+    }
+    executeCommand(command) {
+        if ('shot' in command) {
+            return this.send(command);
+        }
+        else {
+            Object.values(command.shots).forEach((command) => {
+                setTimeout(() => {
+                    this.send(command).catch(() => this.emit('warn', 'Command from sequence failed...'));
+                }, command.offset);
+            });
+            return Promise.resolve();
+        }
     }
     send(command) {
         const codes = {
@@ -107,7 +120,7 @@ class ShotokuAPI extends events_1.EventEmitter {
                 this._tcpClient.removeAllListeners('close');
                 this._tcpClient.removeAllListeners('end');
                 this._tcpClient.removeAllListeners('error');
-                this._tcpClient = null;
+                this._tcpClient = undefined;
             }
             this._setConnected(false);
         });

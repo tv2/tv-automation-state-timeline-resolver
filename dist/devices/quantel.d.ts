@@ -44,11 +44,11 @@ export declare class QuantelDevice extends DeviceWithState<QuantelState> impleme
      * @param clearAfterTime
      */
     clearFuture(clearAfterTime: number): void;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get canConnect(): boolean;
+    get connected(): boolean;
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;
@@ -97,16 +97,23 @@ interface QuantelStatePort {
     channels: number[];
     notOnAir?: boolean;
     outTransition?: QuantelOutTransition;
+    /** Future clips, that should be preloaded */
+    lookaheadClip?: QuantelStatePortClipLookahead;
 }
-interface QuantelStatePortClip {
+interface QuantelStatePortClipContent {
     title?: string;
     guid?: string;
     clipId?: number;
+}
+interface QuantelStatePortClip extends QuantelStatePortClipContent {
     playing: boolean;
     playTime: number | null;
     pauseTime?: number;
     inPoint?: number;
     length?: number;
+}
+interface QuantelStatePortClipLookahead extends QuantelStatePortClipContent {
+    timelineObjId: string;
 }
 interface QuantelCommandBase {
     time: number;
@@ -132,6 +139,8 @@ interface QuantelCommandLoadClipFragments extends QuantelCommandBase {
     clip: QuantelStatePortClip;
     /** The time the clip is scheduled to play */
     timeOfPlay: number;
+    /** If allowed to prepare a jump to the fragments */
+    allowedToPrepareJump: boolean;
 }
 interface QuantelCommandClip extends QuantelCommandBase {
     clip: QuantelStatePortClip;

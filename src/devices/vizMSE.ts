@@ -339,7 +339,7 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 	 */
 	async makeReady (okToDestroyStuff?: boolean, activeRundownPlaylistId?: string): Promise<void> {
 		if (this._vizmseManager) {
-			const preload = !!(this._initOptions && this._initOptions.onlyPreloadActiveRundown)
+			const preload = !!(this._initOptions && this._initOptions.onlyPreloadActivePlaylist)
 			await this._vizmseManager.activate(activeRundownPlaylistId, preload)
 		} else throw new Error(`Unable to activate vizMSE, not initialized yet!`)
 

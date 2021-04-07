@@ -21,9 +21,9 @@ export declare class SisyfosApi extends EventEmitter {
     disconnect(): void;
     isInitialized(): boolean;
     reInitialize(): void;
-    readonly connected: boolean;
-    readonly state: SisyfosAPIState | undefined;
-    readonly mixerOnline: boolean;
+    get connected(): boolean;
+    get state(): SisyfosAPIState | undefined;
+    get mixerOnline(): boolean;
     setMixerOnline(state: boolean): void;
     private _monitorConnectivity;
     private _clearPingTimer;

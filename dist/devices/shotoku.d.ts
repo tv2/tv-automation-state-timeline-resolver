@@ -1,5 +1,5 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, ShotokuCommandContent, ShotokuOptions, DeviceOptionsShotoku, Mappings } from '../types/src';
+import { DeviceType, ShotokuCommandContent, ShotokuOptions, DeviceOptionsShotoku, Mappings, TimelineObjShotokuSequence } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
 import { ShotokuCommand } from './shotokuAPI';
 export interface DeviceOptionsShotokuInternal extends DeviceOptionsShotoku {
@@ -10,14 +10,18 @@ export interface DeviceOptionsShotokuInternal extends DeviceOptionsShotoku {
 export declare type CommandReceiver = (time: number, cmd: ShotokuCommand, context: CommandContext, timelineObjId: string) => Promise<any>;
 declare type CommandContext = string;
 declare type ShotokuDeviceState = {
-    [index: string]: ShotokuCommandContent & {
+    shots: Record<string, ShotokuCommandContent & {
         fromTlObject: string;
-    };
+    }>;
+    sequences: Record<string, {
+        fromTlObject: string;
+        shots: TimelineObjShotokuSequence['content']['shots'];
+    }>;
 };
 /**
  * This is a generic wrapper for any osc-enabled device.
  */
-export declare class ShotokuDevice extends DeviceWithState<TimelineState> implements IDevice {
+export declare class ShotokuDevice extends DeviceWithState<ShotokuDeviceState> implements IDevice {
     private _doOnTime;
     private _shotoku;
     private _commandReceiver;
@@ -39,17 +43,17 @@ export declare class ShotokuDevice extends DeviceWithState<TimelineState> implem
     terminate(): Promise<boolean>;
     getStatus(): DeviceStatus;
     makeReady(_okToDestroyStuff?: boolean): Promise<void>;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
+    get canConnect(): boolean;
+    get connected(): boolean;
     /**
      * Transform the timeline state into a device state, which is in this case also
      * a timeline state.
      * @param state
      */
     convertStateToShotokuShots(state: TimelineState): ShotokuDeviceState;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;
@@ -61,8 +65,8 @@ export declare class ShotokuDevice extends DeviceWithState<TimelineState> implem
     private _addToQueue;
     /**
      * Compares the new timeline-state with the old one, and generates commands to account for the difference
-     * @param oldShots The assumed current state
-     * @param newShots The desired state of the device
+     * @param oldState The assumed current state
+     * @param newState The desired state of the device
      */
     private _diffStates;
     private _defaultCommandReceiver;

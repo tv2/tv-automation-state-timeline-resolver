@@ -99,11 +99,6 @@ class AbstractDevice extends device_1.DeviceWithState {
             active: this.isActive
         };
     }
-    doCustomCommand(commandName, args) {
-        // For debug purposes only :)
-        this.emit('info', 'Abstract doCustomCommand: ' + commandName + ', ' + args);
-        return Promise.resolve('Abstract device says Hello, ' + args);
-    }
     /**
      * Add commands to queue, to be executed at the right time
      */

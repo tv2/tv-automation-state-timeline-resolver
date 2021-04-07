@@ -85,8 +85,8 @@ export declare abstract class Device extends EventEmitter implements IDevice {
      * @param clearAfterTime
      */
     abstract clearFuture(clearAfterTime: number): any;
-    abstract readonly canConnect: boolean;
-    abstract readonly connected: boolean;
+    abstract get canConnect(): boolean;
+    abstract get connected(): boolean;
     /**
      * The makeReady method could be triggered at a time before broadcast
      * Whenever we know that the user want's to make sure things are ready for broadcast
@@ -101,16 +101,16 @@ export declare abstract class Device extends EventEmitter implements IDevice {
      */
     standDown(_okToDestroyStuff?: boolean): Promise<void>;
     abstract getStatus(): DeviceStatus;
-    readonly deviceId: string;
+    get deviceId(): string;
     /**
      * A human-readable name for this device
      */
-    abstract readonly deviceName: string;
-    abstract readonly deviceType: DeviceType;
-    readonly deviceOptions: DeviceOptionsAny;
-    readonly supportsExpectedPlayoutItems: boolean;
+    abstract get deviceName(): string;
+    abstract get deviceType(): DeviceType;
+    get deviceOptions(): DeviceOptionsAny;
+    get supportsExpectedPlayoutItems(): boolean;
     handleExpectedPlayoutItems(_expectedPlayoutItems: Array<ExpectedPlayoutItemContent>): void;
-    readonly isActive: boolean;
+    get isActive(): boolean;
     private _updateCurrentTime;
     on: ((event: 'info', listener: (info: string) => void) => this) & ((event: 'warning', listener: (warning: string) => void) => this) & ((event: 'error', listener: (context: string, err: Error) => void) => this) & ((event: 'debug', listener: (...debug: any[]) => void) => this) & 
     /** The connection status has changed */
@@ -126,8 +126,8 @@ export declare abstract class Device extends EventEmitter implements IDevice {
     /** Clear a MediaObjects collection */
     ((event: 'clearMediaObjects', listener: (collectionId: string) => void) => this);
     emit: ((event: 'info', info: string) => boolean) & ((event: 'warning', warning: string) => boolean) & ((event: 'error', context: string, err: Error) => boolean) & ((event: 'debug', ...debug: any[]) => boolean) & ((event: 'connectionChanged', status: DeviceStatus) => boolean) & ((event: 'resetResolver') => boolean) & ((event: 'slowCommand', commandInfo: string) => boolean) & ((event: 'commandReport', commandReport: CommandReport) => boolean) & ((event: 'commandError', error: Error, context: CommandWithContext) => boolean) & ((event: 'updateMediaObject', collectionId: string, docId: string, doc: MediaObject | null) => boolean) & ((event: 'clearMediaObjects', collectionId: string) => boolean);
-    readonly instanceId: number;
-    readonly startTime: number;
+    get instanceId(): number;
+    get startTime(): number;
     protected handleDoOnTime(doOnTime: DoOnTime, deviceType: string): void;
     private updateIsActive;
 }

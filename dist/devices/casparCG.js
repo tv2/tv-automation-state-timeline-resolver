@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const _ = require("underscore");
+const deepMerge = require("deepmerge");
 const device_1 = require("./device");
 const casparcg_connection_1 = require("casparcg-connection");
 const src_1 = require("../types/src");
@@ -8,6 +9,8 @@ const casparcg_state_1 = require("casparcg-state");
 const doOnTime_1 = require("../doOnTime");
 const request = require("request");
 const transitionHandler_1 = require("./transitions/transitionHandler");
+const debug_1 = require("debug");
+const debug = debug_1.default('timeline-state-resolver:casparcg');
 const MAX_TIMESYNC_TRIES = 5;
 const MAX_TIMESYNC_DURATION = 40;
 const MEDIA_RETRY_INTERVAL = 10 * 1000; // default time in ms between checking whether a file needs to be retried loading
@@ -364,6 +367,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
             channels: {}
         };
         _.each(mappings, (foundMapping, layerName) => {
+            var _a, _b;
             if (foundMapping &&
                 foundMapping.device === src_1.DeviceType.CASPARCG &&
                 foundMapping.deviceId === this.deviceId &&
@@ -394,24 +398,41 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 // create layer of appropriate type
                 const foregroundStateLayer = foregroundObj ? this.convertObjectToCasparState(mappings, foregroundObj, mapping, true) : undefined;
                 const backgroundStateLayer = backgroundObj ? this.convertObjectToCasparState(mappings, backgroundObj, mapping, false) : undefined;
+                debug(`${layerName} (${mapping.channel}-${mapping.layer}): FG keys: ${Object.entries(foregroundStateLayer || {}).map(e => e[0] + ': ' + e[1]).join(', ')}`);
+                debug(`${layerName} (${mapping.channel}-${mapping.layer}): BG keys: ${Object.entries(backgroundStateLayer || {}).map(e => e[0] + ': ' + e[1]).join(', ')}`);
+                const merge = (o1, o2) => {
+                    const o = {
+                        ...o1
+                    };
+                    Object.entries(o2).forEach(([key, value]) => {
+                        if (value !== undefined) {
+                            o[key] = value;
+                        }
+                    });
+                    return o;
+                };
                 if (foregroundStateLayer) {
-                    channel.layers[layerName] = {
+                    const currentTemplateData = (_a = channel.layers[mapping.layer]) === null || _a === void 0 ? void 0 : _a.templateData;
+                    const foregroundTemplateData = (_b = foregroundStateLayer) === null || _b === void 0 ? void 0 : _b.templateData;
+                    channel.layers[mapping.layer] = merge(channel.layers[mapping.layer], {
                         ...foregroundStateLayer,
-                        nextUp: backgroundStateLayer ? device_1.literal({
+                        ...(_.isObject(currentTemplateData) && _.isObject(foregroundTemplateData) ? { templateData: deepMerge(currentTemplateData, foregroundTemplateData) } : {}),
+                        nextUp: backgroundStateLayer ? merge((channel.layers[mapping.layer] || {}).nextUp, device_1.literal({
                             ...backgroundStateLayer,
                             auto: false
-                        }) : undefined
-                    };
+                        })) : undefined
+                    });
                 }
                 else if (backgroundStateLayer) {
                     if (mapping.previewWhenNotOnAir) {
-                        channel.layers[layerName] = {
+                        channel.layers[mapping.layer] = merge(channel.layers[mapping.layer], {
+                            ...channel.layers[mapping.layer],
                             ...backgroundStateLayer,
                             playing: false
-                        };
+                        });
                     }
                     else {
-                        channel.layers[layerName] = device_1.literal({
+                        channel.layers[mapping.layer] = merge(channel.layers[mapping.layer], device_1.literal({
                             id: `${backgroundStateLayer.id}_empty_base`,
                             layerNo: mapping.layer,
                             content: casparcg_state_1.LayerContentType.NOTHING,
@@ -420,7 +441,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
                                 ...backgroundStateLayer,
                                 auto: false
                             })
-                        });
+                        }));
                     }
                 }
             }

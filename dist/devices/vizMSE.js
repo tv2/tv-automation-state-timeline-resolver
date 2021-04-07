@@ -8,6 +8,7 @@ const v_connection_1 = require("v-connection");
 const doOnTime_1 = require("../doOnTime");
 const crypto = require("crypto");
 const net = require("net");
+const request = require("request");
 /** The ideal time to prepare elements before going on air */
 const IDEAL_PREPARE_TIME = 1000;
 /** Minimum time to wait after preparing elements */
@@ -55,7 +56,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
         if (!this._initOptions.profile)
             throw new Error('VizMSE bad option: profile');
         this._vizMSE = v_connection_1.createMSE(this._initOptions.host, this._initOptions.restPort, this._initOptions.wsPort);
-        this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements, this._initOptions.autoLoadInternalElements, initOptions.showID, initOptions.profile, initOptions.playlistID);
+        this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements, this._initOptions.autoLoadInternalElements, this._initOptions.engineRestPort, initOptions.showID, initOptions.profile, initOptions.playlistID);
         this._vizmseManager.on('connectionChanged', (connected) => this.connectionChanged(connected));
         this._vizmseManager.on('updateMediaObject', (collectionId, docId, doc) => this.emit('updateMediaObject', collectionId, docId, doc));
         this._vizmseManager.on('clearMediaObjects', (collectionId) => this.emit('clearMediaObjects', collectionId));
@@ -225,12 +226,10 @@ class VizMSEDevice extends device_1.DeviceWithState {
      * Prepares the physical device for playout.
      * @param okToDestroyStuff Whether it is OK to do things that affects playout visibly
      */
-    async makeReady(okToDestroyStuff, activeRundownId) {
+    async makeReady(okToDestroyStuff, activeRundownPlaylistId) {
         if (this._vizmseManager) {
-            this._vizmseManager.activeRundownId = ((this._initOptions && this._initOptions.onlyPreloadActiveRundown) ?
-                activeRundownId :
-                undefined);
-            await this._vizmseManager.activate();
+            const preload = !!(this._initOptions && this._initOptions.onlyPreloadActivePlaylist);
+            await this._vizmseManager.activate(activeRundownPlaylistId, preload);
         }
         else
             throw new Error(`Unable to activate vizMSE, not initialized yet!`);
@@ -287,11 +286,17 @@ class VizMSEDevice extends device_1.DeviceWithState {
             statusCode = device_1.StatusCode.BAD;
             messages.push('Not connected');
         }
-        else if (this._vizmseManager &&
-            (this._vizmseManager.notLoadedCount > 0 ||
-                this._vizmseManager.loadingCount > 0)) {
-            statusCode = device_1.StatusCode.WARNING_MINOR;
-            messages.push(`Got ${this._vizmseManager.notLoadedCount} elements not yet loaded to the Viz Engine (${this._vizmseManager.loadingCount} are currently loading)`);
+        else if (this._vizmseManager) {
+            if (this._vizmseManager.notLoadedCount > 0 || this._vizmseManager.loadingCount > 0) {
+                statusCode = device_1.StatusCode.WARNING_MINOR;
+                messages.push(`Got ${this._vizmseManager.notLoadedCount} elements not yet loaded to the Viz Engine (${this._vizmseManager.loadingCount} are currently loading)`);
+            }
+            if (this._vizmseManager.enginesDisconnected.length) {
+                statusCode = device_1.StatusCode.BAD;
+                this._vizmseManager.enginesDisconnected.forEach(engine => {
+                    messages.push(`Viz Engine ${engine} disconnected`);
+                });
+            }
         }
         return {
             statusCode: statusCode,
@@ -595,18 +600,20 @@ class VizMSEDevice extends device_1.DeviceWithState {
 }
 exports.VizMSEDevice = VizMSEDevice;
 class VizMSEManager extends events_1.EventEmitter {
-    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements = false, autoLoadInternalElements = false, _showID, _profile, _playlistID) {
+    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements = false, autoLoadInternalElements = false, engineRestPort, _showID, _profile, _playlistID) {
         super();
         this._parentVizMSEDevice = _parentVizMSEDevice;
         this._vizMSE = _vizMSE;
         this.preloadAllElements = preloadAllElements;
         this.autoLoadInternalElements = autoLoadInternalElements;
+        this.engineRestPort = engineRestPort;
         this._showID = _showID;
         this._profile = _profile;
         this._playlistID = _playlistID;
         this.initialized = false;
         this.notLoadedCount = 0;
         this.loadingCount = 0;
+        this.enginesDisconnected = [];
         this._elementCache = {};
         this._expectedPlayoutItems = [];
         this._lastTimeCommandSent = 0;
@@ -614,9 +621,11 @@ class VizMSEManager extends events_1.EventEmitter {
         this._elementsLoaded = {};
         this._mseConnected = false;
         this._msePingConnected = false;
+        this._loadingAllElements = false;
         this._waitWithLayers = {};
         this.ignoreAllWaits = false; // Only to be used in tests
         this._cacheInternalElementsSentLoaded = {};
+        this._terminated = false;
     }
     /**
      * Initialize the Rundown in MSE.
@@ -650,10 +659,7 @@ class VizMSEManager extends events_1.EventEmitter {
                     this.emit('error', ...args);
                 });
             }, MONITOR_INTERVAL);
-            if (this._monitorMSEConnection) {
-                clearInterval(this._monitorMSEConnection);
-            }
-            this._monitorMSEConnection = setInterval(() => this._monitorConnection(), MONITOR_INTERVAL);
+            this._setMonitorConnectionTimeout();
             this.initialized = true;
         };
         await initializeRundownInner();
@@ -662,11 +668,12 @@ class VizMSEManager extends events_1.EventEmitter {
      * Close connections and die
      */
     async terminate() {
+        this._terminated = true;
         if (this._monitorAndLoadElementsInterval) {
             clearInterval(this._monitorAndLoadElementsInterval);
         }
         if (this._monitorMSEConnection) {
-            clearInterval(this._monitorMSEConnection);
+            clearTimeout(this._monitorMSEConnection);
         }
         if (this._vizMSE) {
             await this._vizMSE.close();
@@ -713,21 +720,31 @@ class VizMSEManager extends events_1.EventEmitter {
      * This causes the MSE rundown to activate, which must be done before using it.
      * Doing this will make MSE start loading things onto the vizEngine etc.
      */
-    async activate() {
-        this._triggerCommandSent();
-        const rundown = await this._getRundown();
-        // clear any existing elements from the existing rundown
-        try {
-            await rundown.purge();
+    async activate(rundownPlaylistId, preload) {
+        this._preloadedRundownPlaylistId = preload ? rundownPlaylistId : undefined;
+        let loadTwice = false;
+        if (!rundownPlaylistId || this._activeRundownPlaylistId !== rundownPlaylistId) {
+            this._triggerCommandSent();
+            const rundown = await this._getRundown();
+            // clear any existing elements from the existing rundown
+            try {
+                await rundown.purge();
+            }
+            catch (error) {
+                this.emit('error', error);
+            }
+            this._clearCache();
+            this._clearMediaObjects();
+            loadTwice = true;
         }
-        catch (error) {
-            this.emit('error', error);
-        }
-        this._clearCache();
-        this._clearMediaObjects();
         this._triggerCommandSent();
-        await this._triggerLoadAllElements(true);
-        this._triggerCommandSent();
+        this._triggerLoadAllElements(loadTwice).then(() => {
+            this._triggerCommandSent();
+            this._hasActiveRundown = true;
+        }).catch((e) => {
+            this.emit('error', e);
+        });
+        this._activeRundownPlaylistId = rundownPlaylistId;
         this._hasActiveRundown = true;
     }
     /**
@@ -744,6 +761,7 @@ class VizMSEManager extends events_1.EventEmitter {
     }
     standDownActiveRundown() {
         this._hasActiveRundown = false;
+        this._activeRundownPlaylistId = undefined;
     }
     _clearMediaObjects() {
         this.emit('clearMediaObjects', this._parentVizMSEDevice.deviceId);
@@ -866,9 +884,8 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     async clearEngines(cmd) {
         try {
-            const profile = await this._vizMSE.getProfile(this._profile);
-            const engines = await this._vizMSE.getEngines();
-            const enginesToClear = this._prepareEnginesToClear(profile, engines, cmd.channels);
+            const engines = await this._getEngines();
+            const enginesToClear = this._filterEnginesToClear(engines, cmd.channels);
             enginesToClear.forEach(engine => {
                 const sender = new VizEngineTcpSender(engine.port, engine.host);
                 sender.on('warning', w => this.emit('warning', `clearEngines: ${w}`));
@@ -880,8 +897,10 @@ class VizMSEManager extends events_1.EventEmitter {
             this.emit('warning', `Sending Clear-all command failed ${e}`);
         }
     }
-    _prepareEnginesToClear(profile, engines, channels) {
-        const enginesToClear = [];
+    async _getEngines() {
+        const profile = await this._vizMSE.getProfile(this._profile);
+        const engines = await this._vizMSE.getEngines();
+        const result = [];
         const outputs = new Map(); // engine name : channel name
         _.each(profile.execution_groups, (group, groupName) => {
             _.each(group, entry => {
@@ -898,15 +917,16 @@ class VizMSEManager extends events_1.EventEmitter {
         outputEngines.forEach(engine => {
             _.each(_.keys(engine.renderer), fullHost => {
                 const channelName = outputs.get(engine.name);
-                if (channels === 'all' || _.contains(channels, channelName)) {
-                    const match = fullHost.match(/([^:]+):?(\d*)?/);
-                    const port = (match && match[2]) ? parseInt(match[2], 10) : 6100;
-                    const host = (match && match[1]) ? match[1] : fullHost;
-                    enginesToClear.push({ host, port });
-                }
+                const match = fullHost.match(/([^:]+):?(\d*)?/);
+                const port = (match && match[2]) ? parseInt(match[2], 10) : 6100;
+                const host = (match && match[1]) ? match[1] : fullHost;
+                result.push({ name: engine.name, channel: channelName, host, port });
             });
         });
-        return enginesToClear;
+        return result;
+    }
+    _filterEnginesToClear(engines, channels) {
+        return engines.filter(engine => channels === 'all' || engine.channel && channels.includes(engine.channel));
     }
     /**
      * Load all elements: Trigger a loading of all pilot elements onto the vizEngine.
@@ -1058,8 +1078,8 @@ class VizMSEManager extends events_1.EventEmitter {
         const hashesAndItems = {};
         const expectedPlayoutItems = _.filter(this._expectedPlayoutItems, expectedPlayoutItem => {
             const templateName = typeof expectedPlayoutItem.templateName;
-            return ((!this.activeRundownId ||
-                this.activeRundownId === expectedPlayoutItem.playlistId) &&
+            return ((!this._preloadedRundownPlaylistId ||
+                this._preloadedRundownPlaylistId === expectedPlayoutItem.playlistId) &&
                 typeof templateName !== 'undefined');
         });
         await Promise.all(_.map(expectedPlayoutItems, async (expectedPlayoutItem) => {
@@ -1108,49 +1128,47 @@ class VizMSEManager extends events_1.EventEmitter {
             return undefined;
         }));
         if (this._rundown) {
-            this.emit('debug', `Updating status of elements starting, activeRundownId="${this.activeRundownId}", elementsToLoad.length=${elementsToLoad.length} (${_.keys(hashesAndItems).length})`);
+            this.emit('debug', `Updating status of elements starting, activeRundownId="${this._preloadedRundownPlaylistId}", elementsToLoad.length=${elementsToLoad.length} (${_.keys(hashesAndItems).length})`);
             const rundown = await this._getRundown();
             if (forceReloadAll) {
                 this._elementsLoaded = {};
             }
             await Promise.all(_.map(elementsToLoad, async (e) => {
                 const cachedEl = this._elementsLoaded[e.hash];
-                if (!cachedEl || !cachedEl.isLoaded) {
-                    try {
-                        const elementRef = await this._checkPrepareElement(e.item);
-                        this.emit('debug', `Updating status of element ${elementRef}`);
-                        // Update cached status of the element:
-                        const newEl = await rundown.getElement(elementRef);
-                        this._elementsLoaded[e.hash] = {
-                            element: newEl,
-                            isLoaded: this._isElementLoaded(newEl),
-                            isLoading: this._isElementLoading(newEl)
-                        };
-                        this.emit('debug', `Element ${elementRef}: ${JSON.stringify(newEl)}`);
-                        if (this._isExternalElement(newEl)) {
-                            if (this._elementsLoaded[e.hash].isLoaded) {
-                                const mediaObject = {
-                                    _id: e.hash,
-                                    mediaId: 'PILOT_' + e.item.templateName.toString().toUpperCase(),
-                                    mediaPath: e.item.templateInstance,
-                                    mediaSize: 0,
-                                    mediaTime: 0,
-                                    thumbSize: 0,
-                                    thumbTime: 0,
-                                    cinf: '',
-                                    tinf: '',
-                                    _rev: ''
-                                };
-                                this.emit('updateMediaObject', this._parentVizMSEDevice.deviceId, e.hash, mediaObject);
-                            }
-                            else if (!cachedEl) {
-                                this.emit('updateMediaObject', this._parentVizMSEDevice.deviceId, e.hash, null);
-                            }
+                try {
+                    const elementRef = await this._checkPrepareElement(e.item);
+                    this.emit('debug', `Updating status of element ${elementRef}`);
+                    // Update cached status of the element:
+                    const newEl = await rundown.getElement(elementRef);
+                    this._elementsLoaded[e.hash] = {
+                        element: newEl,
+                        isLoaded: this._isElementLoaded(newEl),
+                        isLoading: this._isElementLoading(newEl)
+                    };
+                    this.emit('debug', `Element ${elementRef}: ${JSON.stringify(newEl)}`);
+                    if (this._isExternalElement(newEl) && (cachedEl === null || cachedEl === void 0 ? void 0 : cachedEl.isLoaded) !== this._elementsLoaded[e.hash].isLoaded) {
+                        if (this._elementsLoaded[e.hash].isLoaded) {
+                            const mediaObject = {
+                                _id: e.hash,
+                                mediaId: 'PILOT_' + e.item.templateName.toString().toUpperCase(),
+                                mediaPath: e.item.templateInstance,
+                                mediaSize: 0,
+                                mediaTime: 0,
+                                thumbSize: 0,
+                                thumbTime: 0,
+                                cinf: '',
+                                tinf: '',
+                                _rev: ''
+                            };
+                            this.emit('updateMediaObject', this._parentVizMSEDevice.deviceId, e.hash, mediaObject);
+                        }
+                        else {
+                            this.emit('updateMediaObject', this._parentVizMSEDevice.deviceId, e.hash, null);
                         }
                     }
-                    catch (e) {
-                        this.emit('error', `Error in updateElementsLoadedStatus: ${e.toString()}`);
-                    }
+                }
+                catch (e) {
+                    this.emit('error', `Error in updateElementsLoadedStatus: ${e.toString()}`);
                 }
             }));
             this.emit('debug', `Updating status of elements done, this._elementsLoaded.length=${_.keys(this._elementsLoaded).length}`);
@@ -1163,77 +1181,131 @@ class VizMSEManager extends events_1.EventEmitter {
      * Trigger a load of all elements that are not yet loaded onto the vizEngine.
      */
     async _triggerLoadAllElements(loadTwice = false) {
-        const rundown = await this._getRundown();
-        this.emit('debug', '_triggerLoadAllElements starting');
-        // First, update the loading-status of all elements:
-        await this.updateElementsLoadedStatus(true);
-        // if (this._initializeRundownOnLoadAll) {
-        // Then, load all elements that needs loading:
-        const loadAllElementsThatNeedsLoading = async () => {
-            this._triggerCommandSent();
-            try {
-                this.emit('debug', 'rundown.activate triggered');
-                await rundown.activate(); // Our theory: an extra initialization of the rundown playlist loads all internal elements
-            }
-            catch (error) {
-                this.emit('warning', `Ignored error for rundown.activate(): ${error}`);
-            }
-            this._triggerCommandSent();
-            await this._wait(1000);
-            this._triggerCommandSent();
-            await Promise.all(_.map(this._elementsLoaded, async (e) => {
-                if (this._isInternalElement(e.element)) {
-                    // Not loading individual internal elements, since a show.initialization loads them good enough
+        if (this._loadingAllElements) {
+            this.emit('warning', '_triggerLoadAllElements already running');
+            return;
+        }
+        this._loadingAllElements = true;
+        try {
+            const rundown = await this._getRundown();
+            this.emit('debug', '_triggerLoadAllElements starting');
+            // First, update the loading-status of all elements:
+            await this.updateElementsLoadedStatus(true);
+            // if (this._initializeRundownOnLoadAll) {
+            // Then, load all elements that needs loading:
+            const loadAllElementsThatNeedsLoading = async () => {
+                this._triggerCommandSent();
+                try {
+                    this.emit('debug', 'rundown.activate triggered');
+                    await rundown.activate(); // Our theory: an extra initialization of the rundown playlist loads all internal elements
                 }
-                else if (this._isExternalElement(e.element)) {
-                    if (e.isLoaded) {
-                        // The element is loaded fine, no need to do anything
-                        this.emit('debug', `Element "${this._getElementReference(e.element)}" is loaded`);
+                catch (error) {
+                    this.emit('warning', `Ignored error for rundown.activate(): ${error}`);
+                }
+                this._triggerCommandSent();
+                await this._wait(1000);
+                this._triggerCommandSent();
+                await Promise.all(_.map(this._elementsLoaded, async (e) => {
+                    if (this._isInternalElement(e.element)) {
+                        // Not loading individual internal elements, since a show.initialization loads them good enough
                     }
-                    else if (e.isLoading) {
-                        // The element is currently loading, do nothing
-                        this.emit('debug', `Element "${this._getElementReference(e.element)}" is loading`);
+                    else if (this._isExternalElement(e.element)) {
+                        if (e.isLoaded) {
+                            // The element is loaded fine, no need to do anything
+                            this.emit('debug', `Element "${this._getElementReference(e.element)}" is loaded`);
+                        }
+                        else if (e.isLoading) {
+                            // The element is currently loading, do nothing
+                            this.emit('debug', `Element "${this._getElementReference(e.element)}" is loading`);
+                        }
+                        else {
+                            // The element has not started loading, load it:
+                            this.emit('debug', `Element "${this._getElementReference(e.element)}" is not loaded, initializing`);
+                            await rundown.initialize(this._getElementReference(e.element));
+                        }
                     }
                     else {
-                        // The element has not started loading, load it:
-                        this.emit('debug', `Element "${this._getElementReference(e.element)}" is not loaded, initializing`);
-                        await rundown.initialize(this._getElementReference(e.element));
+                        this.emit('error', `Element "${this._getElementReference(e.element)}" type `);
                     }
-                }
-                else {
-                    this.emit('error', `Element "${this._getElementReference(e.element)}" type `);
-                }
-            }));
-        };
-        // He's making a list:
-        await loadAllElementsThatNeedsLoading();
-        await this._wait(2000);
-        if (loadTwice) {
-            // He's checking it twice:
-            await this.updateElementsLoadedStatus();
-            // Gonna find out what's loaded and nice:
+                }));
+            };
+            // He's making a list:
             await loadAllElementsThatNeedsLoading();
+            await this._wait(2000);
+            if (loadTwice) {
+                // He's checking it twice:
+                await this.updateElementsLoadedStatus();
+                // Gonna find out what's loaded and nice:
+                await loadAllElementsThatNeedsLoading();
+            }
+            this.emit('debug', '_triggerLoadAllElements done');
         }
-        this.emit('debug', '_triggerLoadAllElements done');
+        catch (e) {
+            throw e;
+        }
+        finally {
+            this._loadingAllElements = false;
+        }
+    }
+    _setMonitorConnectionTimeout() {
+        if (this._monitorMSEConnection) {
+            clearTimeout(this._monitorMSEConnection);
+        }
+        if (!this._terminated) {
+            this._monitorMSEConnection = setTimeout(() => this._monitorConnection(), MONITOR_INTERVAL);
+        }
     }
     _monitorConnection() {
         // (the ping will throuw on a timeout if ping doesn't return in time)
         if (this.initialized) {
             this._vizMSE.ping()
-                .then(() => {
+                .then(async () => {
                 // ok!
                 if (!this._msePingConnected) {
                     this._msePingConnected = true;
                     this.onConnectionChanged();
                 }
-            }, () => {
+                await this._monitorEngines();
+                this._setMonitorConnectionTimeout();
+            }, async () => {
                 // not ok!
                 if (this._msePingConnected) {
                     this._msePingConnected = false;
                     this.onConnectionChanged();
                 }
+                await this._monitorEngines();
+                this._setMonitorConnectionTimeout();
             });
         }
+    }
+    async _monitorEngines() {
+        if (!this.engineRestPort) {
+            return;
+        }
+        const engines = await this._getEngines();
+        const ps = [];
+        engines.forEach(engine => {
+            return ps.push(this._pingEngine(engine));
+        });
+        const statuses = await Promise.all(ps);
+        const enginesDisconnected = [];
+        statuses.forEach((status) => {
+            if (!status.alive) {
+                enginesDisconnected.push(`${status.name} (${status.host})`);
+            }
+        });
+        if (!_.isEqual(enginesDisconnected, this.enginesDisconnected)) {
+            this.enginesDisconnected = enginesDisconnected;
+            this.onConnectionChanged();
+        }
+    }
+    async _pingEngine(engine) {
+        return new Promise((resolve, _reject) => {
+            request.get(`http://${engine.host}:${this.engineRestPort}/#/status`, { timeout: 2000 }, (error, response) => {
+                const alive = !error && response.statusCode === 200;
+                resolve({ ...engine, alive });
+            });
+        });
     }
     /** Monitor loading status of expected elements */
     async _monitorLoadedElements() {

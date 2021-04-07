@@ -6,6 +6,8 @@ const src_1 = require("../types/src");
 const doOnTime_1 = require("../doOnTime");
 const sisyfos_1 = require("../types/src/sisyfos");
 const sisyfosAPI_1 = require("./sisyfosAPI");
+const debug_1 = require("debug");
+const debug = debug_1.default('timeline-state-resolver:sisyfos');
 /**
  * This is a generic wrapper for any osc-enabled device.
  */
@@ -143,7 +145,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
     get connected() {
         return this._sisyfos.connected;
     }
-    getDeviceState(isDefaultState = true) {
+    getDeviceState(isDefaultState = true, mappings) {
         let deviceStateFromAPI = this._sisyfos.state;
         const deviceState = {
             channels: {},
@@ -151,7 +153,10 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
         };
         if (!deviceStateFromAPI)
             deviceStateFromAPI = deviceState;
-        for (const ch of Object.keys(deviceStateFromAPI.channels)) {
+        const channels = mappings ? Object.values(mappings || {})
+            .filter((m) => m.mappingType === sisyfos_1.MappingSisyfosType.CHANNEL)
+            .map((m) => m.channel) : Object.keys(deviceStateFromAPI.channels);
+        for (const ch of channels) {
             const channelFromAPI = deviceStateFromAPI.channels[ch];
             let channel = {
                 ...channelFromAPI,
@@ -183,7 +188,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
      * @param state
      */
     convertStateToSisyfosState(state, mappings) {
-        const deviceState = this.getDeviceState();
+        const deviceState = this.getDeviceState(true, mappings);
         for (const mapping of Object.values(mappings)) {
             const sisyfosMapping = mapping;
             if (sisyfosMapping.mappingType !== sisyfos_1.MappingSisyfosType.CHANNEL)
@@ -314,6 +319,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             const oldChannel = oldOscSendState.channels[index];
             if ((newOscSendState.triggerValue && newOscSendState.triggerValue !== oldOscSendState.triggerValue)) { // || (!oldChannel && Number(index) >= 0)) {
                 // push commands for everything
+                debug('reset channel ' + index);
                 commands.push({
                     context: `Channel ${index} reset`,
                     content: {
@@ -326,6 +332,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                 return;
             }
             if (oldChannel && oldChannel.pgmOn !== newChannel.pgmOn) {
+                debug(`Channel ${index} pgm goes from "${oldChannel.pgmOn}" to "${newChannel.pgmOn}"`);
                 commands.push({
                     context: `Channel ${index} pgm goes from "${oldChannel.pgmOn}" to "${newChannel.pgmOn}"`,
                     content: {
@@ -337,6 +344,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                 });
             }
             if (oldChannel && oldChannel.pstOn !== newChannel.pstOn) {
+                debug(`Channel ${index} pst goes from "${oldChannel.pstOn}" to "${newChannel.pstOn}"`);
                 commands.push({
                     context: `Channel ${index} pst goes from "${oldChannel.pstOn}" to "${newChannel.pstOn}"`,
                     content: {
@@ -348,6 +356,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                 });
             }
             if (oldChannel && oldChannel.faderLevel !== newChannel.faderLevel) {
+                debug(`change faderLevel ${index}: "${newChannel.faderLevel}"`);
                 commands.push({
                     context: 'faderLevel change',
                     content: {
@@ -360,6 +369,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
             }
             newChannel.label = newChannel.label || (oldChannel ? oldChannel.label : '');
             if (oldChannel && newChannel.label !== '' && oldChannel.label !== newChannel.label) {
+                debug(`set label on fader ${index}: "${newChannel.label}"`);
                 commands.push({
                     context: 'set label on fader',
                     content: {
@@ -371,6 +381,7 @@ class SisyfosMessageDevice extends device_1.DeviceWithState {
                 });
             }
             if (oldChannel && oldChannel.visible !== newChannel.visible) {
+                debug(`Channel ${index} Visibility goes from "${oldChannel.visible}" to "${newChannel.visible}"`);
                 commands.push({
                     context: `Channel ${index} Visibility goes from "${oldChannel.visible}" to "${newChannel.visible}"`,
                     content: {

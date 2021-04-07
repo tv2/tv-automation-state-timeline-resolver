@@ -89,17 +89,19 @@ export declare class Conductor extends EventEmitter {
     /**
      * Returns the mappings
      */
-    readonly mapping: Mappings;
+    get mapping(): Mappings;
     /**
      * Returns the current timeline
      */
-    readonly timeline: TSRTimeline;
+    get timeline(): TSRTimeline;
     /**
      * Sets a new timeline and resets the resolver.
      */
     setTimelineAndMappings(timeline: TSRTimeline, mappings?: Mappings): void;
-    timelineHash: string | undefined;
-    logDebug: boolean;
+    get timelineHash(): string | undefined;
+    set timelineHash(hash: string | undefined);
+    get logDebug(): boolean;
+    set logDebug(val: boolean);
     getDevices(): Array<DeviceContainer>;
     getDevice(deviceId: string): DeviceContainer;
     /**

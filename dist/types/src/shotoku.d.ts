@@ -8,7 +8,8 @@ export interface MappingShotoku extends Mapping {
     device: DeviceType.SHOTOKU;
 }
 export declare enum TimelineContentTypeShotoku {
-    SHOT = "shot"
+    SHOT = "shot",
+    SEQUENCE = "sequence"
 }
 export declare enum ShotokuTransitionType {
     Cut = "cut",
@@ -20,9 +21,20 @@ export interface ShotokuCommandContent {
     transitionType?: ShotokuTransitionType;
     changeOperatorScreen?: boolean;
 }
-export interface TimelineObjShotoku extends TSRTimelineObjBase {
+export interface TimelineObjShotokuShot extends TSRTimelineObjBase {
     content: {
         deviceType: DeviceType.SHOTOKU;
-        type: TimelineContentTypeShotoku;
+        type: TimelineContentTypeShotoku.SHOT;
     } & ShotokuCommandContent;
 }
+export interface TimelineObjShotokuSequence extends TSRTimelineObjBase {
+    content: {
+        deviceType: DeviceType.SHOTOKU;
+        type: TimelineContentTypeShotoku.SEQUENCE;
+        sequenceId: string;
+        shots: Array<{
+            offset: number;
+        } & ShotokuCommandContent>;
+    };
+}
+export declare type TimelineObjShotoku = TimelineObjShotokuShot | TimelineObjShotokuSequence;

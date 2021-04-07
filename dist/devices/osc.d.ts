@@ -45,17 +45,17 @@ export declare class OSCMessageDevice extends DeviceWithState<OSCDeviceState> im
     terminate(): Promise<boolean>;
     getStatus(): DeviceStatus;
     makeReady(_okToDestroyStuff?: boolean): Promise<void>;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
+    get canConnect(): boolean;
+    get connected(): boolean;
     /**
      * Transform the timeline state into a device state, which is in this case also
      * a timeline state.
      * @param state
      */
     convertStateToOSCMessage(state: TimelineState): OSCDeviceState;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;

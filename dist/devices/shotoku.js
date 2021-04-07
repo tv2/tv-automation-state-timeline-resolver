@@ -48,17 +48,16 @@ class ShotokuDevice extends device_1.DeviceWithState {
         super.onHandleState(newState, newMappings);
         // Transform timeline states into device states
         let previousStateTime = Math.max(this.getCurrentTime(), newState.time);
-        let oldState = (this.getStateBefore(previousStateTime) || { state: { time: 0, layers: {}, nextEvents: [] } }).state;
-        let oldAbstractState = this.convertStateToShotokuShots(oldState);
-        let newAbstractState = this.convertStateToShotokuShots(newState);
+        let oldState = (this.getStateBefore(previousStateTime) || { state: { shots: {}, sequences: {} } }).state;
+        let newShotokuState = this.convertStateToShotokuShots(newState);
         // Generate commands necessary to transition to the new state
-        let commandsToAchieveState = this._diffStates(oldAbstractState, newAbstractState);
+        let commandsToAchieveState = this._diffStates(oldState, newShotokuState);
         // clear any queued commands later than this time:
         this._doOnTime.clearQueueNowAndAfter(previousStateTime);
         // add the new commands to the queue:
         this._addToQueue(commandsToAchieveState, newState.time);
         // store the new state, for later use:
-        this.setState(newState, newState.time);
+        this.setState(newShotokuState, newState.time);
     }
     /**
      * Clear any scheduled commands after this time
@@ -92,18 +91,29 @@ class ShotokuDevice extends device_1.DeviceWithState {
      * @param state
      */
     convertStateToShotokuShots(state) {
-        const shots = {};
+        const deviceState = {
+            shots: {},
+            sequences: {}
+        };
         _.each(state.layers, (layer) => {
             const content = layer.content;
-            const show = content.show || 1;
-            if (!content.shot)
-                return;
-            shots[show + '.' + content.shot] = {
-                ...content,
-                fromTlObject: layer.id
-            };
+            if (content.type === src_1.TimelineContentTypeShotoku.SHOT) {
+                const show = content.show || 1;
+                if (!content.shot)
+                    return;
+                deviceState.shots[show + '.' + content.shot] = {
+                    ...content,
+                    fromTlObject: layer.id
+                };
+            }
+            else {
+                deviceState.sequences[content.sequenceId] = {
+                    shots: content.shots.filter(s => !!s.shot),
+                    fromTlObject: layer.id
+                };
+            }
         });
-        return shots;
+        return deviceState;
     }
     get deviceType() {
         return src_1.DeviceType.SHOTOKU;
@@ -126,14 +136,14 @@ class ShotokuDevice extends device_1.DeviceWithState {
     }
     /**
      * Compares the new timeline-state with the old one, and generates commands to account for the difference
-     * @param oldShots The assumed current state
-     * @param newShots The desired state of the device
+     * @param oldState The assumed current state
+     * @param newState The desired state of the device
      */
-    _diffStates(oldShots, newShots) {
+    _diffStates(oldState, newState) {
         // unfortunately we don't know what shots belong to what camera, so we can't do anything smart
         let commands = [];
-        _.each(newShots, (newCommandContent, index) => {
-            let oldLayer = oldShots[index];
+        _.each(newState.shots, (newCommandContent, index) => {
+            let oldLayer = oldState.shots[index];
             if (!oldLayer) {
                 // added!
                 const shotokuCommand = {
@@ -152,19 +162,29 @@ class ShotokuDevice extends device_1.DeviceWithState {
                 // since there is nothing but a trigger, we know nothing changed.
             }
         });
-        // removed - there is nothing to do here as we don't know what to replace it with
-        // _.each(oldShots, (oldCommandContent: ShotokuDeviceStateContent, address) => {
-        // 	let newLayer = newShots[address]
-        // 	if (!newLayer) {
-        // removed!
-        // commands.push({
-        // 	commandName:	'removed',
-        // 	context:		`removed: ${oldCommandContent.fromTlObject}`,
-        // 	timelineObjId:	oldCommandContent.fromTlObject,
-        // 	content:		oldCommandContent
-        // })
-        // 	}
-        // })
+        Object.entries(newState.sequences).forEach(([index, newCommandContent]) => {
+            let oldLayer = oldState.sequences[index];
+            if (!oldLayer) {
+                // added!
+                const shotokuCommand = {
+                    shots: newCommandContent.shots.map(s => ({
+                        show: s.show,
+                        shot: s.shot,
+                        type: s.transitionType === src_1.ShotokuTransitionType.Fade ? shotokuAPI_1.ShotokuCommandType.Fade : shotokuAPI_1.ShotokuCommandType.Cut,
+                        changeOperatorScreen: s.changeOperatorScreen,
+                        offset: s.offset
+                    }))
+                };
+                commands.push({
+                    context: `added: ${newCommandContent.fromTlObject}`,
+                    timelineObjId: newCommandContent.fromTlObject,
+                    command: shotokuCommand
+                });
+            }
+            else {
+                // since there is nothing but a trigger, we know nothing changed.
+            }
+        });
         return commands;
     }
     _defaultCommandReceiver(_time, cmd, context, timelineObjId) {
@@ -176,7 +196,7 @@ class ShotokuDevice extends device_1.DeviceWithState {
         this.emit('debug', cwc);
         try {
             if (this._shotoku.connected) {
-                this._shotoku.send(cmd).catch(e => {
+                this._shotoku.executeCommand(cmd).catch(e => {
                     throw new Error(e);
                 });
             }
