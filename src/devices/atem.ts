@@ -293,9 +293,9 @@ export class AtemDevice extends DeviceWithState<DeviceState> implements IDevice 
 							break
 						case MappingAtemType.AudioChannel:
 							if (tlObject.content.type === TimelineContentTypeAtem.AUDIOCHANNEL) {
-								const chan = deviceState.audio.channels[mapping.index]
+								const chan = deviceState.audio?.channels[mapping.index]
 								let atemObj = tlObject as any as TimelineObjAtemAudioChannel
-								if (chan) {
+								if (chan && deviceState.audio) {
 									deviceState.audio.channels[mapping.index] = {
 										...chan,
 										...atemObj.content.audioChannel
@@ -326,12 +326,6 @@ export class AtemDevice extends DeviceWithState<DeviceState> implements IDevice 
 	}
 	get queue () {
 		return this._doOnTime.getQueue()
-	}
-	doCustomCommand (commandName: string, args: any[]): Promise<any> {
-		const fcn: Function = this._atem[commandName]
-		if (!fcn) throw new Error(`Method Atem.${commandName} not found!`)
-
-		return Promise.resolve(fcn.apply(this._atem, args))
 	}
 	/**
 	 * Check status and return it with useful messages appended.
