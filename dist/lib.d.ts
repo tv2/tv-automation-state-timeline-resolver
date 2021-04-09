@@ -5,3 +5,4 @@
  * @param b
  */
 export declare function getDiff(a: any, b: any): string | null;
+export declare function deepExtend<T>(destination: T, ...sources: any[]): any;

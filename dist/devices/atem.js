@@ -1,16 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const _ = require("underscore");
-const underScoreDeepExtend = require("underscore-deep-extend");
 const device_1 = require("./device");
 const src_1 = require("../types/src");
 const atem_state_1 = require("atem-state");
 const doOnTime_1 = require("../doOnTime");
-_.mixin({ deepExtend: underScoreDeepExtend(_) });
-function deepExtend(destination, ...sources) {
-    // @ts-ignore (mixin)
-    return _.deepExtend(destination, ...sources);
-}
+const lib_1 = require("../lib");
 /**
  * This is a wrapper for the Atem Device. Commands to any and all atem devices will be sent through here.
  */
@@ -168,11 +163,11 @@ class AtemDevice extends device_1.DeviceWithState {
                                 let me = atem_state_1.AtemConnection.AtemStateUtil.getMixEffect(deviceState, mapping.index);
                                 let atemObj = tlObject;
                                 let atemObjKeyers = atemObj.content.me.upstreamKeyers;
-                                deepExtend(me, _.omit(atemObj.content.me, 'upstreamKeyers'));
+                                lib_1.deepExtend(me, _.omit(atemObj.content.me, 'upstreamKeyers'));
                                 if (atemObjKeyers) {
                                     _.each(atemObjKeyers, (objKey, i) => {
                                         const keyer = atem_state_1.AtemConnection.AtemStateUtil.getUpstreamKeyer(me, i);
-                                        deepExtend(keyer, objKey);
+                                        lib_1.deepExtend(keyer, objKey);
                                     });
                                 }
                             }
@@ -182,7 +177,7 @@ class AtemDevice extends device_1.DeviceWithState {
                                 let dsk = atem_state_1.AtemConnection.AtemStateUtil.getDownstreamKeyer(deviceState, mapping.index);
                                 let atemObj = tlObject;
                                 if (dsk)
-                                    deepExtend(dsk, atemObj.content.dsk);
+                                    lib_1.deepExtend(dsk, atemObj.content.dsk);
                             }
                             break;
                         case src_1.MappingAtemType.SuperSourceBox:
@@ -193,7 +188,7 @@ class AtemDevice extends device_1.DeviceWithState {
                                     const objBoxes = atemObj.content.ssrc.boxes;
                                     _.each(objBoxes, (box, i) => {
                                         if (ssrc.boxes[i]) {
-                                            deepExtend(ssrc.boxes[i], box);
+                                            lib_1.deepExtend(ssrc.boxes[i], box);
                                         }
                                         else {
                                             ssrc.boxes[i] = {
@@ -212,7 +207,7 @@ class AtemDevice extends device_1.DeviceWithState {
                                     ssrc.properties = { ...atem_state_1.Defaults.Video.SuperSourceProperties };
                                 let atemObj = tlObject;
                                 if (ssrc)
-                                    deepExtend(ssrc.properties, atemObj.content.ssrcProps);
+                                    lib_1.deepExtend(ssrc.properties, atemObj.content.ssrcProps);
                             }
                             break;
                         case src_1.MappingAtemType.Auxilliary:
@@ -226,7 +221,7 @@ class AtemDevice extends device_1.DeviceWithState {
                                 let ms = atem_state_1.AtemConnection.AtemStateUtil.getMediaPlayer(deviceState, mapping.index);
                                 let atemObj = tlObject;
                                 if (ms)
-                                    deepExtend(ms, atemObj.content.mediaPlayer);
+                                    lib_1.deepExtend(ms, atemObj.content.mediaPlayer);
                             }
                             break;
                         case src_1.MappingAtemType.AudioChannel:
@@ -248,7 +243,7 @@ class AtemDevice extends device_1.DeviceWithState {
                         let ms = deviceState.macro.macroPlayer;
                         let atemObj = tlObject;
                         if (ms)
-                            deepExtend(ms, atemObj.content.macroPlayer);
+                            lib_1.deepExtend(ms, atemObj.content.macroPlayer);
                     }
                 }
             }

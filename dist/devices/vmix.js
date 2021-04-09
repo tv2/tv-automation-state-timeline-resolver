@@ -1,18 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const _ = require("underscore");
-const underScoreDeepExtend = require("underscore-deep-extend");
 const path = require("path");
 const device_1 = require("./device");
 const src_1 = require("../types/src");
 const doOnTime_1 = require("../doOnTime");
 const vmixAPI_1 = require("./vmixAPI");
 const vmix_1 = require("../types/src/vmix");
-_.mixin({ deepExtend: underScoreDeepExtend(_) });
-function deepExtend(destination, ...sources) {
-    // @ts-ignore (mixin)
-    return _.deepExtend(destination, ...sources);
-}
+const lib_1 = require("../lib");
 /**
  * This is a VMixDevice, it sends commands when it feels like it
  */
@@ -38,7 +33,7 @@ class VMixDevice extends device_1.DeviceWithState {
         this._vmix.on('connected', () => {
             let time = this.getCurrentTime();
             let state = this._getDefaultState();
-            deepExtend(state, { reportedState: this._vmix.state });
+            lib_1.deepExtend(state, { reportedState: this._vmix.state });
             this.setState(state, time);
             this._initialized = true;
             this._setConnected(true);
@@ -315,11 +310,11 @@ class VMixDevice extends device_1.DeviceWithState {
         }
         if (inputKey) {
             if (inputKey in inputs) {
-                deepExtend(inputs[inputKey], newInputPicked);
+                lib_1.deepExtend(inputs[inputKey], newInputPicked);
             }
             else {
                 let inputState = this._getDefaultInputState(0);
-                deepExtend(inputState, newInputPicked);
+                lib_1.deepExtend(inputState, newInputPicked);
                 inputs[inputKey] = inputState;
             }
             if (layerName) {

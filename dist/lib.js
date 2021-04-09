@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const _ = require("underscore");
+const underScoreDeepExtend = require("underscore-deep-extend");
 /**
  * getDiff is the reverse of underscore:s _.isEqual(): It compares two values and if they differ it returns an explanation of the difference
  * If the values are equal: return null
@@ -190,4 +191,10 @@ function deepDiff(a, b, aStack, bStack) {
     bStack.pop();
     return null;
 }
+_.mixin({ deepExtend: underScoreDeepExtend(_) });
+function deepExtend(destination, ...sources) {
+    // @ts-ignore (mixin)
+    return _.deepExtend(destination, ...sources);
+}
+exports.deepExtend = deepExtend;
 //# sourceMappingURL=lib.js.map
