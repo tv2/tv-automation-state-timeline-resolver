@@ -58,8 +58,8 @@ class VizMSEDevice extends device_1.DeviceWithState {
         this._vizMSE = v_connection_1.createMSE(this._initOptions.host, this._initOptions.restPort, this._initOptions.wsPort);
         this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements, this._initOptions.autoLoadInternalElements, this._initOptions.engineRestPort, initOptions.showID, initOptions.profile, initOptions.playlistID);
         this._vizmseManager.on('connectionChanged', (connected) => this.connectionChanged(connected));
-        this._vizmseManager.on('updateMediaObject', (collectionId, docId, doc) => this.emit('updateMediaObject', collectionId, docId, doc));
-        this._vizmseManager.on('clearMediaObjects', (collectionId) => this.emit('clearMediaObjects', collectionId));
+        this._vizmseManager.on('updateMediaObject', (docId, doc) => this.emit('updateMediaObject', this.deviceId, docId, doc));
+        this._vizmseManager.on('clearMediaObjects', () => this.emit('clearMediaObjects', this.deviceId));
         this._vizmseManager.on('info', str => this.emit('info', 'VizMSE: ' + str));
         this._vizmseManager.on('warning', str => this.emit('warning', 'VizMSE' + str));
         this._vizmseManager.on('error', e => this.emit('error', 'VizMSE', e));
@@ -227,6 +227,8 @@ class VizMSEDevice extends device_1.DeviceWithState {
      * @param okToDestroyStuff Whether it is OK to do things that affects playout visibly
      */
     async makeReady(okToDestroyStuff, activeRundownPlaylistId) {
+        var _a;
+        const previousPlaylistId = (_a = this._vizmseManager) === null || _a === void 0 ? void 0 : _a.activeRundownPlaylistId;
         if (this._vizmseManager) {
             const preload = !!(this._initOptions && this._initOptions.onlyPreloadActivePlaylist);
             await this._vizmseManager.activate(activeRundownPlaylistId, preload);
@@ -238,7 +240,8 @@ class VizMSEDevice extends device_1.DeviceWithState {
             this.clearStates();
             if (this._vizmseManager) {
                 if (this._initOptions &&
-                    this._initOptions.clearAllOnMakeReady) {
+                    this._initOptions.clearAllOnMakeReady &&
+                    activeRundownPlaylistId !== previousPlaylistId) {
                     if (this._initOptions.clearAllTemplateName) {
                         await this._vizmseManager.clearAll({
                             type: VizMSECommandType.CLEAR_ALL_ELEMENTS,
@@ -285,6 +288,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
         if (!this._vizMSEConnected) {
             statusCode = device_1.StatusCode.BAD;
             messages.push('Not connected');
+            this.emit('clearMediaObjects', this.deviceId);
         }
         else if (this._vizmseManager) {
             if (this._vizmseManager.notLoadedCount > 0 || this._vizmseManager.loadingCount > 0) {
@@ -627,6 +631,9 @@ class VizMSEManager extends events_1.EventEmitter {
         this._cacheInternalElementsSentLoaded = {};
         this._terminated = false;
     }
+    get activeRundownPlaylistId() {
+        return this._activeRundownPlaylistId;
+    }
     /**
      * Initialize the Rundown in MSE.
      * Our approach is to create a single rundown on initialization, and then use only that for later control.
@@ -764,7 +771,7 @@ class VizMSEManager extends events_1.EventEmitter {
         this._activeRundownPlaylistId = undefined;
     }
     _clearMediaObjects() {
-        this.emit('clearMediaObjects', this._parentVizMSEDevice.deviceId);
+        this.emit('clearMediaObjects');
     }
     /**
      * Prepare an element
@@ -1062,9 +1069,9 @@ class VizMSEManager extends events_1.EventEmitter {
             }
         }
         catch (e) {
-            if (e.toString().match(/already exist/i)) { // "An internal graphics element with name 'xxxxxxxxxxxxxxx' already exists."
+            if (e.toString().match(/already exist/i)) { // "An internal/external graphics element with name 'xxxxxxxxxxxxxxx' already exists."
                 // If the object already exists, it's not an error, fetch and use the element instead
-                const element = await rundown.getElement(cmd.templateInstance);
+                const element = _.isNumber(cmd.templateName) ? await rundown.getElement(cmd.templateName) : await rundown.getElement(cmd.templateInstance);
                 this._cacheElement(elementHash, element);
                 return element;
             }
@@ -1160,10 +1167,10 @@ class VizMSEManager extends events_1.EventEmitter {
                                 tinf: '',
                                 _rev: ''
                             };
-                            this.emit('updateMediaObject', this._parentVizMSEDevice.deviceId, e.hash, mediaObject);
+                            this.emit('updateMediaObject', e.hash, mediaObject);
                         }
-                        else {
-                            this.emit('updateMediaObject', this._parentVizMSEDevice.deviceId, e.hash, null);
+                        else if (!cachedEl) {
+                            this.emit('updateMediaObject', e.hash, null);
                         }
                     }
                 }
@@ -1291,7 +1298,7 @@ class VizMSEManager extends events_1.EventEmitter {
         const enginesDisconnected = [];
         statuses.forEach((status) => {
             if (!status.alive) {
-                enginesDisconnected.push(`${status.name} (${status.host})`);
+                enginesDisconnected.push(`${status.channel || status.name} (${status.host})`);
             }
         });
         if (!_.isEqual(enginesDisconnected, this.enginesDisconnected)) {
@@ -1302,7 +1309,7 @@ class VizMSEManager extends events_1.EventEmitter {
     async _pingEngine(engine) {
         return new Promise((resolve, _reject) => {
             request.get(`http://${engine.host}:${this.engineRestPort}/#/status`, { timeout: 2000 }, (error, response) => {
-                const alive = !error && response.statusCode === 200;
+                const alive = !error && response.statusCode < 400;
                 resolve({ ...engine, alive });
             });
         });
