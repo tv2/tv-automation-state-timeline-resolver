@@ -133,8 +133,8 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 		)
 
 		this._vizmseManager.on('connectionChanged', (connected) => this.connectionChanged(connected))
-		this._vizmseManager.on('updateMediaObject', (collectionId: string, docId: string, doc: MediaObject | null) => this.emit('updateMediaObject', collectionId, docId, doc))
-		this._vizmseManager.on('clearMediaObjects', (collectionId: string) => this.emit('clearMediaObjects', collectionId))
+		this._vizmseManager.on('updateMediaObject', (docId: string, doc: MediaObject | null) => this.emit('updateMediaObject', this.deviceId, docId, doc))
+		this._vizmseManager.on('clearMediaObjects', () => this.emit('clearMediaObjects', this.deviceId))
 
 		this._vizmseManager.on('info', str => this.emit('info', 'VizMSE: ' + str))
 		this._vizmseManager.on('warning', str => this.emit('warning', 'VizMSE' + str))
@@ -338,8 +338,9 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 	 * @param okToDestroyStuff Whether it is OK to do things that affects playout visibly
 	 */
 	async makeReady (okToDestroyStuff?: boolean, activeRundownPlaylistId?: string): Promise<void> {
+		const previousPlaylistId = this._vizmseManager?.activeRundownPlaylistId
 		if (this._vizmseManager) {
-			const preload = !!(this._initOptions && this._initOptions.onlyPreloadActivePlaylist)
+			const preload = !!(this._initOptions && this._initOptions.onlyPreloadActiveRundown)
 			await this._vizmseManager.activate(activeRundownPlaylistId, preload)
 		} else throw new Error(`Unable to activate vizMSE, not initialized yet!`)
 
@@ -350,7 +351,8 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 			if (this._vizmseManager) {
 				if (
 					this._initOptions &&
-					this._initOptions.clearAllOnMakeReady
+					this._initOptions.clearAllOnMakeReady &&
+					activeRundownPlaylistId !== previousPlaylistId
 				) {
 					if (this._initOptions.clearAllTemplateName) {
 						await this._vizmseManager.clearAll({
@@ -399,6 +401,7 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 		if (!this._vizMSEConnected) {
 			statusCode = StatusCode.BAD
 			messages.push('Not connected')
+			this.emit('clearMediaObjects', this.deviceId)
 		} else if (this._vizmseManager) {
 			if (this._vizmseManager.notLoadedCount > 0 || this._vizmseManager.loadingCount > 0) {
 				statusCode = StatusCode.WARNING_MINOR
@@ -791,6 +794,10 @@ class VizMSEManager extends EventEmitter {
 	private _preloadedRundownPlaylistId: string | undefined
 	private _terminated: boolean = false
 
+	public get activeRundownPlaylistId () {
+		return this._activeRundownPlaylistId
+	}
+
 	constructor (
 		private _parentVizMSEDevice: VizMSEDevice,
 		private _vizMSE: MSE,
@@ -949,7 +956,7 @@ class VizMSEManager extends EventEmitter {
 		this._activeRundownPlaylistId = undefined
 	}
 	private _clearMediaObjects (): void {
-		this.emit('clearMediaObjects', this._parentVizMSEDevice.deviceId)
+		this.emit('clearMediaObjects')
 	}
 	/**
 	 * Prepare an element
@@ -1275,10 +1282,10 @@ class VizMSEManager extends EventEmitter {
 				return internalEl
 			}
 		} catch (e) {
-			if (e.toString().match(/already exist/i)) { // "An internal graphics element with name 'xxxxxxxxxxxxxxx' already exists."
+			if (e.toString().match(/already exist/i)) { // "An internal/external graphics element with name 'xxxxxxxxxxxxxxx' already exists."
 				// If the object already exists, it's not an error, fetch and use the element instead
 
-				const element = await rundown.getElement(cmd.templateInstance)
+				const element = _.isNumber(cmd.templateName) ? await rundown.getElement(cmd.templateName) : await rundown.getElement(cmd.templateInstance)
 
 				this._cacheElement(elementHash, element)
 				return element
@@ -1402,9 +1409,9 @@ class VizMSEManager extends EventEmitter {
 									tinf: '',
 									_rev: ''
 								}
-								this.emit('updateMediaObject', this._parentVizMSEDevice.deviceId, e.hash, mediaObject)
-							} else {
-								this.emit('updateMediaObject', this._parentVizMSEDevice.deviceId, e.hash, null)
+								this.emit('updateMediaObject', e.hash, mediaObject)
+							} else if (!cachedEl) {
+								this.emit('updateMediaObject', e.hash, null)
 							}
 						}
 					} catch (e) {
@@ -1533,7 +1540,7 @@ class VizMSEManager extends EventEmitter {
 		const enginesDisconnected: string[] = []
 		statuses.forEach((status) => {
 			if (!status.alive) {
-				enginesDisconnected.push(`${status.name} (${status.host})`)
+				enginesDisconnected.push(`${status.channel || status.name} (${status.host})`)
 			}
 		})
 		if (!_.isEqual(enginesDisconnected, this.enginesDisconnected)) {
@@ -1544,7 +1551,7 @@ class VizMSEManager extends EventEmitter {
 	private async _pingEngine (engine: Engine): Promise<EngineStatus> {
 		return new Promise((resolve, _reject) => {
 			request.get(`http://${engine.host}:${this.engineRestPort}/#/status`, { timeout: 2000 }, (error, response) => {
-				const alive = !error && response.statusCode === 200
+				const alive = !error && response.statusCode < 400
 				resolve({ ...engine, alive })
 			})
 		})
