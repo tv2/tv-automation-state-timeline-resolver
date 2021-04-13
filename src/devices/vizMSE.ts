@@ -237,6 +237,9 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 	}
 	public connectionChanged (connected?: boolean) {
 		if (connected === true || connected === false) this._vizMSEConnected = connected
+		if (connected === false) {
+			this.emit('clearMediaObjects', this.deviceId)
+		}
 		this.emit('connectionChanged', this.getStatus())
 	}
 	/**
@@ -401,7 +404,6 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState> implements IDevic
 		if (!this._vizMSEConnected) {
 			statusCode = StatusCode.BAD
 			messages.push('Not connected')
-			this.emit('clearMediaObjects', this.deviceId)
 		} else if (this._vizmseManager) {
 			if (this._vizmseManager.notLoadedCount > 0 || this._vizmseManager.loadingCount > 0) {
 				statusCode = StatusCode.WARNING_MINOR
@@ -780,7 +782,7 @@ class VizMSEManager extends EventEmitter {
 	private _monitorMSEConnection?: NodeJS.Timer
 	private _lastTimeCommandSent: number = 0
 	private _hasActiveRundown: boolean = false
-	private _elementsLoaded: {[hash: string]: { element: VElement, isLoaded: boolean, isLoading: boolean}} = {}
+	private _elementsLoaded: {[hash: string]: { element: VElement, isLoaded: boolean, isLoading: boolean, wasLoaded?: boolean }} = {}
 	private _getRundownPromise?: Promise<VRundown>
 	private _mseConnected: boolean = false
 	private _msePingConnected: boolean = false
@@ -793,6 +795,7 @@ class VizMSEManager extends EventEmitter {
 	private _activeRundownPlaylistId: string | undefined
 	private _preloadedRundownPlaylistId: string | undefined
 	private _terminated: boolean = false
+	private _updateAfterReconnect: boolean = false
 
 	public get activeRundownPlaylistId () {
 		return this._activeRundownPlaylistId
@@ -1389,29 +1392,42 @@ class VizMSEManager extends EventEmitter {
 						// Update cached status of the element:
 						const newEl = await rundown.getElement(elementRef)
 
-						this._elementsLoaded[e.hash] = {
+						const newLoadedEl = {
 							element: newEl,
 							isLoaded: this._isElementLoaded(newEl),
-							isLoading: this._isElementLoading(newEl)
+							isLoading: this._isElementLoading(newEl),
+							wasLoaded: cachedEl.wasLoaded
 						}
+						this._elementsLoaded[e.hash] = newLoadedEl
 						this.emit('debug', `Element ${elementRef}: ${JSON.stringify(newEl)}`)
-						if (this._isExternalElement(newEl) && cachedEl?.isLoaded !== this._elementsLoaded[e.hash].isLoaded) {
-							if (this._elementsLoaded[e.hash].isLoaded) {
-								const mediaObject: MediaObject = {
-									_id: e.hash,
-									mediaId: 'PILOT_' + e.item.templateName.toString().toUpperCase(),
-									mediaPath: e.item.templateInstance,
-									mediaSize: 0,
-									mediaTime: 0,
-									thumbSize: 0,
-									thumbTime: 0,
-									cinf: '',
-									tinf: '',
-									_rev: ''
+						if (this._isExternalElement(newEl)) {
+							if (this._updateAfterReconnect || cachedEl?.isLoaded !== newLoadedEl.isLoaded) {
+								if (cachedEl?.isLoaded && !newLoadedEl.isLoaded) {
+									newLoadedEl.wasLoaded = true
+								} else if (!cachedEl?.isLoaded && newLoadedEl.isLoaded) {
+									newLoadedEl.wasLoaded = false
 								}
-								this.emit('updateMediaObject', e.hash, mediaObject)
-							} else if (!cachedEl) {
-								this.emit('updateMediaObject', e.hash, null)
+								if (newLoadedEl.isLoaded) {
+									const mediaObject: MediaObject = {
+										_id: e.hash,
+										mediaId: 'PILOT_' + e.item.templateName.toString().toUpperCase(),
+										mediaPath: e.item.templateInstance,
+										mediaSize: 0,
+										mediaTime: 0,
+										thumbSize: 0,
+										thumbTime: 0,
+										cinf: '',
+										tinf: '',
+										_rev: ''
+									}
+									this.emit('updateMediaObject', e.hash, mediaObject)
+								} else {
+									this.emit('updateMediaObject', e.hash, null)
+								}
+							}
+							if (newLoadedEl.wasLoaded && !newLoadedEl.isLoaded && !newLoadedEl.isLoading) {
+								this.emit('debug', `Element "${this._getElementReference(newEl)}" went from loaded to not loaded, initializing`)
+								await rundown.initialize(this._getElementReference(newEl))
 							}
 						}
 					} catch (e) {
@@ -1419,7 +1435,7 @@ class VizMSEManager extends EventEmitter {
 					}
 				})
 			)
-
+			this._updateAfterReconnect = false
 			this.emit('debug', `Updating status of elements done, this._elementsLoaded.length=${_.keys(this._elementsLoaded).length}`)
 
 		} else {
@@ -1736,6 +1752,9 @@ class VizMSEManager extends EventEmitter {
 	private mseConnectionChanged (connected: boolean) {
 		if (connected !== this._mseConnected) {
 			this._mseConnected = connected
+			if (connected) {
+				this._updateAfterReconnect = true
+			}
 			this.onConnectionChanged()
 		}
 	}
