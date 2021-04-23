@@ -656,19 +656,12 @@ class VizMSEManager extends events_1.EventEmitter {
                     throw new Error(`VizMSEManager: Unable to create rundown!`);
             }
             catch (e) {
+                this.emit('debug', `VizMSE: initializeRundownInner ${e}`);
                 setTimeout(() => initializeRundownInner(), INIT_RETRY_INTERVAL);
                 return;
             }
             // const profile = await this._vizMSE.getProfile('sofie') // TODO: Figure out if this is needed
-            if (this._monitorAndLoadElementsInterval) {
-                clearInterval(this._monitorAndLoadElementsInterval);
-            }
-            this._monitorAndLoadElementsInterval = setInterval(() => {
-                this._monitorLoadedElements()
-                    .catch((...args) => {
-                    this.emit('error', ...args);
-                });
-            }, MONITOR_INTERVAL);
+            this._setMonitorLoadedElementsTimeout();
             this._setMonitorConnectionTimeout();
             this.initialized = true;
         };
@@ -679,11 +672,11 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     async terminate() {
         this._terminated = true;
-        if (this._monitorAndLoadElementsInterval) {
-            clearInterval(this._monitorAndLoadElementsInterval);
+        if (this._monitorAndLoadElementsTimeout) {
+            clearTimeout(this._monitorAndLoadElementsTimeout);
         }
-        if (this._monitorMSEConnection) {
-            clearTimeout(this._monitorMSEConnection);
+        if (this._monitorMSEConnectionTimeout) {
+            clearTimeout(this._monitorMSEConnectionTimeout);
         }
         if (this._vizMSE) {
             await this._vizMSE.close();
@@ -782,7 +775,7 @@ class VizMSEManager extends events_1.EventEmitter {
      */
     async prepareElement(cmd) {
         const elementHash = this.getElementHash(cmd);
-        this.emit('debug', `VizMSE: prepare "${elementHash}"`);
+        this.emit('debug', `VizMSE: prepare "${elementHash}" on channel "${cmd.channelName}"`);
         this._triggerCommandSent();
         await this._checkPrepareElement(cmd, true);
         this._triggerCommandSent();
@@ -795,7 +788,7 @@ class VizMSEManager extends events_1.EventEmitter {
         const elementRef = await this._checkPrepareElement(cmd);
         await this._checkElementExists(cmd);
         await this._handleRetry(() => {
-            this.emit('debug', `VizMSE: cue "${elementRef}"`);
+            this.emit('debug', `VizMSE: cue "${elementRef}" on channel "${cmd.channelName}"`);
             return rundown.cue(elementRef);
         });
     }
@@ -815,7 +808,7 @@ class VizMSEManager extends events_1.EventEmitter {
         }
         await this._checkElementExists(cmd);
         await this._handleRetry(() => {
-            this.emit('debug', `VizMSE: take "${elementRef}"`);
+            this.emit('debug', `VizMSE: take "${elementRef}" on channel "${cmd.channelName}"`);
             return rundown.take(elementRef);
         });
     }
@@ -835,7 +828,7 @@ class VizMSEManager extends events_1.EventEmitter {
         const elementRef = await this._checkPrepareElement(cmd);
         await this._checkElementExists(cmd);
         await this._handleRetry(() => {
-            this.emit('debug', `VizMSE: out "${elementRef}"`);
+            this.emit('debug', `VizMSE: out "${elementRef}" on channel "${cmd.channelName}"`);
             return rundown.out(elementRef);
         });
     }
@@ -847,7 +840,7 @@ class VizMSEManager extends events_1.EventEmitter {
         const elementRef = await this._checkPrepareElement(cmd);
         await this._checkElementExists(cmd);
         await this._handleRetry(() => {
-            this.emit('debug', `VizMSE: continue "${elementRef}"`);
+            this.emit('debug', `VizMSE: continue "${elementRef}" on channel "${cmd.channelName}"`);
             return rundown.continue(elementRef);
         });
     }
@@ -859,7 +852,7 @@ class VizMSEManager extends events_1.EventEmitter {
         const elementRef = await this._checkPrepareElement(cmd);
         await this._checkElementExists(cmd);
         await this._handleRetry(() => {
-            this.emit('debug', `VizMSE: continue reverse "${elementRef}"`);
+            this.emit('debug', `VizMSE: continue reverse "${elementRef}" on channel "${cmd.channelName}"`);
             return rundown.continueReverse(elementRef);
         });
     }
@@ -1086,12 +1079,12 @@ class VizMSEManager extends events_1.EventEmitter {
     async _getExpectedPlayoutItems() {
         this.emit('debug', `VISMSE: _getExpectedPlayoutItems (${this._expectedPlayoutItems.length})`);
         const hashesAndItems = {};
-        const expectedPlayoutItems = _.filter(this._expectedPlayoutItems, expectedPlayoutItem => {
+        const expectedPlayoutItems = _.uniq(_.filter(this._expectedPlayoutItems, expectedPlayoutItem => {
             const templateName = typeof expectedPlayoutItem.templateName;
             return ((!this._preloadedRundownPlaylistId ||
                 this._preloadedRundownPlaylistId === expectedPlayoutItem.playlistId) &&
                 typeof templateName !== 'undefined');
-        });
+        }), false, (a) => JSON.stringify(_.pick(a, 'templateName', 'templateData', 'channelName')));
         await Promise.all(_.map(expectedPlayoutItems, async (expectedPlayoutItem) => {
             try {
                 const stateLayer = (_.isNumber(expectedPlayoutItem.templateName) ?
@@ -1116,7 +1109,7 @@ class VizMSEManager extends events_1.EventEmitter {
                 }
             }
             catch (e) {
-                this.emit('error', `Error in _getExpectedPlayoutItems: ${e.toString()}`);
+                this.emit('error', `Error in _getExpectedPlayoutItems for "${expectedPlayoutItem.templateName}": ${e.toString()}`);
             }
         }));
         return hashesAndItems;
@@ -1154,7 +1147,7 @@ class VizMSEManager extends events_1.EventEmitter {
                         element: newEl,
                         isLoaded: this._isElementLoaded(newEl),
                         isLoading: this._isElementLoading(newEl),
-                        wasLoaded: cachedEl.wasLoaded
+                        wasLoaded: cachedEl === null || cachedEl === void 0 ? void 0 : cachedEl.wasLoaded
                     };
                     this._elementsLoaded[e.hash] = newLoadedEl;
                     this.emit('debug', `Element ${elementRef}: ${JSON.stringify(newEl)}`);
@@ -1272,36 +1265,57 @@ class VizMSEManager extends events_1.EventEmitter {
             this._loadingAllElements = false;
         }
     }
-    _setMonitorConnectionTimeout() {
-        if (this._monitorMSEConnection) {
-            clearTimeout(this._monitorMSEConnection);
+    _setMonitorLoadedElementsTimeout() {
+        if (this._monitorAndLoadElementsTimeout) {
+            clearTimeout(this._monitorAndLoadElementsTimeout);
         }
         if (!this._terminated) {
-            this._monitorMSEConnection = setTimeout(() => this._monitorConnection(), MONITOR_INTERVAL);
+            this._monitorAndLoadElementsTimeout = setTimeout(async () => {
+                await this._monitorLoadedElements()
+                    .catch((...args) => {
+                    this.emit('error', ...args);
+                });
+                this._setMonitorLoadedElementsTimeout();
+            }, MONITOR_INTERVAL);
+        }
+    }
+    _setMonitorConnectionTimeout() {
+        if (this._monitorMSEConnectionTimeout) {
+            clearTimeout(this._monitorMSEConnectionTimeout);
+        }
+        if (!this._terminated) {
+            this._monitorMSEConnectionTimeout = setTimeout(async () => {
+                await this._monitorConnection()
+                    .catch((...args) => {
+                    this.emit('error', ...args);
+                });
+                this._setMonitorConnectionTimeout();
+            }, MONITOR_INTERVAL);
         }
     }
     _monitorConnection() {
-        // (the ping will throuw on a timeout if ping doesn't return in time)
         if (this.initialized) {
-            this._vizMSE.ping()
-                .then(async () => {
+            // (the ping will throw on a timeout if ping doesn't return in time)
+            return this._vizMSE.ping()
+                .then(() => {
                 // ok!
                 if (!this._msePingConnected) {
                     this._msePingConnected = true;
                     this.onConnectionChanged();
                 }
-                await this._monitorEngines();
-                this._setMonitorConnectionTimeout();
-            }, async () => {
+            })
+                .catch(() => {
                 // not ok!
                 if (this._msePingConnected) {
                     this._msePingConnected = false;
                     this.onConnectionChanged();
                 }
-                await this._monitorEngines();
-                this._setMonitorConnectionTimeout();
+            })
+                .then(() => {
+                return this._msePingConnected ? this._monitorEngines() : Promise.resolve();
             });
         }
+        return Promise.reject();
     }
     async _monitorEngines() {
         if (!this.engineRestPort) {
@@ -1325,9 +1339,13 @@ class VizMSEManager extends events_1.EventEmitter {
         }
     }
     async _pingEngine(engine) {
-        return new Promise((resolve, _reject) => {
-            request.get(`http://${engine.host}:${this.engineRestPort}/#/status`, { timeout: 2000 }, (error, response) => {
-                const alive = !error && response.statusCode < 400;
+        return new Promise((resolve) => {
+            const url = `http://${engine.host}:${this.engineRestPort}/#/status`;
+            request.get(url, { timeout: 2000 }, (error, response) => {
+                const alive = !error && response !== undefined && (response === null || response === void 0 ? void 0 : response.statusCode) < 400;
+                if (!alive) {
+                    this.emit('debug', `VizMSE: _pingEngine at "${url}", error ${error}, code ${response === null || response === void 0 ? void 0 : response.statusCode}`);
+                }
                 resolve({ ...engine, alive });
             });
         });
