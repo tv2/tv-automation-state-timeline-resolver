@@ -731,7 +731,9 @@ class VizMSEManager extends events_1.EventEmitter {
             const rundown = await this._getRundown();
             // clear any existing elements from the existing rundown
             try {
-                await rundown.purge();
+                this.emit('debug', `VizMSE: purging rundown`);
+                const elementsToKeep = this._expectedPlayoutItems.filter((item) => !item.playlistId && _.isNumber(item.templateName)).map((item => ({ vcpid: item.templateName, channelName: item.channelName })));
+                await rundown.purge(elementsToKeep);
             }
             catch (error) {
                 this.emit('error', error);
@@ -1082,6 +1084,7 @@ class VizMSEManager extends events_1.EventEmitter {
         const expectedPlayoutItems = _.uniq(_.filter(this._expectedPlayoutItems, expectedPlayoutItem => {
             const templateName = typeof expectedPlayoutItem.templateName;
             return ((!this._preloadedRundownPlaylistId ||
+                !expectedPlayoutItem.playlistId ||
                 this._preloadedRundownPlaylistId === expectedPlayoutItem.playlistId) &&
                 typeof templateName !== 'undefined');
         }), false, (a) => JSON.stringify(_.pick(a, 'templateName', 'templateData', 'channelName')));

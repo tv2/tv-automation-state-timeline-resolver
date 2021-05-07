@@ -1,6 +1,7 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, VizMSEOptions, TimelineContentTypeVizMSE, ExpectedPlayoutItemContent, VIZMSEPlayoutItemContent, DeviceOptionsVizMSE, VIZMSEOutTransition, Mappings } from '../types/src';
+import { DeviceType, VizMSEOptions, TimelineContentTypeVizMSE, VIZMSEPlayoutItemContent, DeviceOptionsVizMSE, VIZMSEOutTransition, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
+import { ExpectedPlayoutItem } from '../expectedPlayoutItems';
 export declare function getHash(str: string): string;
 export interface DeviceOptionsVizMSEInternal extends DeviceOptionsVizMSE {
     options: (DeviceOptionsVizMSE['options'] & {
@@ -54,7 +55,7 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implement
         args: any[];
     }[];
     get supportsExpectedPlayoutItems(): boolean;
-    handleExpectedPlayoutItems(expectedPlayoutItems: Array<ExpectedPlayoutItemContent>): void;
+    handleExpectedPlayoutItems(expectedPlayoutItems: Array<ExpectedPlayoutItem>): void;
     getCurrentState(): VizMSEState | undefined;
     connectionChanged(connected?: boolean): void;
     /**

@@ -1,10 +1,11 @@
 /// <reference types="node" />
 import { TimelineState } from 'superfly-timeline';
-import { Mappings, DeviceType, ExpectedPlayoutItemContent } from '../types/src';
+import { Mappings, DeviceType } from '../types/src';
 import { EventEmitter } from 'events';
 import { CommandReport, DoOnTime } from '../doOnTime';
 import { DeviceInitOptions, DeviceOptionsAny } from '../types/src/device';
 import { MediaObject } from '../types/src/mediaObject';
+import { ExpectedPlayoutItem } from '../expectedPlayoutItems';
 export interface DeviceCommand {
     time: number;
     deviceId: string;
@@ -109,7 +110,7 @@ export declare abstract class Device extends EventEmitter implements IDevice {
     abstract get deviceType(): DeviceType;
     get deviceOptions(): DeviceOptionsAny;
     get supportsExpectedPlayoutItems(): boolean;
-    handleExpectedPlayoutItems(_expectedPlayoutItems: Array<ExpectedPlayoutItemContent>): void;
+    handleExpectedPlayoutItems(_expectedPlayoutItems: Array<ExpectedPlayoutItem>): void;
     get isActive(): boolean;
     private _updateCurrentTime;
     on: ((event: 'info', listener: (info: string) => void) => this) & ((event: 'warning', listener: (warning: string) => void) => this) & ((event: 'error', listener: (context: string, err: Error) => void) => this) & ((event: 'debug', listener: (...debug: any[]) => void) => this) & 

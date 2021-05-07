@@ -1,5 +1,6 @@
 export * from './conductor';
 export * from './doOnTime';
+export * from './expectedPlayoutItems';
 export { CasparCGDevice } from './devices/casparCG';
 export { HyperdeckDevice } from './devices/hyperdeck';
 export { QuantelDevice } from './devices/quantel';
