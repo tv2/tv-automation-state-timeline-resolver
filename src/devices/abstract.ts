@@ -1,3 +1,16 @@
+// VideoFOS Hack:
+import * as osc from "osc";
+const _oscClient = new osc.UDPPort({
+	localAddress: "0.0.0.0",
+	localPort: 9091, // To avoid not using the same port both ways on local installs, this port is one higher
+	remoteAddress: "0.0.0.0",
+	remotePort: 9090,
+	metadata: true,
+});
+_oscClient.open();
+
+// END VideoFOS Hac
+
 import * as _ from 'underscore'
 import {
 	DeviceWithState,
@@ -12,6 +25,7 @@ import { TimelineState, ResolvedTimelineObjectInstance } from 'superfly-timeline
 import { DoOnTime, SendMode } from '../doOnTime'
 
 export interface Command {
+	layer: string // VideoFOS Hack
 	commandName: string
 	timelineObjId: string
 	content: CommandContent
@@ -47,7 +61,7 @@ export class AbstractDevice extends DeviceWithState<TimelineState> implements ID
 		this._doOnTime = new DoOnTime(() => {
 			return this.getCurrentTime()
 		}, SendMode.BURST, this._deviceOptions)
-		this.handleDoOnTime(this._doOnTime, 'Abstract')
+		this.handleDoOnTime(this._doOnTime, 'Atem'); // VideoFOS Hack - Atem instead og Abstract
 	}
 
 	/**
@@ -114,7 +128,7 @@ export class AbstractDevice extends DeviceWithState<TimelineState> implements ID
 		return state
 	}
 	get deviceType () {
-		return DeviceType.ABSTRACT
+		return DeviceType.ATEM; // VideoFOS Hack - Atem instead og Abstract
 	}
 	get deviceName (): string {
 		return 'Abstract ' + this.deviceId
@@ -154,6 +168,7 @@ export class AbstractDevice extends DeviceWithState<TimelineState> implements ID
 			if (!oldLayer) {
 				// added!
 				commands.push({
+					layer: layerKey, // VideoFOS Hack
 					commandName: 'addedAbstract',
 					content: newLayer.content,
 					timelineObjId: newLayer.id,
@@ -164,6 +179,7 @@ export class AbstractDevice extends DeviceWithState<TimelineState> implements ID
 				if (oldLayer.id !== newLayer.id) {
 					// changed!
 					commands.push({
+						layer: layerKey, // VideoFOS Hack
 						commandName: 'changedAbstract',
 						content: newLayer.content,
 						timelineObjId: newLayer.id,
@@ -178,6 +194,7 @@ export class AbstractDevice extends DeviceWithState<TimelineState> implements ID
 			if (!newLayer) {
 				// removed!
 				commands.push({
+					layer: layerKey, // VideoFOS Hack
 					commandName: 'removedAbstract',
 					content: oldLayer.content,
 					timelineObjId: oldLayer.id,
@@ -200,6 +217,20 @@ export class AbstractDevice extends DeviceWithState<TimelineState> implements ID
 			}
 		}
 		this.emit('debug', cwc)
+
+
+		// VideoFOS Hack:
+		console.log('Command VideoFOS hacked : ', cmd.layer, ' ', JSON.stringify(cmd), ' Time :', time)
+		_oscClient.send({
+			address: "/command/",
+			args: [
+				{
+					type: "s",
+					value: JSON.stringify(cmd),
+				},
+			],
+		});
+
 
 		// Note: In the Abstract case, the execution does nothing
 
