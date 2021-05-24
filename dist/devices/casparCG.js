@@ -79,7 +79,7 @@ class CasparCGDevice extends device_1.DeviceWithState {
                 fps: obj.frameRate
             };
         }), this.getCurrentTime());
-        if (typeof initOptions.retryInterval === 'number') {
+        if (typeof initOptions.retryInterval === 'number' && initOptions.retryInterval >= 0) {
             this._retryTime = initOptions.retryInterval || MEDIA_RETRY_INTERVAL;
             this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime);
         }
