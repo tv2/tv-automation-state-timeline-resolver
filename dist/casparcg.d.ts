@@ -13,7 +13,8 @@ export interface CasparCGOptions {
     port?: number;
     /** whether to use the CasparCG-SCHEDULE command to run future commands, or the internal (backwards-compatible) command queue */
     useScheduling?: boolean;
-    retryInterval?: number | boolean;
+    /** Interval (ms) for retrying to load media that previously failed. (-1 disables, 0 uses the default interval) */
+    retryInterval?: number;
     timeBase?: {
         [channel: string]: number;
     } | number;
