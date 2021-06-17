@@ -28,7 +28,7 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implement
     private _initOptions?;
     private _vizMSEConnected;
     constructor(deviceId: string, deviceOptions: DeviceOptionsVizMSEInternal, options: any);
-    init(initOptions: VizMSEOptions): Promise<boolean>;
+    init(initOptions: VizMSEOptions, activeRundownPlaylistId?: string): Promise<boolean>;
     /**
      * Terminates the device safely such that things can be garbage collected.
      */

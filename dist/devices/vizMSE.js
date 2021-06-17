@@ -47,7 +47,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
         }, doOnTime_1.SendMode.BURST, this._deviceOptions);
         this.handleDoOnTime(this._doOnTimeBurst, 'VizMSE.burst');
     }
-    async init(initOptions) {
+    async init(initOptions, activeRundownPlaylistId) {
         this._initOptions = initOptions;
         if (!this._initOptions.host)
             throw new Error('VizMSE bad option: host');
@@ -56,7 +56,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
         if (!this._initOptions.profile)
             throw new Error('VizMSE bad option: profile');
         this._vizMSE = v_connection_1.createMSE(this._initOptions.host, this._initOptions.restPort, this._initOptions.wsPort);
-        this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements, this._initOptions.autoLoadInternalElements, this._initOptions.engineRestPort, initOptions.showID, initOptions.profile, initOptions.playlistID);
+        this._vizmseManager = new VizMSEManager(this, this._vizMSE, this._initOptions.preloadAllElements, this._initOptions.onlyPreloadActivePlaylist, this._initOptions.autoLoadInternalElements, this._initOptions.engineRestPort, initOptions.showID, initOptions.profile, initOptions.playlistID);
         this._vizmseManager.on('connectionChanged', (connected) => this.connectionChanged(connected));
         this._vizmseManager.on('updateMediaObject', (docId, doc) => this.emit('updateMediaObject', this.deviceId, docId, doc));
         this._vizmseManager.on('clearMediaObjects', () => this.emit('clearMediaObjects', this.deviceId));
@@ -64,7 +64,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
         this._vizmseManager.on('warning', str => this.emit('warning', 'VizMSE' + str));
         this._vizmseManager.on('error', e => this.emit('error', 'VizMSE', e));
         this._vizmseManager.on('debug', (...args) => this.emit('debug', ...args));
-        await this._vizmseManager.initializeRundown();
+        await this._vizmseManager.initializeRundown(activeRundownPlaylistId);
         return true;
     }
     /**
@@ -233,8 +233,7 @@ class VizMSEDevice extends device_1.DeviceWithState {
         var _a;
         const previousPlaylistId = (_a = this._vizmseManager) === null || _a === void 0 ? void 0 : _a.activeRundownPlaylistId;
         if (this._vizmseManager) {
-            const preload = !!(this._initOptions && this._initOptions.onlyPreloadActivePlaylist);
-            await this._vizmseManager.activate(activeRundownPlaylistId, preload);
+            await this._vizmseManager.activate(activeRundownPlaylistId);
         }
         else
             throw new Error(`Unable to activate vizMSE, not initialized yet!`);
@@ -606,11 +605,12 @@ class VizMSEDevice extends device_1.DeviceWithState {
 }
 exports.VizMSEDevice = VizMSEDevice;
 class VizMSEManager extends events_1.EventEmitter {
-    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements = false, autoLoadInternalElements = false, engineRestPort, _showID, _profile, _playlistID) {
+    constructor(_parentVizMSEDevice, _vizMSE, preloadAllElements = false, onlyPreloadActivePlaylist = false, autoLoadInternalElements = false, engineRestPort, _showID, _profile, _playlistID) {
         super();
         this._parentVizMSEDevice = _parentVizMSEDevice;
         this._vizMSE = _vizMSE;
         this.preloadAllElements = preloadAllElements;
+        this.onlyPreloadActivePlaylist = onlyPreloadActivePlaylist;
         this.autoLoadInternalElements = autoLoadInternalElements;
         this.engineRestPort = engineRestPort;
         this._showID = _showID;
@@ -641,9 +641,14 @@ class VizMSEManager extends events_1.EventEmitter {
      * Initialize the Rundown in MSE.
      * Our approach is to create a single rundown on initialization, and then use only that for later control.
      */
-    async initializeRundown() {
+    async initializeRundown(activeRundownPlaylistId) {
         this._vizMSE.on('connected', () => this.mseConnectionChanged(true));
         this._vizMSE.on('disconnected', () => this.mseConnectionChanged(false));
+        this._activeRundownPlaylistId = activeRundownPlaylistId;
+        this._preloadedRundownPlaylistId = this.onlyPreloadActivePlaylist ? activeRundownPlaylistId : undefined;
+        if (activeRundownPlaylistId) {
+            this.emit('debug', `VizMSE: already active playlist: ${this._preloadedRundownPlaylistId}`);
+        }
         const initializeRundownInner = async () => {
             try {
                 // Perform a ping, to ensure we are connected properly
@@ -723,8 +728,8 @@ class VizMSEManager extends events_1.EventEmitter {
      * This causes the MSE rundown to activate, which must be done before using it.
      * Doing this will make MSE start loading things onto the vizEngine etc.
      */
-    async activate(rundownPlaylistId, preload) {
-        this._preloadedRundownPlaylistId = preload ? rundownPlaylistId : undefined;
+    async activate(rundownPlaylistId) {
+        this._preloadedRundownPlaylistId = this.onlyPreloadActivePlaylist ? rundownPlaylistId : undefined;
         let loadTwice = false;
         if (!rundownPlaylistId || this._activeRundownPlaylistId !== rundownPlaylistId) {
             this._triggerCommandSent();
@@ -1134,7 +1139,7 @@ class VizMSEManager extends events_1.EventEmitter {
             return undefined;
         }));
         if (this._rundown) {
-            this.emit('debug', `Updating status of elements starting, activeRundownId="${this._preloadedRundownPlaylistId}", elementsToLoad.length=${elementsToLoad.length} (${_.keys(hashesAndItems).length})`);
+            this.emit('debug', `Updating status of elements starting, activePlaylistId="${this._preloadedRundownPlaylistId}", elementsToLoad.length=${elementsToLoad.length} (${_.keys(hashesAndItems).length})`);
             const rundown = await this._getRundown();
             if (forceReloadAll) {
                 this._elementsLoaded = {};

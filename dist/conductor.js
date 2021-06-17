@@ -150,7 +150,7 @@ class Conductor extends events_1.EventEmitter {
      * @param deviceOptions The options used to initalize the device
      * @returns A promise that resolves with the created device, or rejects with an error message.
      */
-    async addDevice(deviceId, deviceOptions) {
+    async addDevice(deviceId, deviceOptions, activeRundownPlaylistId) {
         try {
             let newDevice;
             let threadedClassOptions = {
@@ -242,7 +242,7 @@ class Conductor extends events_1.EventEmitter {
             this.emit('info', `Initializing device ${newDevice.deviceId} (${newDevice.instanceId}) of type ${src_1.DeviceType[deviceOptions.type]}...`);
             this.devices[deviceId] = newDevice;
             // TODO - should the device be on this.devices yet? sounds like we could instruct it to do things before it has initialised?
-            await newDevice.device.init(deviceOptions.options);
+            await newDevice.device.init(deviceOptions.options, activeRundownPlaylistId);
             await newDevice.reloadProps(); // because the device name might have changed after init
             this.emit('info', `Device ${newDevice.deviceId} (${newDevice.instanceId}) initialized!`);
             // Remove listeners, expect consumer to subscribe to them now.

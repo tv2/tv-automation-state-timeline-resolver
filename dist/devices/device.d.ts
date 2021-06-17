@@ -35,7 +35,7 @@ export interface DeviceStatus {
 }
 export declare function literal<T>(o: T): T;
 export interface IDevice {
-    init: (initOptions: DeviceInitOptions) => Promise<boolean>;
+    init: (initOptions: DeviceInitOptions, activeRundownPlaylistId: string | undefined) => Promise<boolean>;
     getCurrentTime: () => number;
     prepareForHandleState: (newStateTime: number) => void;
     handleState: (newState: TimelineState, mappings: Mappings) => void;

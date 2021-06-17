@@ -110,7 +110,7 @@ export declare class Conductor extends EventEmitter {
      * @param deviceOptions The options used to initalize the device
      * @returns A promise that resolves with the created device, or rejects with an error message.
      */
-    addDevice(deviceId: string, deviceOptions: DeviceOptionsAnyInternal): Promise<DeviceContainer>;
+    addDevice(deviceId: string, deviceOptions: DeviceOptionsAnyInternal, activeRundownPlaylistId?: string): Promise<DeviceContainer>;
     /**
      * Safely remove a device
      * @param deviceId The id of the device to be removed
