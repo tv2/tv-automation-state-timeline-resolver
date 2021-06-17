@@ -26,12 +26,12 @@ export declare class HTTPSendDevice extends DeviceWithState<HTTPSendState> imple
     terminate(): Promise<boolean>;
     getStatus(): DeviceStatus;
     makeReady(okToDestroyStuff?: boolean): Promise<void>;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
+    get canConnect(): boolean;
+    get connected(): boolean;
     convertStateToHttpSend(state: TimelineState): TimelineState;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;

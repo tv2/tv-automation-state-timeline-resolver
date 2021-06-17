@@ -1,6 +1,7 @@
 import { DeviceWithState, DeviceStatus, IDevice } from './device';
-import { DeviceType, VizMSEOptions, TimelineContentTypeVizMSE, ExpectedPlayoutItemContent, VIZMSEPlayoutItemContent, DeviceOptionsVizMSE, VIZMSEOutTransition, Mappings } from '../types/src';
+import { DeviceType, VizMSEOptions, TimelineContentTypeVizMSE, VIZMSEPlayoutItemContent, DeviceOptionsVizMSE, VIZMSEOutTransition, Mappings } from '../types/src';
 import { TimelineState } from 'superfly-timeline';
+import { ExpectedPlayoutItem } from '../expectedPlayoutItems';
 export declare function getHash(str: string): string;
 export interface DeviceOptionsVizMSEInternal extends DeviceOptionsVizMSE {
     options: (DeviceOptionsVizMSE['options'] & {
@@ -8,6 +9,12 @@ export interface DeviceOptionsVizMSEInternal extends DeviceOptionsVizMSE {
     });
 }
 export declare type CommandReceiver = (time: number, cmd: VizMSECommand, context: string, timelineObjId: string) => Promise<any>;
+export declare type Engine = {
+    name: string;
+    channel?: string;
+    host: string;
+    port: number;
+};
 /**
  * This class is used to interface with a vizRT Media Sequence Editor, through the v-connection library.
  * It features playing both "internal" graphics element and vizPilot elements.
@@ -21,7 +28,7 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implement
     private _initOptions?;
     private _vizMSEConnected;
     constructor(deviceId: string, deviceOptions: DeviceOptionsVizMSEInternal, options: any);
-    init(initOptions: VizMSEOptions): Promise<boolean>;
+    init(initOptions: VizMSEOptions, activeRundownPlaylistId?: string): Promise<boolean>;
     /**
      * Terminates the device safely such that things can be garbage collected.
      */
@@ -37,18 +44,18 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implement
      * @param clearAfterTime
      */
     clearFuture(clearAfterTime: number): void;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get canConnect(): boolean;
+    get connected(): boolean;
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;
         args: any[];
     }[];
-    readonly supportsExpectedPlayoutItems: boolean;
-    handleExpectedPlayoutItems(expectedPlayoutItems: Array<ExpectedPlayoutItemContent>): void;
+    get supportsExpectedPlayoutItems(): boolean;
+    handleExpectedPlayoutItems(expectedPlayoutItems: Array<ExpectedPlayoutItem>): void;
     getCurrentState(): VizMSEState | undefined;
     connectionChanged(connected?: boolean): void;
     /**
@@ -60,7 +67,7 @@ export declare class VizMSEDevice extends DeviceWithState<VizMSEState> implement
      * Prepares the physical device for playout.
      * @param okToDestroyStuff Whether it is OK to do things that affects playout visibly
      */
-    makeReady(okToDestroyStuff?: boolean, activeRundownId?: string): Promise<void>;
+    makeReady(okToDestroyStuff?: boolean, activeRundownPlaylistId?: string): Promise<void>;
     /**
      * The standDown event could be triggered at a time after broadcast
      * @param okToDestroyStuff If true, the device may do things that might affect the visible output

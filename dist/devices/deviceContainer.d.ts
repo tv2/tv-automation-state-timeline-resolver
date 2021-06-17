@@ -20,12 +20,12 @@ export declare class DeviceContainer {
     create<T extends Device, TCtor extends new (...args: any) => T>(orgModule: string, orgClassExport: string, deviceId: string, deviceOptions: DeviceOptionsAny, getCurrentTime: () => number, threadConfig?: ThreadedClassConfig): Promise<this>;
     reloadProps(): Promise<void>;
     terminate(): Promise<void>;
-    readonly device: ThreadedClass<Device>;
-    readonly deviceId: string;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly deviceOptions: DeviceOptionsAny;
-    readonly threadConfig: ThreadedClassConfig | undefined;
-    readonly instanceId: number;
-    readonly startTime: number;
+    get device(): ThreadedClass<Device>;
+    get deviceId(): string;
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get deviceOptions(): DeviceOptionsAny;
+    get threadConfig(): ThreadedClassConfig | undefined;
+    get instanceId(): number;
+    get startTime(): number;
 }

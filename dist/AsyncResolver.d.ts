@@ -7,10 +7,7 @@ export declare class AsyncResolver {
     constructor(onSetTimelineTriggerTime: (res: TimelineTriggerTimeResult) => void);
     resolveTimeline(resolveTime: number, timeline: TSRTimeline, limitTime: number, useCache: boolean): Promise<{
         resolvedStates: ResolvedStates;
-        objectsFixed: {
-            id: string;
-            time: number;
-        }[];
+        objectsFixed: TimelineTriggerTimeResult;
     }>;
     getState(resolved: ResolvedStates, resolveTime: number): Promise<import("superfly-timeline").TimelineState>;
     private _fixNowObjects;

@@ -89,17 +89,19 @@ export declare class Conductor extends EventEmitter {
     /**
      * Returns the mappings
      */
-    readonly mapping: Mappings;
+    get mapping(): Mappings;
     /**
      * Returns the current timeline
      */
-    readonly timeline: TSRTimeline;
+    get timeline(): TSRTimeline;
     /**
      * Sets a new timeline and resets the resolver.
      */
     setTimelineAndMappings(timeline: TSRTimeline, mappings?: Mappings): void;
-    timelineHash: string | undefined;
-    logDebug: boolean;
+    get timelineHash(): string | undefined;
+    set timelineHash(hash: string | undefined);
+    get logDebug(): boolean;
+    set logDebug(val: boolean);
     getDevices(): Array<DeviceContainer>;
     getDevice(deviceId: string): DeviceContainer;
     /**
@@ -108,7 +110,7 @@ export declare class Conductor extends EventEmitter {
      * @param deviceOptions The options used to initalize the device
      * @returns A promise that resolves with the created device, or rejects with an error message.
      */
-    addDevice(deviceId: string, deviceOptions: DeviceOptionsAnyInternal): Promise<DeviceContainer>;
+    addDevice(deviceId: string, deviceOptions: DeviceOptionsAnyInternal, activeRundownPlaylistId?: string): Promise<DeviceContainer>;
     /**
      * Safely remove a device
      * @param deviceId The id of the device to be removed

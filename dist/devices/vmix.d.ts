@@ -39,8 +39,8 @@ export declare class VMixDevice extends DeviceWithState<VMixStateExtended> {
     terminate(): Promise<boolean>;
     getStatus(): DeviceStatus;
     makeReady(okToDestroyStuff?: boolean): Promise<void>;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
+    get canConnect(): boolean;
+    get connected(): boolean;
     convertStateToVMix(state: TimelineState, mappings: Mappings): VMixStateExtended;
     getFilename(filePath: string): string;
     modifyInput(deviceState: VMixStateExtended, newInput: VMixInput, input: {
@@ -50,9 +50,9 @@ export declare class VMixDevice extends DeviceWithState<VMixStateExtended> {
         [key: string]: VMixInput;
     };
     switchToInput(input: number | string, deviceState: VMixStateExtended, mix: number, transition?: VMixTransition, layerToProgram?: boolean): void;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;

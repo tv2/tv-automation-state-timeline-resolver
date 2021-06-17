@@ -79,13 +79,16 @@ export declare class PanasonicPtzDevice extends DeviceWithState<PanasonicPtzStat
      * Compares the new timeline-state with the old one, and generates commands to account for the difference
      */
     private _diffStates;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get canConnect(): boolean;
+    get connected(): boolean;
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
+        /**
+         * Initiates the device: set up ping for connection logic.
+         */
         time: number;
         args: any[];
     }[];

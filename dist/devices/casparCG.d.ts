@@ -50,11 +50,11 @@ export declare class CasparCGDevice extends DeviceWithState<State> implements ID
      * @param clearAfterTime
      */
     clearFuture(clearAfterTime: number): void;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: (string | {
+    get canConnect(): boolean;
+    get connected(): boolean;
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): (string | {
         time: number;
         command: CommandNS.IAMCPCommand;
     })[][];

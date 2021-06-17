@@ -38,8 +38,8 @@ export declare class SisyfosMessageDevice extends DeviceWithState<SisyfosState> 
     getStatus(): DeviceStatus;
     makeReady(okToDestroyStuff?: boolean): Promise<void>;
     private _makeReadyInner;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
+    get canConnect(): boolean;
+    get connected(): boolean;
     getDeviceState(isDefaultState?: boolean): SisyfosState;
     getDefaultStateChannel(): SisyfosChannel;
     /**
@@ -48,9 +48,9 @@ export declare class SisyfosMessageDevice extends DeviceWithState<SisyfosState> 
      * @param state
      */
     convertStateToSisyfosState(state: TimelineState, mappings: Mappings): SisyfosState;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;

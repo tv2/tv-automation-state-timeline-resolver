@@ -39,17 +39,17 @@ export declare class ShotokuDevice extends DeviceWithState<TimelineState> implem
     terminate(): Promise<boolean>;
     getStatus(): DeviceStatus;
     makeReady(_okToDestroyStuff?: boolean): Promise<void>;
-    readonly canConnect: boolean;
-    readonly connected: boolean;
+    get canConnect(): boolean;
+    get connected(): boolean;
     /**
      * Transform the timeline state into a device state, which is in this case also
      * a timeline state.
      * @param state
      */
     convertStateToShotokuShots(state: TimelineState): ShotokuDeviceState;
-    readonly deviceType: DeviceType;
-    readonly deviceName: string;
-    readonly queue: {
+    get deviceType(): DeviceType;
+    get deviceName(): string;
+    get queue(): {
         id: string;
         queueId: string;
         time: number;

@@ -14,7 +14,7 @@ export declare class ShotokuAPI extends EventEmitter {
      */
     connect(host: string, port: number): Promise<void>;
     dispose(): Promise<void>;
-    readonly connected: boolean;
+    get connected(): boolean;
     send(command: ShotokuCommand): Promise<void>;
     private _setConnected;
     private _triggerRetryConnection;
