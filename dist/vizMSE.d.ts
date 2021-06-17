@@ -10,6 +10,8 @@ export interface VizMSEOptions {
     restPort?: number;
     /** Port number to the web-sockets interface (optional) */
     wsPort?: number;
+    /** Port number to the REST interfaces of Viz Engines (optional) */
+    engineRestPort?: number;
     /** Identifier of the "show" to use */
     showID: string;
     /** Identifier of the "profile" to send commands to */
@@ -30,7 +32,7 @@ export interface VizMSEOptions {
     /** If true, the rundown won't be deactivated on standdown */
     dontDeactivateOnStandDown?: boolean;
     /** If true, only elements in the currently active rundown will be loaded */
-    onlyPreloadActiveRundown?: boolean;
+    onlyPreloadActivePlaylist?: boolean;
     /** List of commands to be sent to Viz Engines in order to fully clear them */
     clearAllCommands?: string[];
 }
