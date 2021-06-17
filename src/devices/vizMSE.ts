@@ -821,7 +821,8 @@ class VizMSEManager extends EventEmitter {
 	public async initializeRundown (activeRundownPlaylistId: string | undefined): Promise<void> {
 		this._vizMSE.on('connected', () => this.mseConnectionChanged(true))
 		this._vizMSE.on('disconnected', () => this.mseConnectionChanged(false))
-		this._preloadedRundownPlaylistId = this.onlyPreloadActiveRundown ? activeRundownPlaylistId : undefined
+		this._activeRundownPlaylistId = activeRundownPlaylistId
+		this._preloadedRundownPlaylistId = this.onlyPreloadActivePlaylist ? activeRundownPlaylistId : undefined
 
 		if (activeRundownPlaylistId) {
 			this.emit('debug', `VizMSE: already active playlist: ${this._preloadedRundownPlaylistId}`)
