@@ -815,6 +815,30 @@ class VizMSEManager extends EventEmitter {
 	) {
 		super()
 	}
+	public async initializeRundownInner () {
+		try {
+			// Perform a ping, to ensure we are connected properly
+			await this._vizMSE.ping()
+			this._msePingConnected = true
+			this.mseConnectionChanged(true)
+
+			// Setup the rundown used by this device:
+			const rundown = await this._getRundown()
+
+			if (!rundown) throw new Error(`VizMSEManager: Unable to create rundown!`)
+		} catch (e) {
+			this.emit('debug', `VizMSE: initializeRundownInner ${e}`)
+			setTimeout(() => this.initializeRundownInner(), INIT_RETRY_INTERVAL)
+			return
+		}
+
+		// const profile = await this._vizMSE.getProfile('sofie') // TODO: Figure out if this is needed
+
+		this._setMonitorLoadedElementsTimeout()
+		this._setMonitorConnectionTimeout()
+
+		this.initialized = true
+	}
 	/**
 	 * Initialize the Rundown in MSE.
 	 * Our approach is to create a single rundown on initialization, and then use only that for later control.
@@ -829,32 +853,7 @@ class VizMSEManager extends EventEmitter {
 			this.emit('debug', `VizMSE: already active playlist: ${this._preloadedRundownPlaylistId}`)
 		}
 
-		const initializeRundownInner = async () => {
-			try {
-				// Perform a ping, to ensure we are connected properly
-				await this._vizMSE.ping()
-				this._msePingConnected = true
-				this.mseConnectionChanged(true)
-
-				// Setup the rundown used by this device:
-				const rundown = await this._getRundown()
-
-				if (!rundown) throw new Error(`VizMSEManager: Unable to create rundown!`)
-			} catch (e) {
-				this.emit('debug', `VizMSE: initializeRundownInner ${e}`)
-				setTimeout(() => initializeRundownInner(), INIT_RETRY_INTERVAL)
-				return
-			}
-
-			// const profile = await this._vizMSE.getProfile('sofie') // TODO: Figure out if this is needed
-
-			this._setMonitorLoadedElementsTimeout()
-			this._setMonitorConnectionTimeout()
-
-			this.initialized = true
-		}
-
-		await initializeRundownInner()
+		await this.initializeRundownInner()
 	}
 	/**
 	 * Close connections and die
@@ -1782,6 +1781,7 @@ class VizMSEManager extends EventEmitter {
 			this._mseConnected = connected
 			if (connected) {
 				this._updateAfterReconnect = true
+				this._triggerLoadAllElements(true)
 			}
 			this.onConnectionChanged()
 		}
