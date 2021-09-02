@@ -35,7 +35,8 @@ import {
 	VRundown,
 	InternalElement,
 	ExternalElement,
-	VElement
+	VElement,
+	ExternalElementId
 } from 'v-connection'
 
 import { DoOnTime, SendMode } from '../doOnTime'
@@ -924,7 +925,9 @@ class VizMSEManager extends EventEmitter {
 			// clear any existing elements from the existing rundown
 			try {
 				this.emit('debug', `VizMSE: purging rundown`)
-				const elementsToKeep = (this._expectedPlayoutItems.filter((item) => item.baseline && _.isNumber(item.templateName)) as { templateName: number, channelName?: string }[]).map((item => ({ vcpid: item.templateName, channelName: item.channelName })))
+				const elementsToKeep = (this._expectedPlayoutItems
+					.filter((item) => item.baseline && _.isNumber(item.templateName)) as { templateName: number, channelName?: string }[])
+					.map((item => (literal<ExternalElementId>({ vcpid: item.templateName, channel: item.channelName }))))
 				await rundown.purge(elementsToKeep)
 			} catch (error) {
 				this.emit('error', error)
@@ -985,7 +988,7 @@ class VizMSEManager extends EventEmitter {
 		await this._checkElementExists(cmd)
 		await this._handleRetry(() => {
 			this.emit('debug', `VizMSE: cue "${elementRef}" on channel "${cmd.channelName}"`)
-			return rundown.cue(elementRef)
+			return rundown.cue(elementRef, cmd.channelName)
 		})
 	}
 	/**
@@ -1009,7 +1012,7 @@ class VizMSEManager extends EventEmitter {
 		await this._handleRetry(() => {
 			this.emit('debug', `VizMSE: take "${elementRef}" on channel "${cmd.channelName}"`)
 
-			return rundown.take(elementRef)
+			return rundown.take(elementRef, cmd.channelName)
 		})
 	}
 	/**
@@ -1032,7 +1035,7 @@ class VizMSEManager extends EventEmitter {
 		await this._checkElementExists(cmd)
 		await this._handleRetry(() => {
 			this.emit('debug', `VizMSE: out "${elementRef}" on channel "${cmd.channelName}"`)
-			return rundown.out(elementRef)
+			return rundown.out(elementRef, cmd.channelName)
 		})
 	}
 	/**
@@ -1046,7 +1049,7 @@ class VizMSEManager extends EventEmitter {
 		await this._checkElementExists(cmd)
 		await this._handleRetry(() => {
 			this.emit('debug', `VizMSE: continue "${elementRef}" on channel "${cmd.channelName}"`)
-			return rundown.continue(elementRef)
+			return rundown.continue(elementRef, cmd.channelName)
 		})
 	}
 	/**
@@ -1060,7 +1063,7 @@ class VizMSEManager extends EventEmitter {
 		await this._checkElementExists(cmd)
 		await this._handleRetry(() => {
 			this.emit('debug', `VizMSE: continue reverse "${elementRef}" on channel "${cmd.channelName}"`)
-			return rundown.continueReverse(elementRef)
+			return rundown.continueReverse(elementRef, cmd.channelName)
 		})
 	}
 	/**
@@ -1247,7 +1250,7 @@ class VizMSEManager extends EventEmitter {
 		const elementIsExternal = cachedElement && this._isExternalElement(cachedElement.element)
 
 		if (elementIsExternal) {
-			const element = await rundown.getElement(elementRef)
+			const element = await rundown.getElement(elementRef, cachedElement.element.channel)
 			if (
 				this._isExternalElement(element) &&
 				element.exists === 'no'
@@ -1289,7 +1292,7 @@ class VizMSEManager extends EventEmitter {
 			if (e.toString().match(/already exist/i)) { // "An internal/external graphics element with name 'xxxxxxxxxxxxxxx' already exists."
 				// If the object already exists, it's not an error, fetch and use the element instead
 
-				const element = _.isNumber(cmd.templateName) ? await rundown.getElement(cmd.templateName) : await rundown.getElement(cmd.templateInstance)
+				const element = _.isNumber(cmd.templateName) ? await rundown.getElement(cmd.templateName, cmd.channelName) : await rundown.getElement(cmd.templateInstance)
 
 				this._cacheElement(elementHash, element)
 				return element
@@ -1392,7 +1395,7 @@ class VizMSEManager extends EventEmitter {
 						this.emit('debug', `Updating status of element ${elementRef}`)
 
 						// Update cached status of the element:
-						const newEl = await rundown.getElement(elementRef)
+						const newEl = await rundown.getElement(elementRef, e.element.channel)
 
 						const newLoadedEl = {
 							element: newEl,
@@ -1429,7 +1432,7 @@ class VizMSEManager extends EventEmitter {
 							}
 							if (newLoadedEl.wasLoaded && !newLoadedEl.isLoaded && !newLoadedEl.isLoading) {
 								this.emit('debug', `Element "${this._getElementReference(newEl)}" went from loaded to not loaded, initializing`)
-								await rundown.initialize(this._getElementReference(newEl))
+								await rundown.initialize(this._getElementReference(newEl), newEl.channel)
 							}
 						}
 					} catch (e) {
@@ -1488,7 +1491,7 @@ class VizMSEManager extends EventEmitter {
 						} else {
 							// The element has not started loading, load it:
 							this.emit('debug', `Element "${this._getElementReference(e.element)}" is not loaded, initializing`)
-							await rundown.initialize(this._getElementReference(e.element))
+							await rundown.initialize(this._getElementReference(e.element), e.element.channel)
 						}
 					} else {
 						this.emit('error', `Element "${this._getElementReference(e.element)}" type `)
