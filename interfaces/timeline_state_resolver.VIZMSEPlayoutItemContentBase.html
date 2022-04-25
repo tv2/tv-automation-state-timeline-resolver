@@ -3,7 +3,7 @@
 <head>
 	<meta charset="utf-8">
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
-	<title>VIZMSEPlayoutItemContent | Timeline State Resolver</title>
+	<title>VIZMSEPlayoutItemContentBase | Timeline State Resolver</title>
 	<meta name="description" content="Documentation for Timeline State Resolver">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<link rel="stylesheet" href="../assets/css/main.css">
@@ -58,10 +58,10 @@
 					<a href="../modules/timeline_state_resolver.html">timeline-state-resolver</a>
 				</li>
 				<li>
-					<a href="timeline_state_resolver.VIZMSEPlayoutItemContent.html">VIZMSEPlayoutItemContent</a>
+					<a href="timeline_state_resolver.VIZMSEPlayoutItemContentBase.html">VIZMSEPlayoutItemContentBase</a>
 				</li>
 			</ul>
-			<h1>Interface VIZMSEPlayoutItemContent</h1>
+			<h1>Interface VIZMSEPlayoutItemContentBase</h1>
 		</div>
 	</div>
 </header>
@@ -72,7 +72,15 @@
 				<h3>Hierarchy</h3>
 				<ul class="tsd-hierarchy">
 					<li>
-						<span class="target">VIZMSEPlayoutItemContent</span>
+						<span class="target">VIZMSEPlayoutItemContentBase</span>
+						<ul class="tsd-hierarchy">
+							<li>
+								<a href="timeline_state_resolver.VIZMSEPlayoutItemContentInternal.html" class="tsd-signature-type" data-tsd-kind="Interface">VIZMSEPlayoutItemContentInternal</a>
+							</li>
+							<li>
+								<a href="timeline_state_resolver.VIZMSEPlayoutItemContentExternal.html" class="tsd-signature-type" data-tsd-kind="Interface">VIZMSEPlayoutItemContentExternal</a>
+							</li>
+						</ul>
 					</li>
 				</ul>
 			</section>
@@ -83,10 +91,8 @@
 						<section class="tsd-index-section tsd-is-external">
 							<h3>Properties</h3>
 							<ul class="tsd-index-list">
-								<li class="tsd-kind-property tsd-parent-kind-interface tsd-is-external"><a href="timeline_state_resolver.VIZMSEPlayoutItemContent.html#channelName" class="tsd-kind-icon">channel<wbr>Name</a></li>
-								<li class="tsd-kind-property tsd-parent-kind-interface tsd-is-external"><a href="timeline_state_resolver.VIZMSEPlayoutItemContent.html#noAutoPreloading" class="tsd-kind-icon">no<wbr>Auto<wbr>Preloading</a></li>
-								<li class="tsd-kind-property tsd-parent-kind-interface tsd-is-external"><a href="timeline_state_resolver.VIZMSEPlayoutItemContent.html#templateData" class="tsd-kind-icon">template<wbr>Data</a></li>
-								<li class="tsd-kind-property tsd-parent-kind-interface tsd-is-external"><a href="timeline_state_resolver.VIZMSEPlayoutItemContent.html#templateName" class="tsd-kind-icon">template<wbr>Name</a></li>
+								<li class="tsd-kind-property tsd-parent-kind-interface tsd-is-external"><a href="timeline_state_resolver.VIZMSEPlayoutItemContentBase.html#channel" class="tsd-kind-icon">channel</a></li>
+								<li class="tsd-kind-property tsd-parent-kind-interface tsd-is-external"><a href="timeline_state_resolver.VIZMSEPlayoutItemContentBase.html#noAutoPreloading" class="tsd-kind-icon">no<wbr>Auto<wbr>Preloading</a></li>
 							</ul>
 						</section>
 					</div>
@@ -95,12 +101,12 @@
 			<section class="tsd-panel-group tsd-member-group tsd-is-external">
 				<h2>Properties</h2>
 				<section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-interface tsd-is-external">
-					<a name="channelName" class="tsd-anchor"></a>
-					<h3><span class="tsd-flag ts-flagOptional">Optional</span> channel<wbr>Name</h3>
-					<div class="tsd-signature tsd-kind-icon">channel<wbr>Name<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
+					<a name="channel" class="tsd-anchor"></a>
+					<h3><span class="tsd-flag ts-flagOptional">Optional</span> channel</h3>
+					<div class="tsd-signature tsd-kind-icon">channel<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 					<aside class="tsd-sources">
 						<ul>
-							<li>Defined in node_modules/timeline-state-resolver-types/dist/vizMSE.d.ts:153</li>
+							<li>Defined in packages/timeline-state-resolver/node_modules/timeline-state-resolver-types/dist/vizMSE.d.ts:169</li>
 						</ul>
 					</aside>
 					<div class="tsd-comment tsd-typography">
@@ -115,42 +121,12 @@
 					<div class="tsd-signature tsd-kind-icon">no<wbr>Auto<wbr>Preloading<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span></div>
 					<aside class="tsd-sources">
 						<ul>
-							<li>Defined in node_modules/timeline-state-resolver-types/dist/vizMSE.d.ts:155</li>
+							<li>Defined in packages/timeline-state-resolver/node_modules/timeline-state-resolver-types/dist/vizMSE.d.ts:171</li>
 						</ul>
 					</aside>
 					<div class="tsd-comment tsd-typography">
 						<div class="lead">
 							<p>If true, won&#39;t be preloaded (cued) automatically</p>
-						</div>
-					</div>
-				</section>
-				<section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-interface tsd-is-external">
-					<a name="templateData" class="tsd-anchor"></a>
-					<h3><span class="tsd-flag ts-flagOptional">Optional</span> template<wbr>Data</h3>
-					<div class="tsd-signature tsd-kind-icon">template<wbr>Data<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span></div>
-					<aside class="tsd-sources">
-						<ul>
-							<li>Defined in node_modules/timeline-state-resolver-types/dist/vizMSE.d.ts:151</li>
-						</ul>
-					</aside>
-					<div class="tsd-comment tsd-typography">
-						<div class="lead">
-							<p>Data fields of the element (for internal elements only)</p>
-						</div>
-					</div>
-				</section>
-				<section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-interface tsd-is-external">
-					<a name="templateName" class="tsd-anchor"></a>
-					<h3>template<wbr>Name</h3>
-					<div class="tsd-signature tsd-kind-icon">template<wbr>Name<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol"> | </span><span class="tsd-signature-type">number</span></div>
-					<aside class="tsd-sources">
-						<ul>
-							<li>Defined in node_modules/timeline-state-resolver-types/dist/vizMSE.d.ts:149</li>
-						</ul>
-					</aside>
-					<div class="tsd-comment tsd-typography">
-						<div class="lead">
-							<p>Name of the element, or Pilot Element</p>
 						</div>
 					</div>
 				</section>
@@ -178,19 +154,13 @@
 						<a href="../modules/timeline_state_resolver.html" class="tsd-kind-icon">timeline-<wbr>state-<wbr>resolver</a>
 						<ul>
 							<li class="current tsd-kind-interface tsd-parent-kind-module tsd-is-external">
-								<a href="timeline_state_resolver.VIZMSEPlayoutItemContent.html" class="tsd-kind-icon">VIZMSEPlayout<wbr>Item<wbr>Content</a>
+								<a href="timeline_state_resolver.VIZMSEPlayoutItemContentBase.html" class="tsd-kind-icon">VIZMSEPlayout<wbr>Item<wbr>Content<wbr>Base</a>
 								<ul>
 									<li class=" tsd-kind-property tsd-parent-kind-interface tsd-is-external">
-										<a href="timeline_state_resolver.VIZMSEPlayoutItemContent.html#channelName" class="tsd-kind-icon">channel<wbr>Name</a>
+										<a href="timeline_state_resolver.VIZMSEPlayoutItemContentBase.html#channel" class="tsd-kind-icon">channel</a>
 									</li>
 									<li class=" tsd-kind-property tsd-parent-kind-interface tsd-is-external">
-										<a href="timeline_state_resolver.VIZMSEPlayoutItemContent.html#noAutoPreloading" class="tsd-kind-icon">no<wbr>Auto<wbr>Preloading</a>
-									</li>
-									<li class=" tsd-kind-property tsd-parent-kind-interface tsd-is-external">
-										<a href="timeline_state_resolver.VIZMSEPlayoutItemContent.html#templateData" class="tsd-kind-icon">template<wbr>Data</a>
-									</li>
-									<li class=" tsd-kind-property tsd-parent-kind-interface tsd-is-external">
-										<a href="timeline_state_resolver.VIZMSEPlayoutItemContent.html#templateName" class="tsd-kind-icon">template<wbr>Name</a>
+										<a href="timeline_state_resolver.VIZMSEPlayoutItemContentBase.html#noAutoPreloading" class="tsd-kind-icon">no<wbr>Auto<wbr>Preloading</a>
 									</li>
 								</ul>
 							</li>
