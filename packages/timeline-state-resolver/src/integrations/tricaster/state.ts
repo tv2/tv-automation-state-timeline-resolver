@@ -104,10 +104,10 @@ const TRANSFORMER: CommandGenerator<State, State> = {
 	isStreaming: (value: boolean): CommandAny => ({ name: CommandName.STREAMING_TOGGLE, value: value ? 1 : 0 }),
 }
 
-function getProgramInputCommand(target: string): (value: number, keyer: MixEffect) => CommandAny[] {
-	return (value: number, keyer: MixEffect) => {
+function getProgramInputCommand(target: string): (value: number, mixEffect: MixEffect) => CommandAny[] {
+	return (value: number, mixEffect: MixEffect) => {
 		const commands: CommandAny[] = [{ name: CommandName.A_ROW, value, target }]
-		if (keyer.transition.effect === 'cut') {
+		if (mixEffect.transition.effect === 'cut') {
 			commands.push({ name: CommandName.TAKE, target })
 		} else {
 			commands.push({ name: CommandName.AUTO, target })
