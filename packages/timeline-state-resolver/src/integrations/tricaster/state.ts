@@ -242,8 +242,8 @@ export function convertStateToTriCaster(state: TimelineState, newMappings: Mappi
 	return resultState
 }
 
-function validateInt(value: number | undefined, min: number, max: number): value is number {
-	return value !== undefined && Number.isInteger(value) && value >= min && value < max
+function validateInt(value: any, min: number, max: number): value is number {
+	return typeof value === 'number' && Number.isInteger(value) && value >= min && value < max
 }
 
 function deepMergeWithCombine<T>(target: T, source: DeepPartial<T>) {
