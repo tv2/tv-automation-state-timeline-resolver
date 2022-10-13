@@ -4,32 +4,50 @@ import {
 	Mappings,
 	MappingTriCaster,
 	MappingTriCasterType,
-	TimelineContentTypeTriCaster,
 	TriCasterKeyer,
 	TriCasterTransition,
+	TSRTimelineObjBase,
 } from 'timeline-state-resolver-types'
 import * as _ from 'underscore'
 import { CommandAny, CommandName, TriCasterCommandWithContext } from './commands'
+import {
+	isTimelineObjTriCasterAudioChannel,
+	isTimelineObjTriCasterDSK,
+	isTimelineObjTriCasterME,
+} from 'timeline-state-resolver-types'
 
 const BLACK_INPUT = 69 // @todo: get the right number, this probably varies by models
-type MixEffectName = 'main' | 'v1' | 'v2' | 'v3' | 'v4' | 'v5' | 'v6' | 'v7' | 'v8' // @todo: this varies by model
+const INPUT_COUNT = 44 // @todo: use a variable based on model
 
 const MIX_EFFECT_NAMES = ['main', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8']
 const DSK_NAMES = ['dsk1', 'dsk2', 'dsk3', 'dsk4']
+const EXTRA_AUDIO_CHANNEL_NAMES = ['ddr1', 'ddr2', 'ddr3', 'ddr4', 'sound', 'master']
+const AUDIO_CHANNEL_NAMES = [
+	...EXTRA_AUDIO_CHANNEL_NAMES,
+	...Array.from({ length: INPUT_COUNT }, (_, i) => `input${i + 1}`),
+]
+const AUDIO_CHANNEL_NAMES_LOOKUP = new Map(AUDIO_CHANNEL_NAMES.map((name, index) => [name, index]))
 
 export interface State {
 	mixEffects: MixEffect[]
+	audioChannels: AudioChannel[]
 	isRecording: boolean
 	isStreaming: boolean
 }
 
-export interface Keyer extends Required<TriCasterKeyer> {
-	name: string
+type Keyer = Required<TriCasterKeyer>
+
+type ComandGeneratorFun<T, K> = (value: T, oldObj: K, newObj: K) => CommandAny[]
+type CommandGenerator<C> = {
+	[P in keyof C]: C[P] extends object ? CommandGenerator<C[P]> : ComandGeneratorFun<C[P], C> | undefined
 }
 
-type CommandGenerator<T, K> = T extends object
-	? { [K in keyof T]: CommandGenerator<T[K], T> }
-	: ((value: T, obj: K) => CommandAny | CommandAny[] | undefined) | undefined
+// @todo: use this for making an object tracking timelineObjectIds, by adding a side effect to deepMerge
+// type ValueSource<C> = {
+// 	[P in keyof C]: C[P] extends object ? ValueSource<C[P]> : string
+// }
+
+type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T
 
 export interface MixEffect {
 	programInput: number
@@ -38,23 +56,27 @@ export interface MixEffect {
 	keyers: Keyer[]
 }
 
+export interface AudioChannel {
+	volume: number
+	isMuted: boolean
+}
+
 export function getDefaultState(): State {
 	return {
-		mixEffects: MIX_EFFECT_NAMES.map((meName: MixEffectName) => ({
-			name: meName,
+		mixEffects: MIX_EFFECT_NAMES.map((_meName) => ({
 			programInput: BLACK_INPUT,
 			previewInput: BLACK_INPUT,
 			transition: { effect: 'cut', duration: 0 },
-			keyers: DSK_NAMES.map((name) => getDefaultKeyer(name)),
+			keyers: DSK_NAMES.map(() => getDefaultKeyerState()),
 		})),
+		audioChannels: AUDIO_CHANNEL_NAMES.map(() => ({ volume: 0, isMuted: true })),
 		isRecording: false,
 		isStreaming: false,
 	}
 }
 
-function getDefaultKeyer(name: string): Keyer {
+function getDefaultKeyerState(): Keyer {
 	return {
-		name,
 		onAir: false,
 		input: BLACK_INPUT,
 		transition: { effect: 'cut', duration: 0 },
@@ -69,39 +91,46 @@ function getDefaultKeyer(name: string): Keyer {
 
 export function diffStates(oldState: State, newState: State) {
 	const commands: TriCasterCommandWithContext[] = []
-	generateCommands(commands, TRANSFORMER, oldState, newState)
+	generateCommands<State>(commands, STATE_COMMAND_GENERATOR, oldState, newState)
 	return commands
 }
 
-function generateCommands(commands: TriCasterCommandWithContext[], generator: any, oldPartialState, newPartialState) {
-	for (const key in generator) {
+function generateCommands<Y>(
+	commands: TriCasterCommandWithContext[],
+	generator: CommandGenerator<Y>,
+	oldState: Y,
+	newState: Y
+) {
+	let key: keyof Y
+	for (key in oldState) {
 		const gen = generator[key]
-		if (typeof gen === 'function' && newPartialState[key] !== oldPartialState[key]) {
-			const generatedCommands = gen(newPartialState[key], newPartialState)
-			if (Array.isArray(generatedCommands)) {
-				commands.push(...generatedCommands.map((command) => ({ command, context: null, timelineObjId: '' }))) // @todo track timelineObjIds
-			} else if (generatedCommands) {
-				commands.push({ command: generatedCommands, context: null, timelineObjId: '' }) // @todo track timelineObjIds
-			}
-		} else if (gen) {
-			generateCommands(commands, gen, oldPartialState[key], newPartialState[key])
+		const newValue = newState[key]
+		const oldValue = oldState[key]
+		if (typeof gen === 'function' && newValue !== oldValue) {
+			const generatedCommands = gen(newValue, oldState, newState)
+			commands.push(...generatedCommands.map((command) => ({ command, context: null, timelineObjId: '' }))) // @todo track timelineObjIds
+		} else if (gen !== undefined) {
+			generateCommands(commands, gen as CommandGenerator<typeof newValue>, oldValue, newValue)
 		}
 	}
 }
 
-const TRANSFORMER: CommandGenerator<State, State> = {
-	mixEffects: MIX_EFFECT_NAMES.map((meName: MixEffectName) => ({
-		name: undefined,
+const STATE_COMMAND_GENERATOR: CommandGenerator<State> = {
+	mixEffects: MIX_EFFECT_NAMES.map((meName) => ({
 		previewInput: undefined,
 		transition: {
 			effect: (value) => getEffectCommand(meName, value),
-			duration: (value: number): CommandAny => ({ name: CommandName.SPEED, target: meName, value }),
+			duration: (value) => [{ name: CommandName.SPEED, target: meName, value }],
 		},
 		programInput: getProgramInputCommand(meName),
-		keyers: DSK_NAMES.map((name) => getKeyerTransformer(meName + name)),
+		keyers: DSK_NAMES.map((name) => getKeyerCommandGenerator(`${meName}_${name}`)),
 	})),
-	isRecording: (value: boolean): CommandAny => ({ name: CommandName.RECORD_TOGGLE, value: value ? 1 : 0 }),
-	isStreaming: (value: boolean): CommandAny => ({ name: CommandName.STREAMING_TOGGLE, value: value ? 1 : 0 }),
+	audioChannels: AUDIO_CHANNEL_NAMES.map((target) => ({
+		volume: (value) => [{ name: CommandName.VOLUME, value, target }],
+		isMuted: (value) => [{ name: CommandName.MUTE, value, target }],
+	})),
+	isRecording: (value) => [{ name: CommandName.RECORD_TOGGLE, value: value ? 1 : 0 }],
+	isStreaming: (value) => [{ name: CommandName.STREAMING_TOGGLE, value: value ? 1 : 0 }],
 }
 
 function getProgramInputCommand(target: string): (value: number, mixEffect: MixEffect) => CommandAny[] {
@@ -116,59 +145,60 @@ function getProgramInputCommand(target: string): (value: number, mixEffect: MixE
 	}
 }
 
-function getKeyerTransformer(target: string): CommandGenerator<Keyer, Keyer> {
+function getKeyerCommandGenerator(target: string): CommandGenerator<Keyer> {
 	return {
-		name: undefined,
 		transition: {
 			effect: (value) => getEffectCommand(target, value),
-			duration: (value: number): CommandAny => ({ name: CommandName.SPEED, target, value }),
+			duration: (value) => [{ name: CommandName.SPEED, target, value }],
 		},
 		position: {
-			x: (value) => ({ name: CommandName.POSITION_X, value, target }),
-			y: (value) => ({ name: CommandName.POSITION_Y, value, target }),
+			x: (value) => [{ name: CommandName.POSITION_X, value, target }],
+			y: (value) => [{ name: CommandName.POSITION_Y, value, target }],
 		},
 		scale: {
-			x: (value) => ({ name: CommandName.SCALE_X, value, target }),
-			y: (value) => ({ name: CommandName.SCALE_Y, value, target }),
+			x: (value) => [{ name: CommandName.SCALE_X, value, target }],
+			y: (value) => [{ name: CommandName.SCALE_Y, value, target }],
 		},
 		rotation: {
-			x: (value) => ({ name: CommandName.ROTATION_X, value, target }),
-			y: (value) => ({ name: CommandName.ROTATION_Y, value, target }),
-			z: (value) => ({ name: CommandName.ROTATION_Z, value, target }),
+			x: (value) => [{ name: CommandName.ROTATION_X, value, target }],
+			y: (value) => [{ name: CommandName.ROTATION_Y, value, target }],
+			z: (value) => [{ name: CommandName.ROTATION_Z, value, target }],
 		},
-		positioningEnabled: (value: boolean): CommandAny => ({ name: CommandName.POSITIONING_ENABLE, value, target }),
+		positioningEnabled: (value) => [{ name: CommandName.POSITIONING_ENABLE, value, target }],
 		crop: {
-			left: (value) => ({ name: CommandName.CROP_LEFT_VALUE, value, target }),
-			right: (value) => ({ name: CommandName.CROP_RIGHT_VALUE, value, target }),
-			up: (value) => ({ name: CommandName.CROP_UP_VALUE, value, target }),
-			down: (value) => ({ name: CommandName.CROP_DOWN_VALUE, value, target }),
+			left: (value) => [{ name: CommandName.CROP_LEFT_VALUE, value, target }],
+			right: (value) => [{ name: CommandName.CROP_RIGHT_VALUE, value, target }],
+			up: (value) => [{ name: CommandName.CROP_UP_VALUE, value, target }],
+			down: (value) => [{ name: CommandName.CROP_DOWN_VALUE, value, target }],
 		},
-		cropEnabled: (value: boolean): CommandAny => ({ name: CommandName.CROP_ENABLE, value, target }),
-		input: (value): CommandAny => ({ name: CommandName.SELECT, value, target }),
-		onAir: (_value: boolean, keyer: Keyer): CommandAny => {
-			if (keyer.transition.effect === 'cut') {
-				return { name: CommandName.TAKE, target }
+		cropEnabled: (value) => [{ name: CommandName.CROP_ENABLE, value, target }],
+		input: (value) => [{ name: CommandName.SELECT, value, target }],
+		onAir: (_value, _oldKeyer, newKeyer: Keyer): CommandAny[] => {
+			if (newKeyer.transition.effect === 'cut') {
+				return [{ name: CommandName.TAKE, target }]
 			}
-			return { name: CommandName.AUTO, target }
+			return [{ name: CommandName.AUTO, target }]
 		},
 	}
 }
 
-function getEffectCommand(target, value: TriCasterTransition['effect']): CommandAny | undefined {
-	if (typeof value === 'number') {
-		return { name: CommandName.SELECT_INDEX, target, value }
+function getEffectCommand(target: string, newValue: TriCasterTransition['effect']): CommandAny[] {
+	if (typeof newValue === 'number') {
+		return [{ name: CommandName.SELECT_INDEX, target, value: newValue }]
 	}
-	if (value === 'fade') {
-		return { name: CommandName.SELECT_FADE, target }
+	if (newValue === 'fade') {
+		return [{ name: CommandName.SELECT_FADE, target }]
 	}
-	return undefined
+	return []
 }
 
 export function convertStateToTriCaster(state: TimelineState, newMappings: Mappings, deviceId: string): State {
 	const resultState = getDefaultState()
-	const sortedLayers = _.map(state.layers, (tlObject, layerName) => ({ layerName, tlObject })).sort((a, b) =>
-		a.layerName.localeCompare(b.layerName)
-	)
+	const sortedLayers = _.map(state.layers, (tlObject, layerName) => ({
+		layerName,
+		tlObject: tlObject as unknown as TSRTimelineObjBase,
+	})).sort((a, b) => a.layerName.localeCompare(b.layerName))
+
 	_.each(sortedLayers, ({ tlObject, layerName }) => {
 		const mapping = newMappings[layerName] as MappingTriCaster | undefined
 		if (!mapping || mapping.deviceId !== deviceId) {
@@ -176,30 +206,35 @@ export function convertStateToTriCaster(state: TimelineState, newMappings: Mappi
 		}
 		switch (mapping.mappingType) {
 			case MappingTriCasterType.MixEffect: {
-				if (tlObject.content.type !== TimelineContentTypeTriCaster.ME || mapping.index === undefined) {
+				const mixEffects = resultState.mixEffects
+				if (!isTimelineObjTriCasterME(tlObject) || !validateInt(mapping.index, 0, mixEffects.length)) {
 					break
 				}
-				const mixEffect = resultState.mixEffects[mapping.index]
-				if (!mixEffect) {
-					break
-				}
-				resultState.mixEffects[mapping.index] = deepMerge<MixEffect>(mixEffect, tlObject.content, {
-					arrayMerge: combineMerge,
-				})
+				mixEffects[mapping.index] = deepMergeWithCombine(mixEffects[mapping.index], tlObject.content)
 				break
 			}
 			case MappingTriCasterType.DownStreamKeyer: {
-				if (tlObject.content.type !== TimelineContentTypeTriCaster.DSK || mapping.index === undefined) {
+				const mainKeyers = resultState.mixEffects[0].keyers
+				if (!isTimelineObjTriCasterDSK(tlObject) || !validateInt(mapping.index, 0, mainKeyers.length)) {
 					break
 				}
-				const keyer = resultState.mixEffects[0].keyers[mapping.index]
-				if (!keyer) {
-					break
-				}
-				resultState.mixEffects[0].keyers[mapping.index] = deepMerge<Keyer>(keyer, tlObject.content, {
-					arrayMerge: combineMerge,
-				})
+				mainKeyers[mapping.index] = deepMergeWithCombine(mainKeyers[mapping.index], tlObject.content.keyer)
 				break
+			}
+			case MappingTriCasterType.AudioChannel: {
+				const audioChannels = resultState.audioChannels
+				if (!isTimelineObjTriCasterAudioChannel(tlObject)) {
+					break
+				}
+				let index: number | undefined
+				if (validateInt(mapping.index, 0, INPUT_COUNT)) {
+					index = AUDIO_CHANNEL_NAMES_LOOKUP.get(`input${mapping.index + 1}`)
+				} else if (typeof mapping.index === 'string') {
+					index = AUDIO_CHANNEL_NAMES_LOOKUP.get(mapping.index)
+				}
+				if (index !== undefined) {
+					audioChannels[index] = deepMergeWithCombine(audioChannels[index], tlObject.content)
+				}
 			}
 		}
 	})
@@ -207,7 +242,16 @@ export function convertStateToTriCaster(state: TimelineState, newMappings: Mappi
 	return resultState
 }
 
-const combineMerge = (target, source, options) => {
+function validateInt(value: number | undefined, min: number, max: number): value is number {
+	return value !== undefined && Number.isInteger(value) && value >= min && value < max
+}
+
+function deepMergeWithCombine<T>(target: T, source: DeepPartial<T>) {
+	// @todo: this merges unnecessary properties. Assuming all properties in target are required, it should just discard extra properies from source
+	return deepMerge<T>(target, source as Partial<T>, { arrayMerge: combineMerge })
+}
+
+function combineMerge(target: any[], source: any[], options: any): any[] {
 	const destination = target.slice()
 
 	source.forEach((item, index) => {

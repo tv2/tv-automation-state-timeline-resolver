@@ -2,10 +2,30 @@ import { Mapping } from './mapping'
 import { DeviceType, TimelineDatastoreReferencesContent, TSRTimelineObjBase } from '.'
 // export type MappingTriCasterAny =
 
+type Without<T, U> = { [P in Exclude<keyof T, keyof U>]?: never }
+type XOR<T, U> = T | U extends object ? (Without<T, U> & U) | (Without<U, T> & T) : T | U
 export interface MappingTriCaster extends Mapping {
 	device: DeviceType.TRICASTER
 	mappingType: MappingTriCasterType
-	index?: number
+	index?: number | string
+}
+
+export interface MappingTriCasterMixEffect extends MappingTriCaster {
+	device: DeviceType.TRICASTER
+	mappingType: MappingTriCasterType.MixEffect
+	index: number
+}
+
+export interface MappingTriCasterDownStreamKeyer extends MappingTriCaster {
+	device: DeviceType.TRICASTER
+	mappingType: MappingTriCasterType.DownStreamKeyer
+	index: number
+}
+
+export interface MappingTriCasterAudioChannel extends MappingTriCaster {
+	device: DeviceType.TRICASTER
+	mappingType: MappingTriCasterType.AudioChannel
+	index: number | string
 }
 
 export enum MappingTriCasterType {
@@ -24,6 +44,7 @@ export interface TriCasterOptions {
 export enum TimelineContentTypeTriCaster {
 	ME = 'ME',
 	DSK = 'DSK',
+	AUDIO_CHANNEL = 'AUDIO_CHANNEL',
 }
 
 export type TimelineObjTriCasterAny = TimelineObjTriCasterME
@@ -41,9 +62,13 @@ export interface TimelineObjTriCasterME extends TimelineObjTriCasterBase {
 		type: TimelineContentTypeTriCaster.ME
 
 		programInput?: number
-		transition?: TriCasterTransition
 		keyers?: (TriCasterKeyer | undefined)[]
-	} & TimelineDatastoreReferencesContent
+	} & XOR<{ previewInput?: number }, { transition?: TriCasterTransition }> &
+		TimelineDatastoreReferencesContent
+}
+
+export function isTimelineObjTriCasterME(timelineObject: TSRTimelineObjBase): timelineObject is TimelineObjTriCasterME {
+	return (timelineObject as TimelineObjTriCasterBase).content?.type === TimelineContentTypeTriCaster.ME
 }
 
 export interface TimelineObjTriCasterDSK extends TimelineObjTriCasterBase {
@@ -53,6 +78,28 @@ export interface TimelineObjTriCasterDSK extends TimelineObjTriCasterBase {
 
 		keyer: TriCasterKeyer
 	} & TimelineDatastoreReferencesContent
+}
+
+export function isTimelineObjTriCasterDSK(
+	timelineObject: TSRTimelineObjBase
+): timelineObject is TimelineObjTriCasterDSK {
+	return (timelineObject as TimelineObjTriCasterBase).content?.type === TimelineContentTypeTriCaster.DSK
+}
+
+export interface TimelineObjTriCasterAudioChannel extends TimelineObjTriCasterBase {
+	content: {
+		deviceType: DeviceType.TRICASTER
+		type: TimelineContentTypeTriCaster.AUDIO_CHANNEL
+
+		volume?: number
+		isMuted?: boolean
+	} & TimelineDatastoreReferencesContent
+}
+
+export function isTimelineObjTriCasterAudioChannel(
+	timelineObject: TSRTimelineObjBase
+): timelineObject is TimelineObjTriCasterAudioChannel {
+	return (timelineObject as TimelineObjTriCasterBase).content?.type === TimelineContentTypeTriCaster.AUDIO_CHANNEL
 }
 
 export interface TriCasterTransition {
