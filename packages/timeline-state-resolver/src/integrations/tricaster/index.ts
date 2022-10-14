@@ -114,7 +114,7 @@ export class TriCasterDevice extends DeviceWithState<State, DeviceOptionsTriCast
 
 		const newVMixState = convertStateToTriCaster(newState, newMappings, this.deviceId)
 
-		const commandsToAchieveState: Array<TriCasterCommandWithContext> = diffStates(oldState, newVMixState)
+		const commandsToAchieveState: Array<TriCasterCommandWithContext> = diffStates(newVMixState, oldState)
 
 		// clear any queued commands later than this time:
 		this._doOnTime.clearQueueNowAndAfter(previousStateTime)

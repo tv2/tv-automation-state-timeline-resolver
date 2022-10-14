@@ -102,9 +102,11 @@ export function isTimelineObjTriCasterAudioChannel(
 	return (timelineObject as TimelineObjTriCasterBase).content?.type === TimelineContentTypeTriCaster.AUDIO_CHANNEL
 }
 
+export type TriCasterTransitionEffect = 'cut' | 'fade' | number
+
 export interface TriCasterTransition {
-	effect: 'cut' | 'fade' | number
-	/** Duration in milliseconds */
+	effect: TriCasterTransitionEffect
+	/** Duration in milliseconds, applicable to effects other than 'cut' */
 	duration: number
 }
 

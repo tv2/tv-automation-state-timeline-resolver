@@ -14,8 +14,9 @@ describe('TriCaster', () => {
 		const oldState = getDefaultState()
 		const newState = getDefaultState()
 		newState.mixEffects[0].transition.duration = 200
-		const commands = diffStates(oldState, newState)
+		const commands = diffStates(newState, oldState)
 		expect(commands.length).toEqual(1)
+		expect(commands[0].command).toEqual({ target: 'main', name: '_speed', value: 200 })
 	})
 
 	test('convertStateToTriCaster updates deep properties', () => {

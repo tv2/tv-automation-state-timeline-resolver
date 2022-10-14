@@ -1,11 +1,11 @@
 import { TimelineState } from 'superfly-timeline'
-import * as deepMerge from 'deepmerge'
 import {
 	Mappings,
 	MappingTriCaster,
 	MappingTriCasterType,
 	TriCasterKeyer,
 	TriCasterTransition,
+	TriCasterTransitionEffect,
 	TSRTimelineObjBase,
 } from 'timeline-state-resolver-types'
 import * as _ from 'underscore'
@@ -37,17 +37,19 @@ export interface State {
 
 type Keyer = Required<TriCasterKeyer>
 
-type ComandGeneratorFun<T, K> = (value: T, oldObj: K, newObj: K) => CommandAny[]
+type ComandGeneratorFun<T, K> = (newValue: T, newObj: K, oldObj: K) => CommandAny[]
 type CommandGenerator<C> = {
-	[P in keyof C]: C[P] extends object ? CommandGenerator<C[P]> : ComandGeneratorFun<C[P], C> | undefined
+	[P in keyof C]: C[P] extends object
+		? CommandGenerator<C[P]> | ComandGeneratorFun<C[P], C>
+		: ComandGeneratorFun<C[P], C> | undefined
 }
 
-// @todo: use this for making an object tracking timelineObjectIds, by adding a side effect to deepMerge
+// @todo: use this for making an object tracking timelineObjectIds, by adding a side effect to deepApply
 // type ValueSource<C> = {
 // 	[P in keyof C]: C[P] extends object ? ValueSource<C[P]> : string
 // }
 
-type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T
+type DeepPartial<T> = { [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P] }
 
 export interface MixEffect {
 	programInput: number
@@ -89,28 +91,28 @@ function getDefaultKeyerState(): Keyer {
 	}
 }
 
-export function diffStates(oldState: State, newState: State) {
+export function diffStates(newState: State, oldState: State) {
 	const commands: TriCasterCommandWithContext[] = []
-	generateCommands<State>(commands, STATE_COMMAND_GENERATOR, oldState, newState)
+	generateCommands(commands, STATE_COMMAND_GENERATOR, newState, oldState)
 	return commands
 }
 
 function generateCommands<Y>(
 	commands: TriCasterCommandWithContext[],
 	generator: CommandGenerator<Y>,
-	oldState: Y,
-	newState: Y
+	newState: Y,
+	oldState: Y
 ) {
 	let key: keyof Y
-	for (key in oldState) {
+	for (key in generator) {
 		const gen = generator[key]
 		const newValue = newState[key]
 		const oldValue = oldState[key]
 		if (typeof gen === 'function' && newValue !== oldValue) {
-			const generatedCommands = gen(newValue, oldState, newState)
+			const generatedCommands = gen(newValue, newState, oldState)
 			commands.push(...generatedCommands.map((command) => ({ command, context: null, timelineObjId: '' }))) // @todo track timelineObjIds
 		} else if (gen !== undefined) {
-			generateCommands(commands, gen as CommandGenerator<typeof newValue>, oldValue, newValue)
+			generateCommands(commands, gen as CommandGenerator<typeof newValue>, newValue, oldValue)
 		}
 	}
 }
@@ -118,12 +120,12 @@ function generateCommands<Y>(
 const STATE_COMMAND_GENERATOR: CommandGenerator<State> = {
 	mixEffects: MIX_EFFECT_NAMES.map((meName) => ({
 		previewInput: undefined,
+		keyers: DSK_NAMES.map((name) => getKeyerCommandGenerator(`${meName}_${name}`)),
 		transition: {
-			effect: (value) => getEffectCommand(meName, value),
+			effect: getEffectGenerator(meName),
 			duration: (value) => [{ name: CommandName.SPEED, target: meName, value }],
 		},
-		programInput: getProgramInputCommand(meName),
-		keyers: DSK_NAMES.map((name) => getKeyerCommandGenerator(`${meName}_${name}`)),
+		programInput: getProgramInputGenerator(meName),
 	})),
 	audioChannels: AUDIO_CHANNEL_NAMES.map((target) => ({
 		volume: (value) => [{ name: CommandName.VOLUME, value, target }],
@@ -133,10 +135,10 @@ const STATE_COMMAND_GENERATOR: CommandGenerator<State> = {
 	isStreaming: (value) => [{ name: CommandName.STREAMING_TOGGLE, value: value ? 1 : 0 }],
 }
 
-function getProgramInputCommand(target: string): (value: number, mixEffect: MixEffect) => CommandAny[] {
-	return (value: number, mixEffect: MixEffect) => {
+function getProgramInputGenerator(target: string): ComandGeneratorFun<number, MixEffect> {
+	return (value, newMixEffect) => {
 		const commands: CommandAny[] = [{ name: CommandName.A_ROW, value, target }]
-		if (mixEffect.transition.effect === 'cut') {
+		if (newMixEffect.transition.effect === 'cut') {
 			commands.push({ name: CommandName.TAKE, target })
 		} else {
 			commands.push({ name: CommandName.AUTO, target })
@@ -148,7 +150,7 @@ function getProgramInputCommand(target: string): (value: number, mixEffect: MixE
 function getKeyerCommandGenerator(target: string): CommandGenerator<Keyer> {
 	return {
 		transition: {
-			effect: (value) => getEffectCommand(target, value),
+			effect: getEffectGenerator(target),
 			duration: (value) => [{ name: CommandName.SPEED, target, value }],
 		},
 		position: {
@@ -173,7 +175,7 @@ function getKeyerCommandGenerator(target: string): CommandGenerator<Keyer> {
 		},
 		cropEnabled: (value) => [{ name: CommandName.CROP_ENABLE, value, target }],
 		input: (value) => [{ name: CommandName.SELECT, value, target }],
-		onAir: (_value, _oldKeyer, newKeyer: Keyer): CommandAny[] => {
+		onAir: (_value, newKeyer: Keyer): CommandAny[] => {
 			if (newKeyer.transition.effect === 'cut') {
 				return [{ name: CommandName.TAKE, target }]
 			}
@@ -182,14 +184,16 @@ function getKeyerCommandGenerator(target: string): CommandGenerator<Keyer> {
 	}
 }
 
-function getEffectCommand(target: string, newValue: TriCasterTransition['effect']): CommandAny[] {
-	if (typeof newValue === 'number') {
-		return [{ name: CommandName.SELECT_INDEX, target, value: newValue }]
+function getEffectGenerator(target: string): ComandGeneratorFun<TriCasterTransitionEffect, TriCasterTransition> {
+	return (value) => {
+		if (typeof value === 'number') {
+			return [{ name: CommandName.SELECT_INDEX, target, value }]
+		}
+		if (value === 'fade') {
+			return [{ name: CommandName.SELECT_FADE, target }]
+		}
+		return []
 	}
-	if (newValue === 'fade') {
-		return [{ name: CommandName.SELECT_FADE, target }]
-	}
-	return []
 }
 
 export function convertStateToTriCaster(state: TimelineState, newMappings: Mappings, deviceId: string): State {
@@ -210,7 +214,7 @@ export function convertStateToTriCaster(state: TimelineState, newMappings: Mappi
 				if (!isTimelineObjTriCasterME(tlObject) || !validateInt(mapping.index, 0, mixEffects.length)) {
 					break
 				}
-				mixEffects[mapping.index] = deepMergeWithCombine(mixEffects[mapping.index], tlObject.content)
+				deepApply(mixEffects[mapping.index], tlObject.content)
 				break
 			}
 			case MappingTriCasterType.DownStreamKeyer: {
@@ -218,7 +222,7 @@ export function convertStateToTriCaster(state: TimelineState, newMappings: Mappi
 				if (!isTimelineObjTriCasterDSK(tlObject) || !validateInt(mapping.index, 0, mainKeyers.length)) {
 					break
 				}
-				mainKeyers[mapping.index] = deepMergeWithCombine(mainKeyers[mapping.index], tlObject.content.keyer)
+				deepApply(mainKeyers[mapping.index], tlObject.content.keyer)
 				break
 			}
 			case MappingTriCasterType.AudioChannel: {
@@ -233,12 +237,11 @@ export function convertStateToTriCaster(state: TimelineState, newMappings: Mappi
 					index = AUDIO_CHANNEL_NAMES_LOOKUP.get(mapping.index)
 				}
 				if (index !== undefined) {
-					audioChannels[index] = deepMergeWithCombine(audioChannels[index], tlObject.content)
+					deepApply(audioChannels[index], tlObject.content)
 				}
 			}
 		}
 	})
-	// @todo
 	return resultState
 }
 
@@ -246,22 +249,20 @@ function validateInt(value: any, min: number, max: number): value is number {
 	return typeof value === 'number' && Number.isInteger(value) && value >= min && value < max
 }
 
-function deepMergeWithCombine<T>(target: T, source: DeepPartial<T>) {
-	// @todo: this merges unnecessary properties. Assuming all properties in target are required, it should just discard extra properies from source
-	return deepMerge<T>(target, source as Partial<T>, { arrayMerge: combineMerge })
-}
-
-function combineMerge(target: any[], source: any[], options: any): any[] {
-	const destination = target.slice()
-
-	source.forEach((item, index) => {
-		if (destination[index] == undefined) {
-			destination[index] = options.cloneUnlessOtherwiseSpecified(item, options)
-		} else if (options.isMergeableObject(item)) {
-			destination[index] = deepMerge(target[index], item, options)
-		} else if (target.indexOf(item) === -1 && item !== undefined) {
-			destination.push(item)
+/**
+ * Deeply applies primitive properties from `source` to existing properties of `target` (in place)
+ */
+function deepApply<T>(target: T, source: DeepPartial<T>): void {
+	let key: keyof T
+	for (key in target) {
+		if (source[key] === undefined) {
+			continue
 		}
-	})
-	return destination
+		const t = target[key]
+		if (typeof t === 'object') {
+			deepApply(t, source[key] as DeepPartial<typeof t>)
+		} else {
+			target[key] = source[key] as typeof t
+		}
+	}
 }
