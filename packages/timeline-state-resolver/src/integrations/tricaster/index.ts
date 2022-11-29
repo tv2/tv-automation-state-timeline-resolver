@@ -4,9 +4,10 @@ import { DoOnTime, SendMode } from '../../devices/doOnTime'
 
 import { TimelineState } from 'superfly-timeline'
 import { DeviceType, Mappings, TriCasterOptions, DeviceOptionsTriCaster } from 'timeline-state-resolver-types'
-import { convertStateToTriCaster, diffStates, getDefaultState, State } from './state'
+import { State, StateDiffer } from './state'
 import * as WebSocket from 'ws'
 import { commandToWsMessage, TriCasterCommandContext, TriCasterCommandWithContext } from './commands'
+import got from 'got'
 
 const RECONNECT_TIMEOUT = 1000
 const DEFAULT_PORT = 5951
@@ -34,6 +35,7 @@ export class TriCasterDevice extends DeviceWithState<State, DeviceOptionsTriCast
 	private _resolveInitPromise: (value: boolean) => void
 	private _connected = false
 	private _initialized = false
+	private _stateDiffer?: StateDiffer
 
 	constructor(deviceId: string, deviceOptions: DeviceOptionsTriCasterInternal, getCurrentTime: () => Promise<number>) {
 		super(deviceId, deviceOptions, getCurrentTime)
@@ -48,7 +50,7 @@ export class TriCasterDevice extends DeviceWithState<State, DeviceOptionsTriCast
 			SendMode.IN_ORDER,
 			this._deviceOptions
 		)
-		this._doOnTime.on('error', (e) => this.emit('error', 'VMix.doOnTime', e))
+		this._doOnTime.on('error', (e) => this.emit('error', 'TriCasterDevice.doOnTime', e))
 		this._doOnTime.on('slowCommand', (msg) => this.emit('slowCommand', this.deviceName + ': ' + msg))
 		this._doOnTime.on('slowSentCommand', (info) => this.emit('slowSentCommand', info))
 		this._doOnTime.on('slowFulfilledCommand', (info) => this.emit('slowFulfilledCommand', info))
@@ -59,15 +61,21 @@ export class TriCasterDevice extends DeviceWithState<State, DeviceOptionsTriCast
 		const initPromise = new Promise<boolean>((resolve) => {
 			this._resolveInitPromise = resolve
 		})
+		this._connectSocket()
 		return initPromise
 	}
 
-	private _connectSocket() {
-		this._socket = new WebSocket(`ws://${this._host}:${this._port}/v1/shortcut_state`)
+	private _connectSocket(): void {
+		this._socket = new WebSocket(`ws://${this._host}:${this._port}/v1/shortcut_notifications`)
 		this._socket.on('open', () => {
+			this._stateDiffer = new StateDiffer(8, 8, 4, 4, 8) // @todo
 			this._setConnected(true)
-			// @todo setup initial state
-			this._resolveInitPromise(true)
+			this._initialized = true
+			this._setInitialState()
+				.then(() => this._resolveInitPromise(true))
+				.catch((error) => {
+					this.emit('error', `_getInitialState error: ${error.message}`, error)
+				})
 		})
 
 		this._socket.on('close', () => {
@@ -83,38 +91,53 @@ export class TriCasterDevice extends DeviceWithState<State, DeviceOptionsTriCast
 		})
 	}
 
-	private _connectionChanged() {
+	private async _setInitialState(): Promise<void> {
+		return got.get(`http://${this._host}:${this._port}/v1/dictionary?key=shortcut_states`).then((response) => {
+			if (!this._stateDiffer) {
+				throw new Error('State Differ not available')
+			}
+			const time = this.getCurrentTime()
+			const state = this._stateDiffer.externalStateConverter.getStateFromShortcutState(response.body)
+			this.setState(state, time)
+		})
+	}
+
+	private _connectionChanged(): void {
 		this.emit('connectionChanged', this.getStatus())
 	}
 
-	private _setConnected(connected: boolean) {
+	private _setConnected(connected: boolean): void {
 		if (this._connected !== connected) {
 			this._connected = connected
 			this._connectionChanged()
 		}
 	}
 
-	/** Called by the Conductor a bit before a .handleState is called */
-	prepareForHandleState(newStateTime: number) {
+	/** Called by the Conductor a bit before handleState is called */
+	prepareForHandleState(newStateTime: number): void {
 		// clear any queued commands later than this time:
 		this._doOnTime.clearQueueNowAndAfter(newStateTime)
 		this.cleanUpStates(0, newStateTime)
 	}
 
-	handleState(newState: TimelineState, newMappings: Mappings) {
+	handleState(newState: TimelineState, newMappings: Mappings): void {
 		super.onHandleState(newState, newMappings)
-		if (!this._initialized) {
+		if (!this._initialized || !this._stateDiffer) {
 			// before it's initialized don't do anything
 			this.emit('warning', 'TriCaster not initialized yet')
 			return
 		}
 
 		const previousStateTime = Math.max(this.getCurrentTime(), newState.time)
-		const oldState = this.getStateBefore(previousStateTime)?.state ?? getDefaultState()
+		const oldState = this.getStateBefore(previousStateTime)?.state ?? this._stateDiffer.getDefaultState()
 
-		const newVMixState = convertStateToTriCaster(newState, newMappings, this.deviceId)
+		const newTriCasterState = this._stateDiffer.timelineStateConverter.getStateFromTimelineState(
+			newState,
+			newMappings,
+			this.deviceId
+		)
 
-		const commandsToAchieveState: Array<TriCasterCommandWithContext> = diffStates(newVMixState, oldState)
+		const commandsToAchieveState = this._stateDiffer.getCommandsToAchieveState(newTriCasterState, oldState)
 
 		// clear any queued commands later than this time:
 		this._doOnTime.clearQueueNowAndAfter(previousStateTime)
@@ -123,15 +146,15 @@ export class TriCasterDevice extends DeviceWithState<State, DeviceOptionsTriCast
 		this._addToQueue(commandsToAchieveState, newState.time)
 
 		// store the new state, for later use:
-		this.setState(newVMixState, newState.time)
+		this.setState(newTriCasterState, newState.time)
 	}
 
-	clearFuture(clearAfterTime: number) {
+	clearFuture(clearAfterTime: number): void {
 		// Clear any scheduled commands after this time
 		this._doOnTime.clearQueueAfter(clearAfterTime)
 	}
 
-	async terminate() {
+	async terminate(): Promise<boolean> {
 		this._doOnTime.dispose()
 		this._socket.close()
 		return Promise.resolve(true)
@@ -179,7 +202,7 @@ export class TriCasterDevice extends DeviceWithState<State, DeviceOptionsTriCast
 		return this._doOnTime.getQueue()
 	}
 
-	private _addToQueue(commandsToAchieveState: Array<TriCasterCommandWithContext>, time: number) {
+	private _addToQueue(commandsToAchieveState: Array<TriCasterCommandWithContext>, time: number): void {
 		_.each(commandsToAchieveState, (cmd: TriCasterCommandWithContext) => {
 			this._doOnTime.queue(
 				time,

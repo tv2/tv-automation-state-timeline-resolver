@@ -27,6 +27,9 @@ export enum CommandName {
 	CROP_DOWN_VALUE = '_crop_down_value',
 	POSITIONING_ENABLE = '_positioning_enable',
 	CROP_ENABLE = '_crop_enable',
+	// input
+	VIDEO_SOURCE = '_video_source',
+	VIDEO_ACT_AS_ALPHA = '_video_act_as_alpha',
 	// audio
 	VOLUME = '_volume',
 	MUTE = '_mute',
@@ -34,6 +37,8 @@ export enum CommandName {
 	RECORD_TOGGLE = 'record_toggle',
 	// streaming
 	STREAMING_TOGGLE = 'streaming_toggle',
+	// outputs
+	SET_OUTPUT_CONFIG_VIDEO_SOURCE = 'set_output_config_video_source',
 }
 
 export type ValueTypes = boolean | number | string
@@ -83,11 +88,19 @@ export type CropDownCommand = CommandWithValueAndTarget<CommandName.CROP_DOWN_VA
 export type PositioningEnableCommand = CommandWithValueAndTarget<CommandName.POSITIONING_ENABLE, boolean>
 export type CropEnableCommand = CommandWithValueAndTarget<CommandName.CROP_ENABLE, boolean>
 
+export type VideoSource = CommandWithValueAndTarget<CommandName.VIDEO_SOURCE, string>
+export type VideoActAsAlpha = CommandWithValueAndTarget<CommandName.VIDEO_ACT_AS_ALPHA, boolean>
+
 export type VolumeCommand = CommandWithValueAndTarget<CommandName.VOLUME, number>
 export type MuteCommand = CommandWithValueAndTarget<CommandName.MUTE, boolean>
 
 export type RecordToggle = CommandWithValue<CommandName.RECORD_TOGGLE, number>
 export type StreamingToggle = CommandWithValue<CommandName.STREAMING_TOGGLE, number>
+
+export interface SetOutputConfigVideoSource extends Command<CommandName.SET_OUTPUT_CONFIG_VIDEO_SOURCE> {
+	output_index: number
+	source_id: string
+}
 
 export type CommandAny =
 	| ARowCommand
@@ -111,10 +124,13 @@ export type CommandAny =
 	| CropDownCommand
 	| PositioningEnableCommand
 	| CropEnableCommand
+	| VideoSource
+	| VideoActAsAlpha
 	| VolumeCommand
 	| MuteCommand
 	| RecordToggle
 	| StreamingToggle
+	| SetOutputConfigVideoSource
 
 export type TriCasterCommandContext = any
 export interface TriCasterCommandWithContext {
@@ -125,6 +141,9 @@ export interface TriCasterCommandWithContext {
 
 export function commandToWsMessage(command: CommandAny): string {
 	const name = `name=${'target' in command ? command.target : ''}${command.name}`
-	const value = 'value' in command ? `&value=${command.value}` : ''
-	return name + value
+	const values = Object.keys(command)
+		.filter((key) => key !== 'target' && key !== 'name')
+		.map((key) => `&${key}=${command[key]}`)
+		.join()
+	return name + values
 }

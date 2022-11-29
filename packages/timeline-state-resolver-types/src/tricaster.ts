@@ -110,14 +110,17 @@ export interface TriCasterTransition {
 	duration: number
 }
 
-export interface TriCasterKeyer {
-	onAir: boolean
+export interface TriCasterLayer {
 	input?: number
-	transition?: TriCasterTransition
 	positioningEnabled?: boolean
 	position?: { x: number; y: number }
 	scale?: { x: number; y: number }
 	rotation?: { x: number; y: number; z: number }
 	cropEnabled?: boolean
 	crop?: { left: number; right: number; up: number; down: number }
+}
+
+export interface TriCasterKeyer extends TriCasterLayer {
+	onAir: boolean
+	transition?: TriCasterTransition
 }
