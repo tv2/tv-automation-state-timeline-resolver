@@ -1,12 +1,17 @@
 import { TimelineState } from 'superfly-timeline'
 import {
 	Mappings,
-	MappingTriCaster,
+	MappingTriCasterAny,
 	MappingTriCasterType,
 	TSRTimelineObjBase,
 	isTimelineObjTriCasterAudioChannel,
 	isTimelineObjTriCasterDSK,
 	isTimelineObjTriCasterME,
+	isTimelineObjTriCasterMixOutput,
+	MappingTriCasterMixEffect,
+	MappingTriCasterDownStreamKeyer,
+	MappingTriCasterAudioChannel,
+	MappingTriCasterMixOutput,
 } from 'timeline-state-resolver-types'
 import * as _ from 'underscore'
 import { State } from './state'
@@ -17,6 +22,7 @@ export class TimelineStateConverter {
 	constructor(
 		private readonly getDefaultState: () => State,
 		private readonly inputCount: number,
+		private readonly outputCount: number,
 		private readonly audioChannelNameToIndexMap: Map<string, number>
 	) {}
 
@@ -25,7 +31,7 @@ export class TimelineStateConverter {
 		const sortedLayers = this.sortLayers(timelineState)
 
 		_.each(sortedLayers, ({ tlObject, layerName }) => {
-			const mapping = newMappings[layerName] as MappingTriCaster | undefined
+			const mapping = newMappings[layerName] as MappingTriCasterAny | undefined
 			if (!mapping || mapping.deviceId !== deviceId) {
 				return
 			}
@@ -38,6 +44,9 @@ export class TimelineStateConverter {
 					break
 				case MappingTriCasterType.AudioChannel:
 					this.applyAudioChannelState(resultState, tlObject, mapping)
+					break
+				case MappingTriCasterType.MixOutput:
+					this.applyMixOutputState(resultState, tlObject, mapping)
 					break
 			}
 		})
@@ -52,29 +61,33 @@ export class TimelineStateConverter {
 		})).sort((a, b) => a.layerName.localeCompare(b.layerName))
 	}
 
-	private applyMixEffectState(resultState: State, tlObject: TSRTimelineObjBase, mapping: MappingTriCaster) {
+	private applyMixEffectState(resultState: State, tlObject: TSRTimelineObjBase, mapping: MappingTriCasterMixEffect) {
 		const mixEffects = resultState.mixEffects
-		if (!isTimelineObjTriCasterME(tlObject) || !this.validateInt(mapping.index, 0, mixEffects.length)) {
+		if (!isTimelineObjTriCasterME(tlObject) || !this.isValidInt(mapping.index, 0, mixEffects.length)) {
 			return
 		}
 		this.deepApply(mixEffects[mapping.index], tlObject.content)
 	}
 
-	private applyDskState(resultState: State, tlObject: TSRTimelineObjBase, mapping: MappingTriCaster) {
+	private applyDskState(resultState: State, tlObject: TSRTimelineObjBase, mapping: MappingTriCasterDownStreamKeyer) {
 		const mainKeyers = resultState.mixEffects[0].keyers
-		if (!isTimelineObjTriCasterDSK(tlObject) || !this.validateInt(mapping.index, 0, mainKeyers.length)) {
+		if (!isTimelineObjTriCasterDSK(tlObject) || !this.isValidInt(mapping.index, 0, mainKeyers.length)) {
 			return
 		}
 		this.deepApply(mainKeyers[mapping.index], tlObject.content.keyer)
 	}
 
-	private applyAudioChannelState(resultState: State, tlObject: TSRTimelineObjBase, mapping: MappingTriCaster) {
+	private applyAudioChannelState(
+		resultState: State,
+		tlObject: TSRTimelineObjBase,
+		mapping: MappingTriCasterAudioChannel
+	) {
 		const audioChannels = resultState.audioChannels
 		if (!isTimelineObjTriCasterAudioChannel(tlObject)) {
 			return
 		}
 		let index: number | undefined
-		if (this.validateInt(mapping.index, 0, this.inputCount)) {
+		if (this.isValidInt(mapping.index, 0, this.inputCount)) {
 			index = this.audioChannelNameToIndexMap.get(`input${mapping.index + 1}`)
 		} else if (typeof mapping.index === 'string') {
 			index = this.audioChannelNameToIndexMap.get(mapping.index)
@@ -84,8 +97,15 @@ export class TimelineStateConverter {
 		}
 	}
 
-	private validateInt(value: any, min: number, max: number): value is number {
-		return typeof value === 'number' && Number.isInteger(value) && value >= min && value < max
+	private applyMixOutputState(resultState: State, tlObject: TSRTimelineObjBase, mapping: MappingTriCasterMixOutput) {
+		if (!isTimelineObjTriCasterMixOutput(tlObject) || !this.isValidInt(mapping.index, 0, this.outputCount)) {
+			return
+		}
+		resultState.outputs[mapping.index] = tlObject.content.source
+	}
+
+	private isValidInt(value: any, minIncl: number, maxExcl: number): value is number {
+		return typeof value === 'number' && Number.isInteger(value) && value >= minIncl && value < maxExcl
 	}
 
 	/**

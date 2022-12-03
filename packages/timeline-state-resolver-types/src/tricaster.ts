@@ -28,13 +28,26 @@ export interface MappingTriCasterAudioChannel extends MappingTriCaster {
 	index: number | string
 }
 
+export interface MappingTriCasterMixOutput extends MappingTriCaster {
+	device: DeviceType.TRICASTER
+	mappingType: MappingTriCasterType.MixOutput
+	index: number
+}
+
 export enum MappingTriCasterType {
 	MixEffect = 0,
 	DownStreamKeyer = 1,
 	AudioChannel = 2,
 	Recording = 3,
 	Streaming = 4,
+	MixOutput = 5,
 }
+
+export type MappingTriCasterAny =
+	| MappingTriCasterMixEffect
+	| MappingTriCasterDownStreamKeyer
+	| MappingTriCasterAudioChannel
+	| MappingTriCasterMixOutput
 
 export interface TriCasterOptions {
 	host: string
@@ -45,9 +58,14 @@ export enum TimelineContentTypeTriCaster {
 	ME = 'ME',
 	DSK = 'DSK',
 	AUDIO_CHANNEL = 'AUDIO_CHANNEL',
+	MIX_OUTPUT = 'MIX_OUTPUT',
 }
 
-export type TimelineObjTriCasterAny = TimelineObjTriCasterME
+export type TimelineObjTriCasterAny =
+	| TimelineObjTriCasterME
+	| TimelineObjTriCasterDSK
+	| TimelineObjTriCasterAudioChannel
+	| TimelineObjTriCasterMixOutput
 
 export interface TimelineObjTriCasterBase extends TSRTimelineObjBase {
 	content: {
@@ -61,9 +79,10 @@ export interface TimelineObjTriCasterME extends TimelineObjTriCasterBase {
 		deviceType: DeviceType.TRICASTER
 		type: TimelineContentTypeTriCaster.ME
 
-		programInput?: number
+		programInput?: number | string
 		keyers?: (TriCasterKeyer | undefined)[]
-	} & XOR<{ previewInput?: number }, { transition?: TriCasterTransition }> &
+		layers?: (TriCasterLayer | undefined)[]
+	} & XOR<{ previewInput?: number | string }, { transition?: TriCasterTransition }> &
 		TimelineDatastoreReferencesContent
 }
 
@@ -71,6 +90,9 @@ export function isTimelineObjTriCasterME(timelineObject: TSRTimelineObjBase): ti
 	return (timelineObject as TimelineObjTriCasterBase).content?.type === TimelineContentTypeTriCaster.ME
 }
 
+/**
+ * Convenience object for the keyers in the Main M/E
+ */
 export interface TimelineObjTriCasterDSK extends TimelineObjTriCasterBase {
 	content: {
 		deviceType: DeviceType.TRICASTER
@@ -102,19 +124,63 @@ export function isTimelineObjTriCasterAudioChannel(
 	return (timelineObject as TimelineObjTriCasterBase).content?.type === TimelineContentTypeTriCaster.AUDIO_CHANNEL
 }
 
+export interface TimelineObjTriCasterMixOutput extends TimelineObjTriCasterBase {
+	content: {
+		deviceType: DeviceType.TRICASTER
+		type: TimelineContentTypeTriCaster.MIX_OUTPUT
+
+		/**
+		 * Any of the named Inputs, Media Players and Buffers ('INPUT<n>', 'DDR<n>', 'BFR<n>') e.g. 'INPUT12' or
+		 * any of the MEs ('V<n>') e.g. 'V1' or
+		 * or 'Program', 'Preview', 'program_clean', 'me_program', 'me_preview'
+		 */
+		source: string
+	} & TimelineDatastoreReferencesContent
+}
+
+export function isTimelineObjTriCasterMixOutput(
+	timelineObject: TSRTimelineObjBase
+): timelineObject is TimelineObjTriCasterMixOutput {
+	return (timelineObject as TimelineObjTriCasterBase).content?.type === TimelineContentTypeTriCaster.MIX_OUTPUT
+}
+
 export type TriCasterTransitionEffect = 'cut' | 'fade' | number
 
 export interface TriCasterTransition {
 	effect: TriCasterTransitionEffect
-	/** Duration in milliseconds, applicable to effects other than 'cut' */
+	/** Duration in seconds, applicable to effects other than 'cut' */
 	duration: number
 }
 
 export interface TriCasterLayer {
-	input?: number
+	input?: number | string
 	positioningEnabled?: boolean
-	position?: { x: number; y: number }
-	scale?: { x: number; y: number }
+	position?: {
+		/**
+		 * Horizontal translation
+		 * Default: 0.0 (center)
+		 * Frame width: 3.555... (-3.555 is fully off-screen to the left at scale=1.0)
+		 */
+		x: number
+		/**
+		 * Vertical translation
+		 * Default: 0.0 (center)
+		 * Frame height: 2.0 (-2.0 is fully off-screen to the top at scale=1.0)
+		 */
+		y: number
+	}
+	scale?: {
+		/**
+		 * Horizontal scale factor
+		 * Default: 1.0; Range: 0.0 - 5.0
+		 */
+		x: number
+		/**
+		 * Vertical scale factor
+		 * Default: 1.0; Range: 0.0 - 5.0
+		 */
+		y: number
+	}
 	rotation?: { x: number; y: number; z: number }
 	cropEnabled?: boolean
 	crop?: { left: number; right: number; up: number; down: number }

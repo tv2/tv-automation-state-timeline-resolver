@@ -38,8 +38,8 @@ type CommandGenerator<C> = {
 // }
 
 export interface MixEffect {
-	programInput: number
-	previewInput: number
+	programInput: number | string
+	previewInput: number | string
 	transition: TriCasterTransition
 	layers: Layer[]
 	keyers: Keyer[]
@@ -50,7 +50,7 @@ export interface AudioChannel {
 	isMuted: boolean
 }
 export interface Input {
-	videoSource?: string
+	videoSource: string | undefined
 	videoActAsAlpha: boolean
 }
 export class StateDiffer {
@@ -82,6 +82,7 @@ export class StateDiffer {
 		this.timelineStateConverter = new TimelineStateConverter(
 			() => this.getDefaultState(),
 			this.inputCount,
+			this.outputCount,
 			this.audioChannelNameToIndexMap
 		)
 		this.externalStateConverter = new ExternalStateConverter(
@@ -100,11 +101,11 @@ export class StateDiffer {
 				layers: this.layerNames.map(() => this.getDefaultLayerState()),
 				keyers: this.dskNames.map(() => this.getDefaultKeyerState()),
 			})),
-			inputs: makeArray(this.inputCount, { videoActAsAlpha: false }),
+			inputs: makeArray(this.inputCount, { videoSource: undefined, videoActAsAlpha: false }),
 			audioChannels: this.audioChannelNames.map(() => ({ volume: 0, isMuted: true })),
 			isRecording: false,
 			isStreaming: false,
-			outputs: makeArray(this.outputCount, () => ''),
+			outputs: makeArray(this.outputCount, () => 'Program'),
 		}
 	}
 
@@ -161,16 +162,25 @@ export class StateDiffer {
 	}
 
 	private transitionCommandGenerator: CommandGenerator<TriCasterTransition> = {
-		effect: ({ value, target }) => {
+		effect: ({ value, target, state }) => {
+			const commands: CommandAny[] = []
+			if (value === 'cut') {
+				return commands
+			}
 			if (typeof value === 'number') {
-				return [{ name: CommandName.SELECT_INDEX, target, value }]
+				commands.push({ name: CommandName.SELECT_INDEX, target, value })
+			} else if (value === 'fade') {
+				commands.push({ name: CommandName.SELECT_FADE, target })
 			}
-			if (value === 'fade') {
-				return [{ name: CommandName.SELECT_FADE, target }]
-			}
-			return []
+			commands.push({ name: CommandName.SPEED, target, value: state.duration })
+			return commands
 		},
-		duration: ({ value, target }) => [{ name: CommandName.SPEED, target, value }],
+		duration: ({ value, target, state, oldState }) => {
+			if (state.effect !== oldState.effect) {
+				return []
+			}
+			return [{ name: CommandName.SPEED, target, value }]
+		},
 	}
 
 	private layerCommandGenerator: CommandGenerator<Layer> = {
@@ -195,12 +205,21 @@ export class StateDiffer {
 			down: ({ value, target }) => [{ name: CommandName.CROP_DOWN_VALUE, value, target }],
 		},
 		cropEnabled: ({ value, target }) => [{ name: CommandName.CROP_ENABLE, value, target }],
-		input: ({ value, target }) => [{ name: CommandName.SELECT, value, target }],
+		input: ({ value, target }) => [
+			typeof value === 'string'
+				? { name: CommandName.ROW_NAMED_INPUT, value, target }
+				: { name: CommandName.ROW, value, target },
+		],
 	}
 
 	private keyerCommandGenerator: CommandGenerator<Keyer> = {
 		transition: this.transitionCommandGenerator,
 		...this.layerCommandGenerator,
+		input: ({ value, target }) => [
+			typeof value === 'string'
+				? { name: CommandName.SELECT_NAMED_INPUT, value, target }
+				: { name: CommandName.SELECT, value, target },
+		],
 		onAir: ({ state, target }): CommandAny[] => {
 			if (state.transition.effect === 'cut') {
 				return [{ name: CommandName.TAKE, target }]
@@ -220,59 +239,12 @@ export class StateDiffer {
 		}
 	}
 
-	// private static getEffectCommands: ComandGeneratorFun<TriCasterTransitionEffect, TriCasterTransition> =
-
-	// private getKeyerCommandGenerator(target: string): CommandGenerator<Keyer> {
-	// 	return {
-	// 		transition: {
-	// 			effect: this.getEffectGenerator(target),
-	// 			duration: (value) => [{ name: CommandName.SPEED, target, value }],
-	// 		},
-	// 		position: {
-	// 			x: (value) => [{ name: CommandName.POSITION_X, value, target }],
-	// 			y: (value) => [{ name: CommandName.POSITION_Y, value, target }],
-	// 		},
-	// 		scale: {
-	// 			x: (value) => [{ name: CommandName.SCALE_X, value, target }],
-	// 			y: (value) => [{ name: CommandName.SCALE_Y, value, target }],
-	// 		},
-	// 		rotation: {
-	// 			x: (value) => [{ name: CommandName.ROTATION_X, value, target }],
-	// 			y: (value) => [{ name: CommandName.ROTATION_Y, value, target }],
-	// 			z: (value) => [{ name: CommandName.ROTATION_Z, value, target }],
-	// 		},
-	// 		positioningEnabled: (value) => [{ name: CommandName.POSITIONING_ENABLE, value, target }],
-	// 		crop: {
-	// 			left: (value) => [{ name: CommandName.CROP_LEFT_VALUE, value, target }],
-	// 			right: (value) => [{ name: CommandName.CROP_RIGHT_VALUE, value, target }],
-	// 			up: (value) => [{ name: CommandName.CROP_UP_VALUE, value, target }],
-	// 			down: (value) => [{ name: CommandName.CROP_DOWN_VALUE, value, target }],
-	// 		},
-	// 		cropEnabled: (value) => [{ name: CommandName.CROP_ENABLE, value, target }],
-	// 		input: (value) => [{ name: CommandName.SELECT, value, target }],
-	// 		onAir: (_new, _old, newKeyer: Keyer): CommandAny[] => {
-	// 			if (newKeyer.transition.effect === 'cut') {
-	// 				return [{ name: CommandName.TAKE, target }]
-	// 			}
-	// 			return [{ name: CommandName.AUTO, target }]
-	// 		},
-	// 	}
-	// }
-
-	// private getEffectGenerator(target: string): ComandGeneratorFun<TriCasterTransitionEffect, TriCasterTransition> {
-	// 	return ({ value, target }) => {
-	// 		if (typeof value === 'number') {
-	// 			return [{ name: CommandName.SELECT_INDEX, target, value }]
-	// 		}
-	// 		if (value === 'fade') {
-	// 			return [{ name: CommandName.SELECT_FADE, target }]
-	// 		}
-	// 		return []
-	// 	}
-	// }
-
-	private programInputCommandGenerator: ComandGeneratorFun<number, MixEffect> = ({ value, state, target }) => {
-		const commands: CommandAny[] = [{ name: CommandName.A_ROW, value, target }]
+	private programInputCommandGenerator: ComandGeneratorFun<number | string, MixEffect> = ({ value, state, target }) => {
+		const commands: CommandAny[] = [
+			typeof value === 'string'
+				? { name: CommandName.ROW_NAMED_INPUT, value, target: target + '_b' }
+				: { name: CommandName.ROW, value, target: target + '_b' },
+		]
 		if (state.transition.effect === 'cut') {
 			commands.push({ name: CommandName.TAKE, target })
 		} else {
@@ -300,7 +272,7 @@ export class StateDiffer {
 			const value = state[key]
 			const oldValue = oldState[key]
 			if (gen instanceof Function) {
-				if (value === oldValue || typeof value === 'undefined') {
+				if ((typeof value !== 'object' && value === oldValue) || typeof value === 'undefined') {
 					continue
 				}
 				const generatedCommands = gen({
