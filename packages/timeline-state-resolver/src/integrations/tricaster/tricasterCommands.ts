@@ -106,7 +106,7 @@ export interface SetOutputConfigVideoSource extends Command<CommandName.SET_OUTP
 	source_id: string
 }
 
-export type CommandAny =
+export type TriCasterCommand =
 	| RowCommand
 	| RowNamedInputCommand
 	| TakeCommand
@@ -140,12 +140,12 @@ export type CommandAny =
 
 export type TriCasterCommandContext = any
 export interface TriCasterCommandWithContext {
-	command: CommandAny
+	command: TriCasterCommand
 	context: TriCasterCommandContext
 	timelineObjId: string
 }
 
-export function commandToWsMessage(command: CommandAny): string {
+export function commandToWsMessage(command: TriCasterCommand): string {
 	const name = `name=${'target' in command ? command.target : ''}${command.name}`
 	const values = Object.keys(command)
 		.filter((key) => key !== 'target' && key !== 'name')

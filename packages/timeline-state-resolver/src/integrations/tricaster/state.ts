@@ -1,12 +1,12 @@
 import { TriCasterLayer, TriCasterKeyer, TriCasterTransition } from 'timeline-state-resolver-types'
-import { CommandAny, CommandName, TriCasterCommandWithContext } from './commands'
+import { TriCasterCommand, CommandName, TriCasterCommandWithContext } from './tricasterCommands'
 import { ExternalStateConverter } from './externalStateConverter'
 import { TimelineStateConverter } from './timelineStateConverter'
 
 const BLACK_INPUT = 69 // @todo: get the right number, this probably varies by models
 // const OUTPUT_COUNT = 8 // @todo: use a variable based on model/session
 
-export interface State {
+export interface TriCasterState {
 	mixEffects: MixEffect[]
 	audioChannels: AudioChannel[]
 	inputs: Input[]
@@ -24,11 +24,11 @@ type ComandGeneratorFun<T, K> = (args: {
 	state: K
 	oldState: K
 	target: string
-}) => CommandAny[]
+}) => TriCasterCommand[]
 type WithTarget<T> = T & { $target?: string }
 type CommandGenerator<C> = {
 	[P in keyof C]: C[P] extends object
-		? CommandGenerator<C[P]> | WithTarget<CommandGenerator<C[P]>> | ComandGeneratorFun<C[P], C>
+		? CommandGenerator<C[P]> | WithTarget<CommandGenerator<C[P]>>
 		: ComandGeneratorFun<C[P], C> | undefined
 }
 
@@ -54,7 +54,7 @@ export interface Input {
 	videoActAsAlpha: boolean
 }
 export class StateDiffer {
-	private readonly commandGenerator: CommandGenerator<State>
+	private readonly commandGenerator: CommandGenerator<TriCasterState>
 	private readonly meNames: string[]
 	private readonly dskNames: string[]
 	private readonly layerNames: string[] = ['a', 'b', 'c', 'd']
@@ -64,7 +64,7 @@ export class StateDiffer {
 	private readonly audioChannelNameToIndexMap: Map<string, number>
 
 	constructor(
-		private readonly inputCount: number,
+		private readonly inputCount: number, // @todo: all these parameters should probably be gathered into a single object
 		meCount: number,
 		dskCount: number,
 		ddrCount: number,
@@ -92,7 +92,7 @@ export class StateDiffer {
 		)
 	}
 
-	getDefaultState(): State {
+	getDefaultState(): TriCasterState {
 		return {
 			mixEffects: this.meNames.map((_meName) => ({
 				programInput: BLACK_INPUT,
@@ -129,13 +129,13 @@ export class StateDiffer {
 		}
 	}
 
-	getCommandsToAchieveState(newState: State, oldState: State): TriCasterCommandWithContext[] {
+	getCommandsToAchieveState(newState: TriCasterState, oldState: TriCasterState): TriCasterCommandWithContext[] {
 		const commands: TriCasterCommandWithContext[] = []
 		this.recursivelyGenerateCommands(commands, this.commandGenerator, newState, oldState, '')
 		return commands
 	}
 
-	private getGenerator(): CommandGenerator<State> {
+	private getGenerator(): CommandGenerator<TriCasterState> {
 		return {
 			mixEffects: this.meNames.map((meName) => this.getMixEffectGenerator(meName)),
 			inputs: makeArray(this.inputCount, (i) => ({ $target: `input${i + 1}`, ...this.inputCommandGenerator })),
@@ -163,7 +163,7 @@ export class StateDiffer {
 
 	private transitionCommandGenerator: CommandGenerator<TriCasterTransition> = {
 		effect: ({ value, target, state }) => {
-			const commands: CommandAny[] = []
+			const commands: TriCasterCommand[] = []
 			if (value === 'cut') {
 				return commands
 			}
@@ -220,7 +220,7 @@ export class StateDiffer {
 				? { name: CommandName.SELECT_NAMED_INPUT, value, target }
 				: { name: CommandName.SELECT, value, target },
 		],
-		onAir: ({ state, target }): CommandAny[] => {
+		onAir: ({ state, target }): TriCasterCommand[] => {
 			if (state.transition.effect === 'cut') {
 				return [{ name: CommandName.TAKE, target }]
 			}
@@ -240,7 +240,7 @@ export class StateDiffer {
 	}
 
 	private programInputCommandGenerator: ComandGeneratorFun<number | string, MixEffect> = ({ value, state, target }) => {
-		const commands: CommandAny[] = [
+		const commands: TriCasterCommand[] = [
 			typeof value === 'string'
 				? { name: CommandName.ROW_NAMED_INPUT, value, target: target + '_b' }
 				: { name: CommandName.ROW, value, target: target + '_b' },
@@ -253,6 +253,7 @@ export class StateDiffer {
 		return commands
 	}
 
+	// @todo: refactor it a little
 	private recursivelyGenerateCommands<Y>(
 		commandsOut: TriCasterCommandWithContext[],
 		generator: WithTarget<CommandGenerator<Y>>,

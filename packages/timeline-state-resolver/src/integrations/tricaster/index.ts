@@ -4,9 +4,9 @@ import { DoOnTime, SendMode } from '../../devices/doOnTime'
 
 import { TimelineState } from 'superfly-timeline'
 import { DeviceType, Mappings, TriCasterOptions, DeviceOptionsTriCaster } from 'timeline-state-resolver-types'
-import { State, StateDiffer } from './state'
+import { TriCasterState, StateDiffer } from './state'
 import * as WebSocket from 'ws'
-import { commandToWsMessage, TriCasterCommandContext, TriCasterCommandWithContext } from './commands'
+import { commandToWsMessage, TriCasterCommandContext, TriCasterCommandWithContext } from './tricasterCommands'
 import got from 'got'
 
 const RECONNECT_TIMEOUT = 1000
@@ -25,7 +25,7 @@ export type CommandReceiver = (
 /**
  * This is a VMixDevice, it sends commands when it feels like it
  */
-export class TriCasterDevice extends DeviceWithState<State, DeviceOptionsTriCasterInternal> {
+export class TriCasterDevice extends DeviceWithState<TriCasterState, DeviceOptionsTriCasterInternal> {
 	private _doOnTime: DoOnTime
 
 	private _commandReceiver: CommandReceiver
@@ -66,9 +66,10 @@ export class TriCasterDevice extends DeviceWithState<State, DeviceOptionsTriCast
 	}
 
 	private _connectSocket(): void {
+		// @todo extract the connection (and command receiver) into a class
 		this._socket = new WebSocket(`ws://${this._host}:${this._port}/v1/shortcut_notifications`)
 		this._socket.on('open', () => {
-			this._stateDiffer = new StateDiffer(8, 8, 4, 4, 8) // @todo
+			this._stateDiffer = new StateDiffer(8, 8, 4, 4, 8) // @todo: these values should be pulled from the machine or a constant
 			this._setConnected(true)
 			this._initialized = true
 			this._setInitialState()

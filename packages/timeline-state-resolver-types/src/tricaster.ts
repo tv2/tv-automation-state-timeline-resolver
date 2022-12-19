@@ -4,31 +4,31 @@ import { DeviceType, TimelineDatastoreReferencesContent, TSRTimelineObjBase } fr
 
 type Without<T, U> = { [P in Exclude<keyof T, keyof U>]?: never }
 type XOR<T, U> = T | U extends object ? (Without<T, U> & U) | (Without<U, T> & T) : T | U
-export interface MappingTriCaster extends Mapping {
+export interface MappingTriCasterBase extends Mapping {
 	device: DeviceType.TRICASTER
 	mappingType: MappingTriCasterType
 	index?: number | string
 }
 
-export interface MappingTriCasterMixEffect extends MappingTriCaster {
+export interface MappingTriCasterMixEffect extends MappingTriCasterBase {
 	device: DeviceType.TRICASTER
 	mappingType: MappingTriCasterType.MixEffect
-	index: number
+	index: number // @todo: describe it better, prhaps a different name or at least a comment (see if Core can )
 }
 
-export interface MappingTriCasterDownStreamKeyer extends MappingTriCaster {
+export interface MappingTriCasterDownStreamKeyer extends MappingTriCasterBase {
 	device: DeviceType.TRICASTER
 	mappingType: MappingTriCasterType.DownStreamKeyer
-	index: number
+	index: number // @todo as above
 }
 
-export interface MappingTriCasterAudioChannel extends MappingTriCaster {
+export interface MappingTriCasterAudioChannel extends MappingTriCasterBase {
 	device: DeviceType.TRICASTER
 	mappingType: MappingTriCasterType.AudioChannel
-	index: number | string
+	index: string
 }
 
-export interface MappingTriCasterMixOutput extends MappingTriCaster {
+export interface MappingTriCasterMixOutput extends MappingTriCasterBase {
 	device: DeviceType.TRICASTER
 	mappingType: MappingTriCasterType.MixOutput
 	index: number
@@ -43,7 +43,7 @@ export enum MappingTriCasterType {
 	MixOutput = 5,
 }
 
-export type MappingTriCasterAny =
+export type MappingTriCaster =
 	| MappingTriCasterMixEffect
 	| MappingTriCasterDownStreamKeyer
 	| MappingTriCasterAudioChannel
@@ -79,10 +79,10 @@ export interface TimelineObjTriCasterME extends TimelineObjTriCasterBase {
 		deviceType: DeviceType.TRICASTER
 		type: TimelineContentTypeTriCaster.ME
 
-		programInput?: number | string
-		keyers?: (TriCasterKeyer | undefined)[]
+		programInput?: string
+		keyers?: (TriCasterKeyer | undefined)[] // @todo: array should only contain what we want, perhaps add an `id` property; or could this be a Record?
 		layers?: (TriCasterLayer | undefined)[]
-	} & XOR<{ previewInput?: number | string }, { transition?: TriCasterTransition }> &
+	} & XOR<{ previewInput?: string }, { transition?: TriCasterTransition }> &
 		TimelineDatastoreReferencesContent
 }
 
@@ -134,7 +134,7 @@ export interface TimelineObjTriCasterMixOutput extends TimelineObjTriCasterBase 
 		 * any of the MEs ('V<n>') e.g. 'V1' or
 		 * or 'Program', 'Preview', 'program_clean', 'me_program', 'me_preview'
 		 */
-		source: string
+		source: string // @todo: consider template literal types? `DDR${number}`
 	} & TimelineDatastoreReferencesContent
 }
 
@@ -152,6 +152,7 @@ export interface TriCasterTransition {
 	duration: number
 }
 
+// @note: leave those in the API value ranges, not the UI ranges as seen in the Tricaster UI
 export interface TriCasterLayer {
 	input?: number | string
 	positioningEnabled?: boolean

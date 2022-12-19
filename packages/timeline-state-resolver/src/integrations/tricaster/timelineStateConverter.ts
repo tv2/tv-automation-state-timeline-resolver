@@ -14,19 +14,19 @@ import {
 	MappingTriCasterMixOutput,
 } from 'timeline-state-resolver-types'
 import * as _ from 'underscore'
-import { State } from './state'
+import { TriCasterState } from './state'
 
 type DeepPartial<T> = { [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P] }
 
 export class TimelineStateConverter {
 	constructor(
-		private readonly getDefaultState: () => State,
+		private readonly getDefaultState: () => TriCasterState,
 		private readonly inputCount: number,
 		private readonly outputCount: number,
 		private readonly audioChannelNameToIndexMap: Map<string, number>
 	) {}
 
-	getStateFromTimelineState(timelineState: TimelineState, newMappings: Mappings, deviceId: string): State {
+	getStateFromTimelineState(timelineState: TimelineState, newMappings: Mappings, deviceId: string): TriCasterState {
 		const resultState = this.getDefaultState()
 		const sortedLayers = this.sortLayers(timelineState)
 
@@ -61,7 +61,11 @@ export class TimelineStateConverter {
 		})).sort((a, b) => a.layerName.localeCompare(b.layerName))
 	}
 
-	private applyMixEffectState(resultState: State, tlObject: TSRTimelineObjBase, mapping: MappingTriCasterMixEffect) {
+	private applyMixEffectState(
+		resultState: TriCasterState,
+		tlObject: TSRTimelineObjBase,
+		mapping: MappingTriCasterMixEffect
+	) {
 		const mixEffects = resultState.mixEffects
 		if (!isTimelineObjTriCasterME(tlObject) || !this.isValidInt(mapping.index, 0, mixEffects.length)) {
 			return
@@ -69,7 +73,11 @@ export class TimelineStateConverter {
 		this.deepApply(mixEffects[mapping.index], tlObject.content)
 	}
 
-	private applyDskState(resultState: State, tlObject: TSRTimelineObjBase, mapping: MappingTriCasterDownStreamKeyer) {
+	private applyDskState(
+		resultState: TriCasterState,
+		tlObject: TSRTimelineObjBase,
+		mapping: MappingTriCasterDownStreamKeyer
+	) {
 		const mainKeyers = resultState.mixEffects[0].keyers
 		if (!isTimelineObjTriCasterDSK(tlObject) || !this.isValidInt(mapping.index, 0, mainKeyers.length)) {
 			return
@@ -78,7 +86,7 @@ export class TimelineStateConverter {
 	}
 
 	private applyAudioChannelState(
-		resultState: State,
+		resultState: TriCasterState,
 		tlObject: TSRTimelineObjBase,
 		mapping: MappingTriCasterAudioChannel
 	) {
@@ -97,7 +105,11 @@ export class TimelineStateConverter {
 		}
 	}
 
-	private applyMixOutputState(resultState: State, tlObject: TSRTimelineObjBase, mapping: MappingTriCasterMixOutput) {
+	private applyMixOutputState(
+		resultState: TriCasterState,
+		tlObject: TSRTimelineObjBase,
+		mapping: MappingTriCasterMixOutput
+	) {
 		if (!isTimelineObjTriCasterMixOutput(tlObject) || !this.isValidInt(mapping.index, 0, this.outputCount)) {
 			return
 		}
