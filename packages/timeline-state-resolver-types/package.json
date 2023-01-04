@@ -27,11 +27,10 @@
 		"lint": "yarn lint:raw .",
 		"lint-fix": "yarn lint --fix",
 		"license-validate": "yarn sofie-licensecheck",
-		"precommit": "lint-staged",
 		"tv2-rename": "echo \"`jq '.name = \"@tv2media/\" + .name' package.json --tab`\" > package.json"
 	},
 	"engines": {
-		"node": "^14.18 || ^16.14"
+		"node": "^14.18 || ^16.14 || 18"
 	},
 	"files": [
 		"/dist",
@@ -54,7 +53,7 @@
 		"production"
 	],
 	"dependencies": {
-		"tslib": "^2.3.1"
+		"tslib": "^2.4.1"
 	},
 	"publishConfig": {
 		"access": "public"

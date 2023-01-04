@@ -228,6 +228,15 @@ export class VizMSEManager extends EventEmitter {
 				.catch((error) => this.emit('error', error))
 		}
 	}
+
+	public async purgeRundown(clearAll: boolean): Promise<void> {
+		this.emit('debug', `VizMSE: purging rundown (manually)`)
+
+		const rundown = await this._getRundown()
+		const elementsToKeep = clearAll ? undefined : this.getElementsToKeep()
+		await rundown.purgeExternalElements(elementsToKeep)
+	}
+
 	/**
 	 * Activate the rundown.
 	 * This causes the MSE rundown to activate, which must be done before using it.
@@ -243,10 +252,7 @@ export class VizMSEManager extends EventEmitter {
 			// clear any existing elements from the existing rundown
 			try {
 				this.emit('debug', `VizMSE: purging rundown`)
-				const elementsToKeep = this._expectedPlayoutItems
-					.filter((item) => !!item.baseline)
-					.map((playoutItem) => this.getPlayoutItemContent(playoutItem))
-					.filter(isVizMSEPlayoutItemContentExternalInstance)
+				const elementsToKeep = this.getElementsToKeep()
 
 				await rundown.purgeExternalElements(elementsToKeep)
 			} catch (error) {
@@ -1242,5 +1248,12 @@ export class VizMSEManager extends EventEmitter {
 				resolve(false)
 			}, delay || 0)
 		})
+	}
+
+	private getElementsToKeep(): VizMSEPlayoutItemContentExternalInstance[] {
+		return this._expectedPlayoutItems
+			.filter((item) => !!item.baseline)
+			.map((playoutItem) => this.getPlayoutItemContent(playoutItem))
+			.filter(isVizMSEPlayoutItemContentExternalInstance)
 	}
 }
