@@ -1,7 +1,7 @@
 import { TimelineState } from 'superfly-timeline'
 import {
 	Mappings,
-	MappingTriCasterAny,
+	MappingTriCaster,
 	MappingTriCasterType,
 	TSRTimelineObjBase,
 	isTimelineObjTriCasterAudioChannel,
@@ -31,7 +31,7 @@ export class TimelineStateConverter {
 		const sortedLayers = this.sortLayers(timelineState)
 
 		_.each(sortedLayers, ({ tlObject, layerName }) => {
-			const mapping = newMappings[layerName] as MappingTriCasterAny | undefined
+			const mapping = newMappings[layerName] as MappingTriCaster | undefined
 			if (!mapping || mapping.deviceId !== deviceId) {
 				return
 			}

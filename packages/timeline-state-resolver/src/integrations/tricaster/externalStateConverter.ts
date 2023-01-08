@@ -1,4 +1,4 @@
-import { xml2json } from 'xml-js'
+import { ElementCompact, xml2js } from 'xml-js'
 import { TriCasterState } from './state'
 
 export class ExternalStateConverter {
@@ -10,10 +10,9 @@ export class ExternalStateConverter {
 
 	getStateFromShortcutState(shortcutStateXml: string): TriCasterState {
 		const resultState = this.getDefaultState()
-		const jsonString = xml2json(shortcutStateXml, { compact: true })
-		const jsonObj = JSON.parse(jsonString)
+		const parsedState = xml2js(shortcutStateXml, { compact: true }) as ElementCompact
 		console.log(this._inputCount, this._audioChannelNameToIndexMap)
-		console.log(jsonObj.shortcut_states.shortcut_state.length)
+		console.log(parsedState.shortcut_states.shortcut_state.length)
 		//resultState.isRecording = jsonObj
 		return resultState
 	}

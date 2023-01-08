@@ -4,12 +4,10 @@ import { DoOnTime, SendMode } from '../../devices/doOnTime'
 
 import { TimelineState } from 'superfly-timeline'
 import { DeviceType, Mappings, TriCasterOptions, DeviceOptionsTriCaster } from 'timeline-state-resolver-types'
-import { TriCasterState, StateDiffer } from './state'
-import * as WebSocket from 'ws'
-import { commandToWsMessage, TriCasterCommandContext, TriCasterCommandWithContext } from './tricasterCommands'
-import got from 'got'
+import { TriCasterState, TriCasterStateDiffer } from './state'
+import { commandToWsMessage, TriCasterCommandContext, TriCasterCommandWithContext } from './triCasterCommands'
+import { TriCasterConnection } from './triCasterConnection'
 
-const RECONNECT_TIMEOUT = 1000
 const DEFAULT_PORT = 5951
 
 export interface DeviceOptionsTriCasterInternal extends DeviceOptionsTriCaster {
@@ -28,26 +26,20 @@ export type CommandReceiver = (
 export class TriCasterDevice extends DeviceWithState<TriCasterState, DeviceOptionsTriCasterInternal> {
 	private _doOnTime: DoOnTime
 
-	private _commandReceiver: CommandReceiver
-	private _host: string
-	private _port: number
-	private _socket: WebSocket
 	private _resolveInitPromise: (value: boolean) => void
 	private _connected = false
 	private _initialized = false
-	private _stateDiffer?: StateDiffer
+	private _connection?: TriCasterConnection
+	private _stateDiffer?: TriCasterStateDiffer
 
 	constructor(deviceId: string, deviceOptions: DeviceOptionsTriCasterInternal, getCurrentTime: () => Promise<number>) {
 		super(deviceId, deviceOptions, getCurrentTime)
-		if (deviceOptions.options) {
-			if (deviceOptions.commandReceiver) this._commandReceiver = deviceOptions.commandReceiver
-			else this._commandReceiver = this._defaultCommandReceiver.bind(this)
-		}
+
 		this._doOnTime = new DoOnTime(
 			() => {
 				return this.getCurrentTime()
 			},
-			SendMode.IN_ORDER,
+			SendMode.BURST,
 			this._deviceOptions
 		)
 		this._doOnTime.on('error', (e) => this.emit('error', 'TriCasterDevice.doOnTime', e))
@@ -56,51 +48,33 @@ export class TriCasterDevice extends DeviceWithState<TriCasterState, DeviceOptio
 		this._doOnTime.on('slowFulfilledCommand', (info) => this.emit('slowFulfilledCommand', info))
 	}
 	async init(options: TriCasterOptions): Promise<boolean> {
-		this._host = options.host
-		this._port = options.port ?? DEFAULT_PORT
 		const initPromise = new Promise<boolean>((resolve) => {
 			this._resolveInitPromise = resolve
 		})
-		this._connectSocket()
+		this._connection = new TriCasterConnection(options.host, options.port ?? DEFAULT_PORT)
+		this._connection.on('connected', (info, shortcutStateXml) => {
+			this._stateDiffer = new TriCasterStateDiffer(info)
+			this._setInitialState(shortcutStateXml)
+			this._setConnected(true)
+			this._resolveInitPromise(true)
+		})
+		this._connection.on('disconnected', (_reason) => {
+			this._setConnected(false)
+		})
+		this._connection.on('error', (reason) => {
+			this.emit('error', 'TriCasterConnection', reason)
+		})
+		this._connection.connect()
 		return initPromise
 	}
 
-	private _connectSocket(): void {
-		// @todo extract the connection (and command receiver) into a class
-		this._socket = new WebSocket(`ws://${this._host}:${this._port}/v1/shortcut_notifications`)
-		this._socket.on('open', () => {
-			this._stateDiffer = new StateDiffer(8, 8, 4, 4, 8) // @todo: these values should be pulled from the machine or a constant
-			this._setConnected(true)
-			this._initialized = true
-			this._setInitialState()
-				.then(() => this._resolveInitPromise(true))
-				.catch((error) => {
-					this.emit('error', `_getInitialState error: ${error.message}`, error)
-				})
-		})
-
-		this._socket.on('close', () => {
-			this._setConnected(false)
-			setTimeout(() => {
-				this._connectSocket()
-			}, RECONNECT_TIMEOUT)
-		})
-
-		this._socket.on('error', (err) => {
-			this.emit('error', `Socket error: ${err.message}`, err)
-			this._socket.close()
-		})
-	}
-
-	private async _setInitialState(): Promise<void> {
-		return got.get(`http://${this._host}:${this._port}/v1/dictionary?key=shortcut_states`).then((response) => {
-			if (!this._stateDiffer) {
-				throw new Error('State Differ not available')
-			}
-			const time = this.getCurrentTime()
-			const state = this._stateDiffer.externalStateConverter.getStateFromShortcutState(response.body)
-			this.setState(state, time)
-		})
+	private _setInitialState(shortcutStateXml: string): void {
+		if (!this._stateDiffer) {
+			throw new Error('State Differ not available')
+		}
+		const time = this.getCurrentTime()
+		const state = this._stateDiffer.externalStateConverter.getStateFromShortcutState(shortcutStateXml)
+		this.setState(state, time)
 	}
 
 	private _connectionChanged(): void {
@@ -157,7 +131,7 @@ export class TriCasterDevice extends DeviceWithState<TriCasterState, DeviceOptio
 
 	async terminate(): Promise<boolean> {
 		this._doOnTime.dispose()
-		this._socket.close()
+		this._connection?.close()
 		return Promise.resolve(true)
 	}
 
@@ -216,7 +190,7 @@ export class TriCasterDevice extends DeviceWithState<TriCasterState, DeviceOptio
 		})
 	}
 
-	private async _defaultCommandReceiver(
+	private async _commandReceiver(
 		_time: number,
 		cmd: TriCasterCommandWithContext,
 		context: TriCasterCommandContext,
@@ -229,6 +203,6 @@ export class TriCasterDevice extends DeviceWithState<TriCasterState, DeviceOptio
 		}
 		this.emitDebug(cwc)
 
-		return this._socket.send(commandToWsMessage(cmd.command))
+		return this._connection?.send(commandToWsMessage(cmd.command))
 	}
 }

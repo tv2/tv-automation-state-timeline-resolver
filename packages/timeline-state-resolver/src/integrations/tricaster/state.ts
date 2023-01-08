@@ -1,10 +1,10 @@
 import { TriCasterLayer, TriCasterKeyer, TriCasterTransition } from 'timeline-state-resolver-types'
-import { TriCasterCommand, CommandName, TriCasterCommandWithContext } from './tricasterCommands'
+import { TriCasterCommand, CommandName, TriCasterCommandWithContext } from './triCasterCommands'
 import { ExternalStateConverter } from './externalStateConverter'
 import { TimelineStateConverter } from './timelineStateConverter'
+import { TriCasterInfo } from './triCasterConnection'
 
 const BLACK_INPUT = 69 // @todo: get the right number, this probably varies by models
-// const OUTPUT_COUNT = 8 // @todo: use a variable based on model/session
 
 export interface TriCasterState {
 	mixEffects: MixEffect[]
@@ -18,19 +18,19 @@ export interface TriCasterState {
 type Layer = Required<TriCasterLayer>
 type Keyer = Required<TriCasterKeyer>
 
-type ComandGeneratorFun<T, K> = (args: {
+type CommandGeneratorFunction<T, K> = (args: {
 	value: NonNullable<T>
 	oldValue: T
 	state: K
 	oldState: K
 	target: string
 }) => TriCasterCommand[]
-type WithTarget<T> = T & { $target?: string }
-type CommandGenerator<C> = {
-	[P in keyof C]: C[P] extends object
-		? CommandGenerator<C[P]> | WithTarget<CommandGenerator<C[P]>>
-		: ComandGeneratorFun<C[P], C> | undefined
-}
+
+type CommandGeneratorValue<T, K> = CommandGenerator<T> | CommandGeneratorFunction<T, K> | null
+
+type CommandGenerator<T> = {
+	[K in keyof T]: CommandGeneratorValue<T[K], T>
+} & { $target?: string }
 
 // @todo: use this for making an object tracking timelineObjectIds, by adding a side effect to deepApply
 // type ValueSource<C> = {
@@ -53,28 +53,31 @@ export interface Input {
 	videoSource: string | undefined
 	videoActAsAlpha: boolean
 }
-export class StateDiffer {
-	private readonly commandGenerator: CommandGenerator<TriCasterState>
+
+type TriCasterStateDifferOptions = TriCasterInfo
+
+export class TriCasterStateDiffer {
+	private readonly inputCount: number
+	private readonly outputCount: number
 	private readonly meNames: string[]
 	private readonly dskNames: string[]
 	private readonly layerNames: string[] = ['a', 'b', 'c', 'd']
 	private readonly audioChannelNames: string[]
-	public readonly timelineStateConverter: TimelineStateConverter
-	public readonly externalStateConverter: ExternalStateConverter
 	private readonly audioChannelNameToIndexMap: Map<string, number>
 
-	constructor(
-		private readonly inputCount: number, // @todo: all these parameters should probably be gathered into a single object
-		meCount: number,
-		dskCount: number,
-		ddrCount: number,
-		private readonly outputCount: number
-	) {
-		this.meNames = ['main', ...makeArray(meCount, (i) => `v${i + 1}`)]
-		this.dskNames = makeArray(dskCount, (i) => `dsk${i + 1}`)
+	private readonly commandGenerator: CommandGenerator<TriCasterState>
 
-		const extraAudioChannelNames = [...makeArray(ddrCount, (i) => `ddr${i + 1}`), 'sound', 'master']
-		this.audioChannelNames = [...extraAudioChannelNames, ...makeArray(inputCount, (i) => `input${i + 1}`)]
+	public readonly timelineStateConverter: TimelineStateConverter
+	public readonly externalStateConverter: ExternalStateConverter
+
+	constructor(options: TriCasterStateDifferOptions) {
+		this.inputCount = options.inputCount
+		this.outputCount = options.outputCount
+		this.meNames = ['main', ...makeArray(options.meCount, (i) => `v${i + 1}`)]
+		this.dskNames = makeArray(options.dskCount, (i) => `dsk${i + 1}`)
+
+		const extraAudioChannelNames = [...makeArray(options.ddrCount, (i) => `ddr${i + 1}`), 'sound', 'master']
+		this.audioChannelNames = [...extraAudioChannelNames, ...makeArray(options.inputCount, (i) => `input${i + 1}`)]
 		this.audioChannelNameToIndexMap = new Map(this.audioChannelNames.map((name, index) => [name, index]))
 
 		this.commandGenerator = this.getGenerator()
@@ -228,10 +231,10 @@ export class StateDiffer {
 		},
 	}
 
-	private getMixEffectGenerator(meName: string): WithTarget<CommandGenerator<MixEffect>> {
+	private getMixEffectGenerator(meName: string): CommandGenerator<MixEffect> {
 		return {
 			$target: meName,
-			previewInput: undefined,
+			previewInput: null,
 			keyers: this.dskNames.map((name) => ({ $target: name, ...this.keyerCommandGenerator })),
 			layers: this.layerNames.map((name) => ({ $target: name, ...this.layerCommandGenerator })),
 			transition: this.transitionCommandGenerator,
@@ -239,7 +242,11 @@ export class StateDiffer {
 		}
 	}
 
-	private programInputCommandGenerator: ComandGeneratorFun<number | string, MixEffect> = ({ value, state, target }) => {
+	private programInputCommandGenerator: CommandGeneratorFunction<number | string, MixEffect> = ({
+		value,
+		state,
+		target,
+	}) => {
 		const commands: TriCasterCommand[] = [
 			typeof value === 'string'
 				? { name: CommandName.ROW_NAMED_INPUT, value, target: target + '_b' }
@@ -253,39 +260,32 @@ export class StateDiffer {
 		return commands
 	}
 
-	// @todo: refactor it a little
-	private recursivelyGenerateCommands<Y>(
+	private recursivelyGenerateCommands<T>(
 		commandsOut: TriCasterCommandWithContext[],
-		generator: WithTarget<CommandGenerator<Y>>,
-		state: Y,
-		oldState: Y,
+		rootCommandGenerator: CommandGenerator<T>,
+		state: T,
+		oldState: T,
 		target: string
 	) {
-		let key: keyof WithTarget<Y>
-		if (generator.$target) {
-			target += `${target ? '_' : ''}${generator.$target}`
+		if (rootCommandGenerator.$target) {
+			target += `${target ? '_' : ''}${rootCommandGenerator.$target}`
 		}
-		for (key in generator) {
+		let key: keyof CommandGenerator<T> // this is safe only when rootCommandGenerator is exactly of type CommandGenerator<Y>
+		for (key in rootCommandGenerator) {
 			if (key === '$target') {
 				continue
 			}
-			const gen = (generator as CommandGenerator<Y>)[key]
+			const gen = rootCommandGenerator[key] as CommandGeneratorValue<T[keyof T], T>
 			const value = state[key]
 			const oldValue = oldState[key]
 			if (gen instanceof Function) {
-				if ((typeof value !== 'object' && value === oldValue) || typeof value === 'undefined') {
+				if ((typeof value !== 'object' && value === oldValue) || value === null || value === undefined) {
 					continue
 				}
-				const generatedCommands = gen({
-					value: value as NonNullable<typeof value>,
-					oldValue,
-					state,
-					oldState,
-					target,
-				})
+				const generatedCommands = gen({ value, oldValue, state, oldState, target })
 				commandsOut.push(...generatedCommands.map((command) => ({ command, context: null, timelineObjId: '' }))) // @todo track timelineObjIds
-			} else if (gen !== undefined) {
-				this.recursivelyGenerateCommands(commandsOut, gen as CommandGenerator<typeof value>, value, oldValue, target)
+			} else if (gen) {
+				this.recursivelyGenerateCommands(commandsOut, gen, value, oldValue, target)
 			}
 		}
 	}
