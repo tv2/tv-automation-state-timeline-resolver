@@ -5,13 +5,12 @@ describe('TriCasterInfoParser', () => {
 		const parser = new TriCasterInfoParser()
 
 		const info = parser.parseSwitcherUpdate(MOCK_SWITCHER_UPDATE)
-		console.log(info)
 
 		expect(info).toEqual({
-			inputCount: 32,
-			dskCount: 5, // @todo: why are there 4 in the xml?!
-			meCount: 8,
-			ddrCount: 4,
+			inputCount: 30,
+			dskCount: 3,
+			meCount: 6,
+			ddrCount: 3,
 		})
 	})
 
@@ -20,7 +19,6 @@ describe('TriCasterInfoParser', () => {
 
 		const info = parser.parseProductInformation(MOCK_PRODUCT_INFORMATION)
 
-		console.log(info)
 		expect(info).toEqual({
 			productModel: 'TC2ELITE',
 			sessionName: 'TEST SESSION',
@@ -40,9 +38,6 @@ const MOCK_SWITCHER_UPDATE = `<switcher_update main_source="INPUT2" preview_sour
   </overlay>
   <overlay z_order_position="2" source="INPUT24" effect="" iso_label="INPUT 24" button_label="24">
     <tbar position="0" speed="0" current_speed="2" slow_speed="2" medium_speed="1" fast_speed="0.5" />
-  </overlay>
-  <overlay z_order_position="3" source="INPUT3" effect="" iso_label="INPUT 3" button_label="3">
-    <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
   </overlay>
   <overlay z_order_position="4" source="">
     <tbar position="0" speed="0" />
@@ -137,12 +132,6 @@ const MOCK_SWITCHER_UPDATE = `<switcher_update main_source="INPUT2" preview_sour
     <playback speed="0" position="0" />
   </physical_input>
   <physical_input physical_input_number="Input30" iso_label="INPUT 30" button_label="30">
-    <playback speed="0" position="0" />
-  </physical_input>
-  <physical_input physical_input_number="Input31" iso_label="INPUT 31" button_label="31">
-    <playback speed="0" position="0" />
-  </physical_input>
-  <physical_input physical_input_number="Input32" iso_label="INPUT 32" button_label="32">
     <playback speed="0" position="0" />
   </physical_input>
   <physical_input physical_input_number="BFR1" iso_label="BUFFER 1" button_label="BFR 1">
@@ -261,28 +250,6 @@ const MOCK_SWITCHER_UPDATE = `<switcher_update main_source="INPUT2" preview_sour
   <simulated_input simulated_input_number="DDR3" effect=" ">
     <source_a a="51" />
     <source_b b="52" />
-    <source_c c="v2" />
-    <source_d d="v3" />
-    <overlay z_order_position="0" source="DDR1" iso_label="DDR 1" button_label="DDR 1">
-      <tbar position="0" speed="0" />
-    </overlay>
-    <overlay z_order_position="1" source="DDR2" iso_label="DDR 2" button_label="DDR 2">
-      <tbar position="0" speed="0" />
-    </overlay>
-    <overlay z_order_position="2" source="BFR1" iso_label="BUFFER 1" button_label="BFR 1">
-      <tbar position="0" speed="0" />
-    </overlay>
-    <overlay z_order_position="3" source="BFR2" iso_label="BUFFER 2" button_label="BFR 2">
-      <tbar position="0" speed="0" />
-    </overlay>
-    <overlay z_order_position="4" source="">
-      <tbar position="0" speed="0" />
-    </overlay>
-    <tbar position="0" speed="0" />
-  </simulated_input>
-  <simulated_input simulated_input_number="DDR4" effect=" ">
-    <source_a a="53" />
-    <source_b b="54" />
     <source_c c="v2" />
     <source_d d="v3" />
     <overlay z_order_position="0" source="DDR1" iso_label="DDR 1" button_label="DDR 1">
@@ -424,50 +391,6 @@ const MOCK_SWITCHER_UPDATE = `<switcher_update main_source="INPUT2" preview_sour
       <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
     </overlay>
     <overlay z_order_position="2" source="BFR1" effect="" iso_label="BUFFER 1" button_label="BFR 1">
-      <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
-    </overlay>
-    <overlay z_order_position="3" source="BFR2" effect="" iso_label="BUFFER 2" button_label="BFR 2">
-      <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
-    </overlay>
-    <overlay z_order_position="4" source="">
-      <tbar position="0" speed="0" />
-    </overlay>
-    <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
-  </simulated_input>
-  <simulated_input simulated_input_number="V7" effect="">
-    <source_a a="v0" />
-    <source_b b="v1" />
-    <source_c c="v2" />
-    <source_d d="v3" />
-    <overlay z_order_position="0" source="DDR1" effect="" iso_label="DDR 1" button_label="DDR 1">
-      <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
-    </overlay>
-    <overlay z_order_position="1" source="DDR2" effect="" iso_label="DDR 2" button_label="DDR 2">
-      <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
-    </overlay>
-    <overlay z_order_position="2" source="BFR1" effect="" iso_label="BUFFER 1" button_label="BFR 1">
-      <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
-    </overlay>
-    <overlay z_order_position="3" source="BFR2" effect="" iso_label="BUFFER 2" button_label="BFR 2">
-      <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
-    </overlay>
-    <overlay z_order_position="4" source="">
-      <tbar position="0" speed="0" />
-    </overlay>
-    <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
-  </simulated_input>
-  <simulated_input simulated_input_number="V8" effect="">
-    <source_a a="v0" />
-    <source_b b="v1" />
-    <source_c c="v2" />
-    <source_d d="v3" />
-    <overlay z_order_position="0" source="DDR1" effect="" iso_label="DDR 1" button_label="DDR 1">
-      <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
-    </overlay>
-    <overlay z_order_position="1" source="DDR2" effect="" iso_label="DDR 2" button_label="DDR 2">
-      <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
-    </overlay>
-    <overlay z_order_position="2" source="INPUT1" effect="" iso_label="KAM 1" button_label="1">
       <tbar position="0" speed="0" current_speed="1" slow_speed="2" medium_speed="1" fast_speed="0.5" />
     </overlay>
     <overlay z_order_position="3" source="BFR2" effect="" iso_label="BUFFER 2" button_label="BFR 2">

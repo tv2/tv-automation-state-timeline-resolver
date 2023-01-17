@@ -2,18 +2,19 @@
  * Values in this enum correspond to actual shortcut names or their suffixes
  */
 export enum CommandName {
-	// preview / program or LiveSet layers
+	// preview / program or effect layers
 	ROW = '_row',
 	ROW_NAMED_INPUT = '_row_named_input',
+	TOGGLE_MIX_EFFECT_MODE = '_toggle_mix_effect_mode',
 	// transitions
 	TAKE = '_take',
 	AUTO = '_auto',
-	SELECT_FADE = '_select_fade',
 	SELECT_INDEX = '_select_index',
+	SET_MIX_EFFECT_BIN_INDEX = '_set_mix_effect_bin_index',
 	SPEED = '_speed',
 	DELEGATE = '_delegate',
-	// overlay
-	SELECT = '_select',
+	// dsk
+	VALUE = '_value',
 	SELECT_NAMED_INPUT = '_select_named_input',
 	// positioning
 	POSITION_X = '_position_x',
@@ -27,8 +28,8 @@ export enum CommandName {
 	CROP_RIGHT_VALUE = '_crop_right_value',
 	CROP_UP_VALUE = '_crop_up_value',
 	CROP_DOWN_VALUE = '_crop_down_value',
-	POSITIONING_ENABLE = '_positioning_enable',
-	CROP_ENABLE = '_crop_enable',
+	FEATHER_VALUE = '_feather_value',
+	POSITIONING_AND_CROP_ENABLE = '_positioning_and_crop_enable',
 	// input
 	VIDEO_SOURCE = '_video_source',
 	VIDEO_ACT_AS_ALPHA = '_video_act_as_alpha',
@@ -40,82 +41,79 @@ export enum CommandName {
 	// streaming
 	STREAMING_TOGGLE = 'streaming_toggle',
 	// outputs
-	SET_OUTPUT_CONFIG_VIDEO_SOURCE = 'set_output_config_video_source',
+	OUTPUT_SOURCE = '_output_source',
 }
 
 export type ValueTypes = boolean | number | string
 
-export interface Command<NameType extends CommandName> {
-	name: NameType
-}
+// interface Command<NameType extends CommandName> {
+// 	name: NameType
+// }
 
-export type CommandWithValue<NameType extends CommandName, ValueType extends ValueTypes> = {
+type CommandWithValue<NameType extends CommandName, ValueType extends ValueTypes> = {
 	name: NameType
 	value: ValueType
 }
 
-export type CommandWithTarget<NameType extends CommandName> = {
+type CommandWithTarget<NameType extends CommandName> = {
 	name: NameType
 	target: string
 }
 
-export type CommandWithValueAndTarget<NameType extends CommandName, ValueType extends ValueTypes> = {
+type CommandWithValueAndTarget<NameType extends CommandName, ValueType extends ValueTypes> = {
 	name: NameType
 	value: ValueType
 	target: string
 }
 
-export type RowCommand = CommandWithValueAndTarget<CommandName.ROW, number>
-export type RowNamedInputCommand = CommandWithValueAndTarget<CommandName.ROW_NAMED_INPUT, string>
+type RowCommand = CommandWithValueAndTarget<CommandName.ROW, number>
+type RowNamedInputCommand = CommandWithValueAndTarget<CommandName.ROW_NAMED_INPUT, string>
 
-export type TakeCommand = CommandWithTarget<CommandName.TAKE>
-export type AutoCommand = CommandWithTarget<CommandName.AUTO>
-export type SelectFadeCommand = CommandWithTarget<CommandName.SELECT_FADE>
-export type SelectIndexCommand = CommandWithValueAndTarget<CommandName.SELECT_INDEX, number>
-export type SpeedCommand = CommandWithValueAndTarget<CommandName.SPEED, number>
-export type DelegateCommand = CommandWithValueAndTarget<CommandName.DELEGATE, string>
+type TakeCommand = CommandWithTarget<CommandName.TAKE>
+type AutoCommand = CommandWithTarget<CommandName.AUTO>
+// type SelectFadeCommand = CommandWithTarget<CommandName.SELECT_FADE>
+type SelectIndexCommand = CommandWithValueAndTarget<CommandName.SELECT_INDEX, number>
+type SpeedCommand = CommandWithValueAndTarget<CommandName.SPEED, number>
+type DelegateCommand = CommandWithValueAndTarget<CommandName.DELEGATE, string>
 
-export type SelectCommand = CommandWithValueAndTarget<CommandName.SELECT, number>
-export type SelectNamedInputCommand = CommandWithValueAndTarget<CommandName.SELECT_NAMED_INPUT, string>
+type ValueCommand = CommandWithValueAndTarget<CommandName.VALUE, number>
+type SelectNamedInputCommand = CommandWithValueAndTarget<CommandName.SELECT_NAMED_INPUT, string>
 
-export type PositionXCommand = CommandWithValueAndTarget<CommandName.POSITION_X, number>
-export type PositionYCommand = CommandWithValueAndTarget<CommandName.POSITION_Y, number>
-export type ScaleXCommand = CommandWithValueAndTarget<CommandName.SCALE_X, number>
-export type ScaleYCommand = CommandWithValueAndTarget<CommandName.SCALE_Y, number>
-export type RotationXCommand = CommandWithValueAndTarget<CommandName.ROTATION_X, number>
-export type RotationYCommand = CommandWithValueAndTarget<CommandName.ROTATION_Y, number>
-export type RotationZCommand = CommandWithValueAndTarget<CommandName.ROTATION_Z, number>
-export type CropLeftCommand = CommandWithValueAndTarget<CommandName.CROP_LEFT_VALUE, number>
-export type CropRightCommand = CommandWithValueAndTarget<CommandName.CROP_RIGHT_VALUE, number>
-export type CropUpCommand = CommandWithValueAndTarget<CommandName.CROP_UP_VALUE, number>
-export type CropDownCommand = CommandWithValueAndTarget<CommandName.CROP_DOWN_VALUE, number>
-export type PositioningEnableCommand = CommandWithValueAndTarget<CommandName.POSITIONING_ENABLE, boolean>
-export type CropEnableCommand = CommandWithValueAndTarget<CommandName.CROP_ENABLE, boolean>
+type PositionXCommand = CommandWithValueAndTarget<CommandName.POSITION_X, number>
+type PositionYCommand = CommandWithValueAndTarget<CommandName.POSITION_Y, number>
+type ScaleXCommand = CommandWithValueAndTarget<CommandName.SCALE_X, number>
+type ScaleYCommand = CommandWithValueAndTarget<CommandName.SCALE_Y, number>
+type RotationXCommand = CommandWithValueAndTarget<CommandName.ROTATION_X, number>
+type RotationYCommand = CommandWithValueAndTarget<CommandName.ROTATION_Y, number>
+type RotationZCommand = CommandWithValueAndTarget<CommandName.ROTATION_Z, number>
+type CropLeftCommand = CommandWithValueAndTarget<CommandName.CROP_LEFT_VALUE, number>
+type CropRightCommand = CommandWithValueAndTarget<CommandName.CROP_RIGHT_VALUE, number>
+type CropUpCommand = CommandWithValueAndTarget<CommandName.CROP_UP_VALUE, number>
+type CropDownCommand = CommandWithValueAndTarget<CommandName.CROP_DOWN_VALUE, number>
+type FeatherCommand = CommandWithValueAndTarget<CommandName.FEATHER_VALUE, number>
+type PositioningAndCropEnableCommand = CommandWithValueAndTarget<CommandName.POSITIONING_AND_CROP_ENABLE, boolean>
 
-export type VideoSource = CommandWithValueAndTarget<CommandName.VIDEO_SOURCE, string>
-export type VideoActAsAlpha = CommandWithValueAndTarget<CommandName.VIDEO_ACT_AS_ALPHA, boolean>
+type VideoSource = CommandWithValueAndTarget<CommandName.VIDEO_SOURCE, string>
+type VideoActAsAlpha = CommandWithValueAndTarget<CommandName.VIDEO_ACT_AS_ALPHA, boolean>
 
-export type VolumeCommand = CommandWithValueAndTarget<CommandName.VOLUME, number>
-export type MuteCommand = CommandWithValueAndTarget<CommandName.MUTE, boolean>
+type VolumeCommand = CommandWithValueAndTarget<CommandName.VOLUME, number>
+type MuteCommand = CommandWithValueAndTarget<CommandName.MUTE, boolean>
 
-export type RecordToggle = CommandWithValue<CommandName.RECORD_TOGGLE, number>
-export type StreamingToggle = CommandWithValue<CommandName.STREAMING_TOGGLE, number>
+type RecordToggle = CommandWithValue<CommandName.RECORD_TOGGLE, number>
+type StreamingToggle = CommandWithValue<CommandName.STREAMING_TOGGLE, number>
 
-export interface SetOutputConfigVideoSource extends Command<CommandName.SET_OUTPUT_CONFIG_VIDEO_SOURCE> {
-	output_index: number
-	source_id: string
-}
+type OutputSource = CommandWithValueAndTarget<CommandName.OUTPUT_SOURCE, string>
 
 export type TriCasterCommand =
 	| RowCommand
 	| RowNamedInputCommand
 	| TakeCommand
 	| AutoCommand
-	| SelectFadeCommand
+	//	| SelectFadeCommand
 	| SelectIndexCommand
 	| SpeedCommand
 	| DelegateCommand
-	| SelectCommand
+	| ValueCommand
 	| SelectNamedInputCommand
 	| PositionXCommand
 	| PositionYCommand
@@ -128,15 +126,41 @@ export type TriCasterCommand =
 	| CropRightCommand
 	| CropUpCommand
 	| CropDownCommand
-	| PositioningEnableCommand
-	| CropEnableCommand
+	| FeatherCommand
+	| PositioningAndCropEnableCommand
 	| VideoSource
 	| VideoActAsAlpha
 	| VolumeCommand
 	| MuteCommand
 	| RecordToggle
 	| StreamingToggle
-	| SetOutputConfigVideoSource
+	| OutputSource
+
+type TriCasterGenericNumberCommand = Extract<
+	TriCasterCommand,
+	CommandWithValueAndTarget<CommandName, number> | CommandWithValue<CommandName, number>
+>
+type TriCasterGenericStringCommand = Extract<
+	TriCasterCommand,
+	CommandWithValueAndTarget<CommandName, string> | CommandWithValue<CommandName, string>
+>
+type TriCasterGenericBooleanCommand = Extract<
+	TriCasterCommand,
+	CommandWithValueAndTarget<CommandName, boolean> | CommandWithValue<CommandName, boolean>
+>
+
+export type TriCasterGenericCommand =
+	| TriCasterGenericNumberCommand
+	| TriCasterGenericStringCommand
+	| TriCasterGenericBooleanCommand
+
+export type TriCasterGenericCommandName<T> = T extends boolean
+	? TriCasterGenericBooleanCommand['name']
+	: T extends string
+	? TriCasterGenericStringCommand['name']
+	: T extends number
+	? TriCasterGenericNumberCommand['name']
+	: never
 
 export type TriCasterCommandContext = any
 export interface TriCasterCommandWithContext {

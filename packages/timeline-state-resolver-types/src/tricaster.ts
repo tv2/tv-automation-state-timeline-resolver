@@ -1,37 +1,43 @@
 import { Mapping } from './mapping'
 import { DeviceType, TimelineDatastoreReferencesContent, TSRTimelineObjBase } from '.'
-// export type MappingTriCasterAny =
 
-type Without<T, U> = { [P in Exclude<keyof T, keyof U>]?: never }
-type XOR<T, U> = T | U extends object ? (Without<T, U> & U) | (Without<U, T> & T) : T | U
-export interface MappingTriCasterBase extends Mapping {
+export type TriCasterMixEffectName = 'main' | `v${number}`
+export type TriCasterKeyerName = `dsk${number}`
+export type TriCasterInputName = `input${number}`
+export type TriCasterSourceName = TriCasterInputName | `ddr${number}` | `bfr${number}` | 'black'
+export type TriCasterAudioChannelName = TriCasterSourceName | 'sound' | 'master'
+export type TriCasterLayerName = 'a' | 'b' | 'c' | 'd'
+export type TriCasterDelegateName = 'background' | TriCasterKeyerName
+export type TriCasterMixOutputName = `mix${number}`
+
+interface MappingTriCasterBase extends Mapping {
 	device: DeviceType.TRICASTER
 	mappingType: MappingTriCasterType
-	index?: number | string
 }
 
 export interface MappingTriCasterMixEffect extends MappingTriCasterBase {
-	device: DeviceType.TRICASTER
 	mappingType: MappingTriCasterType.MixEffect
-	index: number // @todo: describe it better, prhaps a different name or at least a comment (see if Core can )
+	name: TriCasterMixEffectName
 }
 
 export interface MappingTriCasterDownStreamKeyer extends MappingTriCasterBase {
-	device: DeviceType.TRICASTER
 	mappingType: MappingTriCasterType.DownStreamKeyer
-	index: number // @todo as above
+	name: TriCasterKeyerName
+}
+
+export interface MappingTriCasterInput extends MappingTriCasterBase {
+	mappingType: MappingTriCasterType.AudioChannel
+	name: string
 }
 
 export interface MappingTriCasterAudioChannel extends MappingTriCasterBase {
-	device: DeviceType.TRICASTER
 	mappingType: MappingTriCasterType.AudioChannel
-	index: string
+	name: TriCasterAudioChannelName
 }
 
 export interface MappingTriCasterMixOutput extends MappingTriCasterBase {
-	device: DeviceType.TRICASTER
 	mappingType: MappingTriCasterType.MixOutput
-	index: number
+	name: TriCasterMixOutputName
 }
 
 export enum MappingTriCasterType {
@@ -74,16 +80,31 @@ export interface TimelineObjTriCasterBase extends TSRTimelineObjBase {
 	} & TimelineDatastoreReferencesContent
 }
 
+export type TriCasterMixEffect = {
+	/** Discarded when layers are defined (M/E in effect mode) */
+	programInput?: string
+
+	/** Discarded when transition other than 'cut' is used */
+	previewInput?: string
+
+	transition?: TriCasterTransition
+
+	keyers?: Record<TriCasterKeyerName, TriCasterKeyer>
+
+	/** Use only in conjunction with effects that use M/E rows as layers (e.g. LiveSets)*/
+	layers?: Record<TriCasterLayerName, TriCasterLayer> // Partial<Record<, TriCasterLayer>>
+
+	/** Default: 'background' */
+	delegate?: TriCasterDelegateName[]
+}
+
 export interface TimelineObjTriCasterME extends TimelineObjTriCasterBase {
 	content: {
 		deviceType: DeviceType.TRICASTER
 		type: TimelineContentTypeTriCaster.ME
 
-		programInput?: string
-		keyers?: (TriCasterKeyer | undefined)[] // @todo: array should only contain what we want, perhaps add an `id` property; or could this be a Record?
-		layers?: (TriCasterLayer | undefined)[]
-	} & XOR<{ previewInput?: string }, { transition?: TriCasterTransition }> &
-		TimelineDatastoreReferencesContent
+		me: TriCasterMixEffect
+	} & TimelineDatastoreReferencesContent
 }
 
 export function isTimelineObjTriCasterME(timelineObject: TSRTimelineObjBase): timelineObject is TimelineObjTriCasterME {
@@ -130,11 +151,18 @@ export interface TimelineObjTriCasterMixOutput extends TimelineObjTriCasterBase 
 		type: TimelineContentTypeTriCaster.MIX_OUTPUT
 
 		/**
-		 * Any of the named Inputs, Media Players and Buffers ('INPUT<n>', 'DDR<n>', 'BFR<n>') e.g. 'INPUT12' or
-		 * any of the MEs ('V<n>') e.g. 'V1' or
+		 * Any of the named Inputs, Media Players and Buffers ('INPUTn', 'DDRn', 'BFRn') e.g. 'INPUT12' or
+		 * any of the MEs ('Vn') e.g. 'V1' or
 		 * or 'Program', 'Preview', 'program_clean', 'me_program', 'me_preview'
 		 */
-		source: string // @todo: consider template literal types? `DDR${number}`
+		source:
+			| TriCasterSourceName
+			| TriCasterMixEffectName
+			| 'Program'
+			| 'Preview'
+			| 'program_clean'
+			| 'me_program'
+			| 'me_preview'
 	} & TimelineDatastoreReferencesContent
 }
 
@@ -152,10 +180,13 @@ export interface TriCasterTransition {
 	duration: number
 }
 
-// @note: leave those in the API value ranges, not the UI ranges as seen in the Tricaster UI
+/**
+ * Properties of a layer in effect mode (as opposed to transition mode)
+ * Value ranges in this type adhere to the API and may differ from the GUI
+ */
 export interface TriCasterLayer {
-	input?: number | string
-	positioningEnabled?: boolean
+	input?: string
+	positioningAndCropEnabled?: boolean
 	position?: {
 		/**
 		 * Horizontal translation
@@ -173,21 +204,66 @@ export interface TriCasterLayer {
 	scale?: {
 		/**
 		 * Horizontal scale factor
-		 * Default: 1.0; Range: 0.0 - 5.0
+		 * Default: 1.0; Range: 0.0 to 5.0
 		 */
 		x: number
 		/**
 		 * Vertical scale factor
-		 * Default: 1.0; Range: 0.0 - 5.0
+		 * Default: 1.0; Range: 0.0 to 5.0
 		 */
 		y: number
 	}
-	rotation?: { x: number; y: number; z: number }
-	cropEnabled?: boolean
-	crop?: { left: number; right: number; up: number; down: number }
+	crop?: {
+		/**
+		 * Crop left (percentage)
+		 * Default: 0.0 (center); Range: 0.0 to 100.0
+		 */
+		left: number
+		/**
+		 * Crop right (percentage)
+		 * Default: 0.0 (center); Range: 0.0 to 100.0
+		 */
+		right: number
+		/**
+		 * Crop up (from the top, hence called "Bottom" in the UI) (percentage)
+		 * Default: 0.0 (center); Range: 0.0 to 100.0
+		 */
+		up: number
+		/**
+		 * Crop down (from the top, hence called "Top" in the UI) (percentage)
+		 * Default: 0.0 (center); Range: 0.0 to 100.0
+		 */
+		down: number
+	}
+	rotation?: {
+		/**
+		 * X-axis rotation (degrees)
+		 * Default: 0.0; Range: -1440.0 to 1440.0
+		 */
+		x: number
+		/**
+		 * Y-axis rotation (degrees)
+		 * Default: 0.0; Range: -1440.0 to 1440.0
+		 */
+		y: number
+		/**
+		 * Z-axis rotation (perpendicular to screen plane) (degrees)
+		 * Default: 0.0; Range: -1440.0 to 1440.0
+		 */
+		z: number
+	}
+	/**
+	 * Border feather (percentage)
+	 * Default: 0.0; Range: 0.0 to 100.0
+	 */
+	feather?: number
 }
 
+/**
+ * Properties of a keyer
+ * Value ranges in this type adhere to the API and may differ from the GUI
+ */
 export interface TriCasterKeyer extends TriCasterLayer {
-	onAir: boolean
+	onAir?: boolean
 	transition?: TriCasterTransition
 }

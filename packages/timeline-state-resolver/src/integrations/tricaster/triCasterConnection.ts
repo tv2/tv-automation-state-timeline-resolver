@@ -1,5 +1,5 @@
 import got from 'got'
-import { EventEmitter } from 'stream'
+import { EventEmitter } from 'eventemitter3'
 import WebSocket = require('ws')
 import { TriCasterInfoParser, TriCasterProductInfo, TriCasterSwitcherInfo } from './triCasterInfoParser'
 
@@ -7,12 +7,6 @@ interface TriCasterConnectionEvents {
 	connected: (info: TriCasterInfo, shortcutStateXml: string) => void
 	disconnected: (reason: string) => void
 	error: (reason: any) => void
-}
-
-export declare interface TriCasterConnection {
-	on<K extends keyof TriCasterConnectionEvents>(event: K, listener: TriCasterConnectionEvents[K]): this
-	once<K extends keyof TriCasterConnectionEvents>(event: K, listener: TriCasterConnectionEvents[K]): this
-	emit<K extends keyof TriCasterConnectionEvents>(event: K, ...args: Parameters<TriCasterConnectionEvents[K]>): boolean
 }
 
 export interface TriCasterInfo extends TriCasterSwitcherInfo, TriCasterProductInfo {}
@@ -24,7 +18,7 @@ const GOT_OPTIONS = {
 	timeout: { request: 10000 },
 }
 
-export class TriCasterConnection extends EventEmitter {
+export class TriCasterConnection extends EventEmitter<TriCasterConnectionEvents> {
 	private _socket: WebSocket
 	private _pingTimeout: NodeJS.Timeout | null = null
 	private _isClosing = false
