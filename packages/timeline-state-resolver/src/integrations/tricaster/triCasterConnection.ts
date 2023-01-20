@@ -2,6 +2,7 @@ import got from 'got'
 import { EventEmitter } from 'eventemitter3'
 import WebSocket = require('ws')
 import { TriCasterInfoParser, TriCasterProductInfo, TriCasterSwitcherInfo } from './triCasterInfoParser'
+import { serializeToWebSocketMessage, TriCasterCommand } from './triCasterCommands'
 
 interface TriCasterConnectionEvents {
 	connected: (info: TriCasterInfo, shortcutStateXml: string) => void
@@ -71,12 +72,12 @@ export class TriCasterConnection extends EventEmitter<TriCasterConnectionEvents>
 		}, PING_INTERVAL)
 	}
 
-	async send(message: string): Promise<void> {
+	async send(message: TriCasterCommand): Promise<void> {
 		return new Promise((resolve, reject) => {
 			if (this._socket.readyState !== WebSocket.OPEN) {
 				reject(new Error('Socket not connected'))
 			}
-			this._socket.send(message, (err) => {
+			this._socket.send(serializeToWebSocketMessage(message), (err) => {
 				if (err) reject(err)
 				resolve()
 			})

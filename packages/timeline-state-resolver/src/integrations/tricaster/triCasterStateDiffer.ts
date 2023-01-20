@@ -11,6 +11,8 @@ import {
 	TriCasterSourceName,
 	TriCasterDelegateName,
 	TriCasterMixOutputName,
+	TriCasterAudioChannel,
+	TriCasterInput,
 } from 'timeline-state-resolver-types'
 import {
 	TriCasterCommand,
@@ -26,33 +28,19 @@ import _ = require('underscore')
 
 const BLACK_INPUT = 'black'
 
-export interface TriCasterState {
-	mixEffects: Record<TriCasterMixEffectName, TriCasterMixEffectState>
-	audioChannels: Record<TriCasterAudioChannelName, TriCasterAudioChannelState>
-	inputs: Record<TriCasterInputName, TriCasterInputState>
-	isRecording: boolean
-	isStreaming: boolean
-	outputs: Record<TriCasterMixOutputName, TriCasterMixOutputState>
-}
-
 export type RequiredDeep<T> = T extends object
 	? {
 			[K in keyof T]-?: RequiredDeep<T[K]>
 	  }
 	: T
 
-export type TriCasterMixEffectState = TriCasterMixEffect
-
-export type TriCasterLayerState = TriCasterLayer
-export type TriCasterKeyerState = TriCasterKeyer
-
 type CommandGeneratorFunction<T, K> = (args: {
-	value: NonNullable<T>
-	oldValue: T | undefined
-	state: K
-	oldState: K | undefined
+	value: Readonly<T> // @todo: for safety wrap into NonNullable with TS 4.9
+	oldValue: Readonly<T> | undefined
+	state: Readonly<K>
+	oldState: Readonly<K> | undefined
 	target: string
-}) => TriCasterCommand[] | TriCasterGenericCommandName<NonNullable<T>> | null
+}) => TriCasterCommand[] | null
 
 type CommandGeneratorValue<T, K> =
 	| CommandGenerator<T>
@@ -69,54 +57,33 @@ type CommandGenerator<T> = {
 				| null
 } & { $target?: string }
 
-// class CommandGeneratorMap<T extends Map<string, P>, P> {
-// 	constructor(public readonly targets: string[], public readonly generator: CommandGeneratorValue<P, T>) {}
-// 	// public generateCommands(
-// 	// 	commandsOut: TriCasterCommandWithContext[],
-// 	// 	state: T,
-// 	// 	oldState: T | undefined,
-// 	// 	target: string
-// 	// ) {
-// 	// 	for (const currentTarget of this.targets) {
-// 	// 		const value = state instanceof Map ? state.get(currentTarget) : undefined
-// 	// 		if (!value) continue
-// 	// 		const oldValue = oldState instanceof Map ? oldState.get(currentTarget) : undefined
-// 	// 		const newTarget = `${target ? '_' : ''}${currentTarget}`
-// 	// 		if (this.generator instanceof Function) {
-// 	// 			this.generator()
-// 	// 		}
-// 	// 		recursivelyGenerateCommands(commandsOut, this.generator, value, oldValue, newTarget)
-// 	// 	}
-// 	// }
-// }
-
-// type CommandGeneratorRecord<T> = {
-// 	[K in keyof T]: T[K] extends object
-// 		? CommandGenerator<T[K]> | CommandGeneratorFunction<T[K], T> | null
-// 		: CommandGeneratorFunction<T[K], T> | null
-// }
-
-// type CommandGenerator<T> = T extends Map<string, infer P> ? CommandGeneratorMap<T, P> : CommandGeneratorRecord<T>
-
-// // function isCommandGeneratorMap<T, P>(
-// // 	commandGenerator: CommandGeneratorMap<P> | CommandGeneratorRecord<T>
-// // ): commandGenerator is CommandGeneratorMap<P> {
-// // 	return !!(commandGenerator as CommandGeneratorMap<P>).$targets
-// // }
-
-// @todo: use this for making an object tracking timelineObjectIds, by adding a side effect to deepApply
-// type ValueSource<C> = {
-// 	[P in keyof C]: C[P] extends object ? ValueSource<C[P]> : string
-// }
-
-export interface TriCasterAudioChannelState {
-	volume?: number
-	isMuted?: boolean
+export interface TriCasterState {
+	mixEffects: Record<TriCasterMixEffectName, TriCasterMixEffectState>
+	audioChannels: Record<TriCasterAudioChannelName, TriCasterAudioChannelState>
+	inputs: Record<TriCasterInputName, TriCasterInputState>
+	isRecording: boolean
+	isStreaming: boolean
+	outputs: Record<TriCasterMixOutputName, TriCasterMixOutputState>
 }
-export interface TriCasterInputState {
-	videoSource?: string | null
-	videoActAsAlpha?: boolean
+
+export type TriCasterMixEffectState = TriCasterMixEffect & { isInEffectMode?: boolean }
+
+export type CompleteTriCasterMixEffectState = RequiredDeep<Omit<TriCasterMixEffectState, 'layers' | 'previewInput'>> &
+	Pick<TriCasterMixEffect, 'layers' | 'previewInput'>
+
+export type TriCasterLayerState = TriCasterLayer
+export type TriCasterKeyerState = TriCasterKeyer
+
+export type CompleteTriCasterState = RequiredDeep<Omit<TriCasterState, 'mixEffects' | 'inputs'>> & {
+	mixEffects: Record<TriCasterMixEffectName, CompleteTriCasterMixEffectState>
+	inputs: Record<TriCasterInputName, CompleteTriCasterInputState>
 }
+
+export type TriCasterAudioChannelState = TriCasterAudioChannel
+export type TriCasterInputState = TriCasterInput
+
+export type CompleteTriCasterInputState = RequiredDeep<Omit<TriCasterInputState, 'videoSource'>> &
+	Pick<TriCasterInputState, 'videoSource'>
 
 export interface TriCasterMixOutputState {
 	source?: string
@@ -156,6 +123,7 @@ export class TriCasterStateDiffer {
 		this.timelineStateConverter = new TimelineStateConverter(
 			() => this.getDefaultState(),
 			this.meNames,
+			this.inputNames,
 			this.audioChannelNames,
 			this.mixOutputNames
 		)
@@ -169,22 +137,23 @@ export class TriCasterStateDiffer {
 		)
 	}
 
-	getDefaultState(): RequiredDeep<TriCasterState> {
+	getDefaultState(): CompleteTriCasterState {
 		return {
 			mixEffects: fillRecord(
 				this.meNames,
-				(): RequiredDeep<TriCasterMixEffectState> => ({
+				(meName): CompleteTriCasterMixEffectState => ({
 					programInput: BLACK_INPUT,
-					previewInput: BLACK_INPUT,
+					previewInput: undefined,
+					isInEffectMode: false,
 					transition: { effect: 'cut', duration: 0 },
-					layers: fillRecord(this.layerNames, () => this.getDefaultLayerState()),
+					layers: meName !== 'main' ? fillRecord(this.layerNames, () => this.getDefaultLayerState()) : {},
 					keyers: fillRecord(this.dskNames, () => this.getDefaultKeyerState()),
-					delegate: ['background'],
+					delegates: ['background'],
 				})
 			),
 			inputs: fillRecord(
 				this.inputNames,
-				(): RequiredDeep<TriCasterInputState> => ({ videoSource: null, videoActAsAlpha: false })
+				(): CompleteTriCasterInputState => ({ videoSource: undefined, videoActAsAlpha: false })
 			),
 			audioChannels: fillRecord(
 				this.audioChannelNames,
@@ -192,7 +161,7 @@ export class TriCasterStateDiffer {
 			),
 			isRecording: false,
 			isStreaming: false,
-			outputs: fillRecord(this.mixOutputNames, { source: 'program' }),
+			outputs: fillRecord(this.mixOutputNames, () => ({ source: 'program' })),
 		}
 	}
 
@@ -231,7 +200,10 @@ export class TriCasterStateDiffer {
 		return {
 			mixEffects: fillRecord(this.meNames, (meName) => this.getMixEffectGenerator(meName)),
 			inputs: fillRecord(this.inputNames, (inputName) => ({ $target: inputName, ...this.inputCommandGenerator })),
-			audioChannels: fillRecord(this.audioChannelNames, this.audioCommandGenerator),
+			audioChannels: fillRecord(this.audioChannelNames, (inputName) => ({
+				$target: inputName,
+				...this.audioCommandGenerator,
+			})),
 			isRecording: ({ value }) => [{ name: CommandName.RECORD_TOGGLE, value: value ? 1 : 0 }],
 			isStreaming: ({ value }) => [{ name: CommandName.STREAMING_TOGGLE, value: value ? 1 : 0 }],
 			outputs: fillRecord(this.mixOutputNames, (mixOutputName) => ({
@@ -269,11 +241,11 @@ export class TriCasterStateDiffer {
 			commands.push({ name: CommandName.SPEED, target, value: state.duration })
 			return commands
 		},
-		duration: ({ state, oldState }) => {
+		duration: ({ value, state, oldState, target }) => {
 			if (!oldState || state.effect !== oldState.effect) {
 				return []
 			}
-			return CommandName.SPEED
+			return [{ name: CommandName.SPEED, target, value }]
 		},
 	}
 
@@ -291,14 +263,14 @@ export class TriCasterStateDiffer {
 			y: CommandName.ROTATION_Y,
 			z: CommandName.ROTATION_Z,
 		},
-		feather: CommandName.FEATHER_VALUE,
-		positioningAndCropEnabled: CommandName.POSITIONING_AND_CROP_ENABLE,
 		crop: {
 			left: CommandName.CROP_LEFT_VALUE,
 			right: CommandName.CROP_RIGHT_VALUE,
 			up: CommandName.CROP_UP_VALUE,
 			down: CommandName.CROP_DOWN_VALUE,
 		},
+		feather: CommandName.FEATHER_VALUE,
+		positioningAndCropEnabled: CommandName.POSITIONING_AND_CROP_ENABLE,
 		input: CommandName.ROW_NAMED_INPUT,
 	}
 
@@ -317,31 +289,41 @@ export class TriCasterStateDiffer {
 	private getMixEffectGenerator(meName: string): CommandGenerator<TriCasterMixEffectState> {
 		return {
 			$target: meName,
-			previewInput: null,
+			isInEffectMode: null,
+			transition: this.transitionCommandGenerator,
+			delegates: this.delegateCommandGenerator,
 			keyers: fillRecord(this.dskNames, (name) => ({ $target: name, ...this.keyerCommandGenerator })),
 			layers: fillRecord(this.layerNames, (name) => ({
 				$target: name,
 				...this.layerCommandGenerator,
 			})),
-			transition: this.transitionCommandGenerator,
-			delegate: this.delegateCommandGenerator,
+			previewInput: this.previewInputCommandGenerator,
 			programInput: this.programInputCommandGenerator,
 		}
 	}
 
-	private delegateCommandGenerator: CommandGeneratorFunction<TriCasterDelegateName[], TriCasterMixEffectState> = ({
+	private delegateCommandGenerator: CommandGeneratorFunction<TriCasterDelegateName[], TriCasterMixEffect> = ({
 		value,
 		oldValue,
 		target,
 	}) => {
+		value = [...value].sort()
+		oldValue = oldValue ? [...oldValue].sort() : []
 		if (_.isEqual(value, oldValue)) return null
-		return [
-			{
-				name: CommandName.DELEGATE,
-				target,
-				value: value.map((delegateName) => `${target}_${delegateName}`).join('|'),
-			},
-		]
+		const combinedValue = value.map((delegateName) => `${target}_${delegateName}`).join('|')
+		return [{ name: CommandName.DELEGATE, target, value: combinedValue }]
+	}
+
+	private previewInputCommandGenerator: CommandGeneratorFunction<string, RequiredDeep<TriCasterMixEffectState>> = ({
+		value,
+		state,
+		target,
+	}) => {
+		if (state.isInEffectMode) return null
+		if (state.transition.effect !== 'cut') {
+			return null
+		}
+		return [{ name: CommandName.ROW_NAMED_INPUT, value, target: target + '_b' }]
 	}
 
 	private programInputCommandGenerator: CommandGeneratorFunction<string, RequiredDeep<TriCasterMixEffectState>> = ({
@@ -349,14 +331,20 @@ export class TriCasterStateDiffer {
 		state,
 		target,
 	}) => {
-		if (state.layers && Object.keys(state.layers).length) return []
-		const commands: TriCasterCommand[] = [{ name: CommandName.ROW_NAMED_INPUT, value, target: target + '_b' }]
+		if (state.isInEffectMode) return null
 		if (state.transition.effect === 'cut') {
-			commands.push({ name: CommandName.TAKE, target })
-		} else {
-			commands.push({ name: CommandName.AUTO, target })
+			if (!state.previewInput) {
+				return [
+					{ name: CommandName.ROW_NAMED_INPUT, value, target: target + '_b' },
+					{ name: CommandName.TAKE, target },
+				]
+			}
+			return [{ name: CommandName.ROW_NAMED_INPUT, value, target: target + '_a' }]
 		}
-		return commands
+		return [
+			{ name: CommandName.ROW_NAMED_INPUT, value, target: target + '_b' },
+			{ name: CommandName.AUTO, target },
+		]
 	}
 
 	private recursivelyGenerateCommands<T>(
@@ -379,14 +367,13 @@ export class TriCasterStateDiffer {
 			if (typeof generator === 'function') {
 				if (typeof value !== 'object' && value === oldValue) continue
 				const generatedCommands = generator({ value, oldValue, state, oldState, target })
-				if (typeof generatedCommands === 'string') {
-					commandsOut.push({ name: generatedCommands, value, target } as TriCasterGenericCommand)
-				} else if (generatedCommands) {
-					commandsOut.push(...generatedCommands) // @todo track timelineObjIds
-				}
+				if (!generatedCommands) continue
+				commandsOut.push(...generatedCommands) // @todo track timelineObjIds
 			} else if (typeof generator === 'string') {
 				if (value === oldValue) continue
-				commandsOut.push({ name: generator, value, target } as TriCasterCommand)
+				// @todo: with TS 4.9 remove `as unknown` below
+				// `generator` and `value` pair make a valid command thanks to TriCasterGenericCommandName
+				commandsOut.push({ name: generator, value, target } as unknown as TriCasterGenericCommand)
 			} else if (generator) {
 				this.recursivelyGenerateCommands(commandsOut, generator, value, oldValue, target)
 			}

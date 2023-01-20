@@ -9,6 +9,14 @@ export type TriCasterAudioChannelName = TriCasterSourceName | 'sound' | 'master'
 export type TriCasterLayerName = 'a' | 'b' | 'c' | 'd'
 export type TriCasterDelegateName = 'background' | TriCasterKeyerName
 export type TriCasterMixOutputName = `mix${number}`
+export type TriCasterMixOutputSource =
+	| TriCasterSourceName
+	| TriCasterMixEffectName
+	| 'program'
+	| 'preview'
+	| 'program_clean'
+	| 'me_program'
+	| 'me_preview'
 
 interface MappingTriCasterBase extends Mapping {
 	device: DeviceType.TRICASTER
@@ -26,8 +34,8 @@ export interface MappingTriCasterDownStreamKeyer extends MappingTriCasterBase {
 }
 
 export interface MappingTriCasterInput extends MappingTriCasterBase {
-	mappingType: MappingTriCasterType.AudioChannel
-	name: string
+	mappingType: MappingTriCasterType.Input
+	name: TriCasterInputName
 }
 
 export interface MappingTriCasterAudioChannel extends MappingTriCasterBase {
@@ -47,11 +55,13 @@ export enum MappingTriCasterType {
 	Recording = 3,
 	Streaming = 4,
 	MixOutput = 5,
+	Input = 6,
 }
 
 export type MappingTriCaster =
 	| MappingTriCasterMixEffect
 	| MappingTriCasterDownStreamKeyer
+	| MappingTriCasterInput
 	| MappingTriCasterAudioChannel
 	| MappingTriCasterMixOutput
 
@@ -64,12 +74,14 @@ export enum TimelineContentTypeTriCaster {
 	ME = 'ME',
 	DSK = 'DSK',
 	AUDIO_CHANNEL = 'AUDIO_CHANNEL',
+	INPUT = 'INPUT',
 	MIX_OUTPUT = 'MIX_OUTPUT',
 }
 
 export type TimelineObjTriCasterAny =
 	| TimelineObjTriCasterME
 	| TimelineObjTriCasterDSK
+	| TimelineObjTriCasterInput
 	| TimelineObjTriCasterAudioChannel
 	| TimelineObjTriCasterMixOutput
 
@@ -91,11 +103,11 @@ export type TriCasterMixEffect = {
 
 	keyers?: Record<TriCasterKeyerName, TriCasterKeyer>
 
-	/** Use only in conjunction with effects that use M/E rows as layers (e.g. LiveSets)*/
-	layers?: Record<TriCasterLayerName, TriCasterLayer> // Partial<Record<, TriCasterLayer>>
+	/** Use only in conjunction with effects that use M/E rows as layers (e.g. LiveSets) */
+	layers?: Partial<Record<TriCasterLayerName, TriCasterLayer>>
 
 	/** Default: 'background' */
-	delegate?: TriCasterDelegateName[]
+	delegates?: TriCasterDelegateName[]
 }
 
 export interface TimelineObjTriCasterME extends TimelineObjTriCasterBase {
@@ -129,13 +141,41 @@ export function isTimelineObjTriCasterDSK(
 	return (timelineObject as TimelineObjTriCasterBase).content?.type === TimelineContentTypeTriCaster.DSK
 }
 
+export interface TriCasterInput {
+	videoActAsAlpha?: boolean
+	videoSource?: string
+}
+
+export interface TimelineObjTriCasterInput extends TimelineObjTriCasterBase {
+	content: {
+		deviceType: DeviceType.TRICASTER
+		type: TimelineContentTypeTriCaster.INPUT
+
+		input: TriCasterInput
+	} & TimelineDatastoreReferencesContent
+}
+
+export function isTimelineObjTriCasterInput(
+	timelineObject: TSRTimelineObjBase
+): timelineObject is TimelineObjTriCasterInput {
+	return (timelineObject as TimelineObjTriCasterBase).content?.type === TimelineContentTypeTriCaster.INPUT
+}
+
+export interface TriCasterAudioChannel {
+	isMuted?: boolean
+	/**
+	 * Volume (dB)
+	 * Default: 0
+	 */
+	volume?: number
+}
+
 export interface TimelineObjTriCasterAudioChannel extends TimelineObjTriCasterBase {
 	content: {
 		deviceType: DeviceType.TRICASTER
 		type: TimelineContentTypeTriCaster.AUDIO_CHANNEL
 
-		volume?: number
-		isMuted?: boolean
+		audioChannel: TriCasterAudioChannel
 	} & TimelineDatastoreReferencesContent
 }
 
@@ -155,14 +195,7 @@ export interface TimelineObjTriCasterMixOutput extends TimelineObjTriCasterBase 
 		 * any of the MEs ('Vn') e.g. 'V1' or
 		 * or 'Program', 'Preview', 'program_clean', 'me_program', 'me_preview'
 		 */
-		source:
-			| TriCasterSourceName
-			| TriCasterMixEffectName
-			| 'Program'
-			| 'Preview'
-			| 'program_clean'
-			| 'me_program'
-			| 'me_preview'
+		source: TriCasterMixOutputSource
 	} & TimelineDatastoreReferencesContent
 }
 
@@ -186,6 +219,11 @@ export interface TriCasterTransition {
  */
 export interface TriCasterLayer {
 	input?: string
+	/**
+	 * Enables position, scale, rotation, crop and feather, but it's weird,
+	 * so setting it to false while any of said properties are defined may
+	 * lead to unwanted behaviour
+	 */
 	positioningAndCropEnabled?: boolean
 	position?: {
 		/**
@@ -213,6 +251,23 @@ export interface TriCasterLayer {
 		 */
 		y: number
 	}
+	rotation?: {
+		/**
+		 * X-axis rotation (degrees)
+		 * Default: 0.0; Range: -1440.0 to 1440.0
+		 */
+		x: number
+		/**
+		 * Y-axis rotation (degrees)
+		 * Default: 0.0; Range: -1440.0 to 1440.0
+		 */
+		y: number
+		/**
+		 * Z-axis rotation (perpendicular to screen plane) (degrees)
+		 * Default: 0.0; Range: -1440.0 to 1440.0
+		 */
+		z: number
+	}
 	crop?: {
 		/**
 		 * Crop left (percentage)
@@ -234,23 +289,6 @@ export interface TriCasterLayer {
 		 * Default: 0.0 (center); Range: 0.0 to 100.0
 		 */
 		down: number
-	}
-	rotation?: {
-		/**
-		 * X-axis rotation (degrees)
-		 * Default: 0.0; Range: -1440.0 to 1440.0
-		 */
-		x: number
-		/**
-		 * Y-axis rotation (degrees)
-		 * Default: 0.0; Range: -1440.0 to 1440.0
-		 */
-		y: number
-		/**
-		 * Z-axis rotation (perpendicular to screen plane) (degrees)
-		 * Default: 0.0; Range: -1440.0 to 1440.0
-		 */
-		z: number
 	}
 	/**
 	 * Border feather (percentage)

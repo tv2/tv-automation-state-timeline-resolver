@@ -15,21 +15,39 @@ import {
 	TriCasterAudioChannelName,
 	TriCasterMixEffectName,
 	TriCasterMixOutputName,
+	MappingTriCasterInput,
+	isTimelineObjTriCasterInput,
+	TriCasterInputName,
 } from 'timeline-state-resolver-types'
 import * as _ from 'underscore'
-import { TriCasterState } from './state'
+import { TriCasterState } from './triCasterStateDiffer'
 
 type DeepPartial<T> = { [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P] }
 
 export class TimelineStateConverter {
+	private meNames: Set<TriCasterMixEffectName>
+	private inputNames: Set<TriCasterInputName>
+	private audioChannelNames: Set<TriCasterAudioChannelName>
+	private mixOutputNames: Set<TriCasterMixOutputName>
+
 	constructor(
 		private readonly getDefaultState: () => TriCasterState,
-		private readonly meNames: TriCasterMixEffectName[],
-		private readonly audioChannelNames: TriCasterAudioChannelName[],
-		private readonly mixOutputNames: TriCasterMixOutputName[]
-	) {}
+		meNames: TriCasterMixEffectName[],
+		inputNames: TriCasterInputName[],
+		audioChannelNames: TriCasterAudioChannelName[],
+		mixOutputNames: TriCasterMixOutputName[]
+	) {
+		this.meNames = new Set(meNames)
+		this.inputNames = new Set(inputNames)
+		this.audioChannelNames = new Set(audioChannelNames)
+		this.mixOutputNames = new Set(mixOutputNames)
+	}
 
-	getStateFromTimelineState(timelineState: TimelineState, newMappings: Mappings, deviceId: string): TriCasterState {
+	getTriCasterStateFromTimelineState(
+		timelineState: TimelineState,
+		newMappings: Mappings,
+		deviceId: string
+	): TriCasterState {
 		const resultState = this.getDefaultState()
 		const sortedLayers = this.sortLayers(timelineState)
 
@@ -44,6 +62,9 @@ export class TimelineStateConverter {
 					break
 				case MappingTriCasterType.DownStreamKeyer:
 					this.applyDskState(resultState, tlObject, mapping)
+					break
+				case MappingTriCasterType.Input:
+					this.applyInputState(resultState, tlObject, mapping)
 					break
 				case MappingTriCasterType.AudioChannel:
 					this.applyAudioChannelState(resultState, tlObject, mapping)
@@ -70,8 +91,11 @@ export class TimelineStateConverter {
 		mapping: MappingTriCasterMixEffect
 	) {
 		const mixEffects = resultState.mixEffects
-		if (!isTimelineObjTriCasterME(tlObject) || !this.meNames.includes(mapping.name)) return
+		if (!isTimelineObjTriCasterME(tlObject) || !this.meNames.has(mapping.name)) return
 		this.deepApply(mixEffects[mapping.name], tlObject.content.me)
+		if (Object.keys(tlObject.content.me.layers ?? {}).length) {
+			mixEffects[mapping.name].isInEffectMode = true
+		}
 	}
 
 	private applyDskState(
@@ -86,14 +110,20 @@ export class TimelineStateConverter {
 		this.deepApply(mainKeyers[mapping.name], tlObject.content.keyer)
 	}
 
+	private applyInputState(resultState: TriCasterState, tlObject: TSRTimelineObjBase, mapping: MappingTriCasterInput) {
+		const inputs = resultState.inputs
+		if (!isTimelineObjTriCasterInput(tlObject) || !this.inputNames.has(mapping.name)) return
+		this.deepApply(inputs[mapping.name], tlObject.content.input)
+	}
+
 	private applyAudioChannelState(
 		resultState: TriCasterState,
 		tlObject: TSRTimelineObjBase,
 		mapping: MappingTriCasterAudioChannel
 	) {
 		const audioChannels = resultState.audioChannels
-		if (!isTimelineObjTriCasterAudioChannel(tlObject) || !this.audioChannelNames.includes(mapping.name)) return
-		this.deepApply(audioChannels[mapping.name], tlObject.content)
+		if (!isTimelineObjTriCasterAudioChannel(tlObject) || !this.audioChannelNames.has(mapping.name)) return
+		this.deepApply(audioChannels[mapping.name], tlObject.content.audioChannel)
 	}
 
 	private applyMixOutputState(
@@ -101,7 +131,7 @@ export class TimelineStateConverter {
 		tlObject: TSRTimelineObjBase,
 		mapping: MappingTriCasterMixOutput
 	) {
-		if (!isTimelineObjTriCasterMixOutput(tlObject) || !this.mixOutputNames.includes(mapping.name)) return
+		if (!isTimelineObjTriCasterMixOutput(tlObject) || !this.mixOutputNames.has(mapping.name)) return
 		resultState.outputs[mapping.name] = { source: tlObject.content.source }
 	}
 

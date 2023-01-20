@@ -10,14 +10,14 @@ import {
 import { ElementCompact, xml2js } from 'xml-js'
 import {
 	fillRecord,
+	TriCasterMixEffectState,
 	TriCasterAudioChannelState,
 	TriCasterInputState,
 	TriCasterKeyerState,
 	TriCasterLayerState,
-	TriCasterMixEffectState,
 	TriCasterMixOutputState,
 	TriCasterState,
-} from './state'
+} from './triCasterStateDiffer'
 import { CommandName, TriCasterGenericCommandName } from './triCasterCommands'
 
 type ShortcutStates = {
@@ -35,7 +35,7 @@ export class ExternalStateConverter {
 		private readonly mixOutputNames: TriCasterMixOutputName[]
 	) {}
 
-	getStateFromShortcutState(shortcutStatesXml: string): TriCasterState {
+	getTriCasterStateFromShortcutState(shortcutStatesXml: string): TriCasterState {
 		const parsedStates = xml2js(shortcutStatesXml, { compact: true }) as ElementCompact
 		const shortcutStateElement = parsedStates.shortcut_states?.shortcut_state as ElementCompact | ElementCompact[]
 		this.shortcutStates = this.extractShortcutStates(shortcutStateElement)
@@ -78,7 +78,7 @@ export class ExternalStateConverter {
 			(mixEffectName): TriCasterMixEffectState => ({
 				programInput: this.parseString([`${mixEffectName}_a`], CommandName.ROW_NAMED_INPUT)?.toLowerCase(),
 				previewInput: this.parseString([`${mixEffectName}_b`], CommandName.ROW_NAMED_INPUT)?.toLowerCase(),
-				delegate: this.parseDelegate(mixEffectName + CommandName.DELEGATE),
+				delegates: this.parseDelegate(mixEffectName + CommandName.DELEGATE),
 				layers: this.parseLayersState(mixEffectName),
 				keyers: this.parseKeyersState(mixEffectName),
 			})
@@ -151,26 +151,6 @@ export class ExternalStateConverter {
 	private joinShortcutName(shortcutTarget: string[], command: string): string {
 		return shortcutTarget.join('_') + command
 	}
-	// private parseState(name: string, defaultValue?: number | undefined): number | undefined
-	// private parseState(name: string, defaultValue?: string | undefined): string | undefined
-	// private parseState(name: string, defaultValue?: boolean | undefined): boolean | undefined
-	// private parseState(
-	// 	name: string,
-	// 	defaultValue?: number | string | boolean | undefined
-	// ): number | string | boolean | undefined {
-	// 	const value = this.shortcutStates[name]
-	// 	if (value === undefined) return defaultValue
-	// 	switch (typeof defaultValue) {
-	// 		case 'number':
-	// 			return typeof value === 'number' ? value : parseFloat(value)
-	// 		case 'string':
-	// 			return value.toString()
-	// 		case 'boolean':
-	// 			return value.toString().toLowerCase() === 'true'
-	// 		default:
-	// 			return undefined
-	// 	}
-	// }
 
 	private parseDelegate(name: string): TriCasterDelegateName[] | undefined {
 		const value = this.shortcutStates[name]

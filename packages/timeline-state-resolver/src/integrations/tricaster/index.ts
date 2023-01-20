@@ -1,11 +1,11 @@
 import * as _ from 'underscore'
-import { DeviceWithState, CommandWithContext, DeviceStatus, StatusCode } from './../../devices/device'
+import { DeviceWithState, DeviceStatus, StatusCode } from './../../devices/device'
 import { DoOnTime, SendMode } from '../../devices/doOnTime'
 
 import { TimelineState } from 'superfly-timeline'
 import { DeviceType, Mappings, TriCasterOptions, DeviceOptionsTriCaster } from 'timeline-state-resolver-types'
-import { TriCasterState, TriCasterStateDiffer } from './state'
-import { commandToWsMessage, TriCasterCommandContext, TriCasterCommandWithContext } from './triCasterCommands'
+import { TriCasterState, TriCasterStateDiffer } from './triCasterStateDiffer'
+import { TriCasterCommandContext, TriCasterCommandWithContext } from './triCasterCommands'
 import { TriCasterConnection } from './triCasterConnection'
 
 const DEFAULT_PORT = 5951
@@ -56,7 +56,9 @@ export class TriCasterDevice extends DeviceWithState<TriCasterState, DeviceOptio
 			this._stateDiffer = new TriCasterStateDiffer(info)
 			this._setInitialState(shortcutStateXml)
 			this._setConnected(true)
+			this._initialized = true
 			this._resolveInitPromise(true)
+			this.emit('info', `Connected to TriCaster ${info.productModel}, session: ${info.sessionName}`)
 		})
 		this._connection.on('disconnected', (_reason) => {
 			this._setConnected(false)
@@ -73,7 +75,7 @@ export class TriCasterDevice extends DeviceWithState<TriCasterState, DeviceOptio
 			throw new Error('State Differ not available')
 		}
 		const time = this.getCurrentTime()
-		const state = this._stateDiffer.externalStateConverter.getStateFromShortcutState(shortcutStateXml)
+		const state = this._stateDiffer.externalStateConverter.getTriCasterStateFromShortcutState(shortcutStateXml)
 		this.setState(state, time)
 	}
 
@@ -106,7 +108,7 @@ export class TriCasterDevice extends DeviceWithState<TriCasterState, DeviceOptio
 		const previousStateTime = Math.max(this.getCurrentTime(), newState.time)
 		const oldState = this.getStateBefore(previousStateTime)?.state ?? this._stateDiffer.getDefaultState()
 
-		const newTriCasterState = this._stateDiffer.timelineStateConverter.getStateFromTimelineState(
+		const newTriCasterState = this._stateDiffer.timelineStateConverter.getTriCasterStateFromTimelineState(
 			newState,
 			newMappings,
 			this.deviceId
@@ -183,26 +185,16 @@ export class TriCasterDevice extends DeviceWithState<TriCasterState, DeviceOptio
 				time,
 				undefined,
 				async (cmd: TriCasterCommandWithContext) => {
-					return this._commandReceiver(time, cmd, cmd.context, cmd.timelineObjId)
+					return this._sendCommand(cmd)
 				},
 				cmd
 			)
 		})
 	}
 
-	private async _commandReceiver(
-		_time: number,
-		cmd: TriCasterCommandWithContext,
-		context: TriCasterCommandContext,
-		timelineObjId: string
-	): Promise<any> {
-		const cwc: CommandWithContext = {
-			context: context,
-			command: cmd,
-			timelineObjId: timelineObjId,
-		}
-		this.emitDebug(cwc)
+	private _sendCommand = (commandWithContext: TriCasterCommandWithContext): Promise<void> | undefined => {
+		this.emitDebug(commandWithContext)
 
-		return this._connection?.send(commandToWsMessage(cmd.command))
+		return this._connection?.send(commandWithContext.command)
 	}
 }

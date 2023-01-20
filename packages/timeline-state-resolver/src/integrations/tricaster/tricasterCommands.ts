@@ -46,10 +46,6 @@ export enum CommandName {
 
 export type ValueTypes = boolean | number | string
 
-// interface Command<NameType extends CommandName> {
-// 	name: NameType
-// }
-
 type CommandWithValue<NameType extends CommandName, ValueType extends ValueTypes> = {
 	name: NameType
 	value: ValueType
@@ -71,7 +67,6 @@ type RowNamedInputCommand = CommandWithValueAndTarget<CommandName.ROW_NAMED_INPU
 
 type TakeCommand = CommandWithTarget<CommandName.TAKE>
 type AutoCommand = CommandWithTarget<CommandName.AUTO>
-// type SelectFadeCommand = CommandWithTarget<CommandName.SELECT_FADE>
 type SelectIndexCommand = CommandWithValueAndTarget<CommandName.SELECT_INDEX, number>
 type SpeedCommand = CommandWithValueAndTarget<CommandName.SPEED, number>
 type DelegateCommand = CommandWithValueAndTarget<CommandName.DELEGATE, string>
@@ -109,7 +104,6 @@ export type TriCasterCommand =
 	| RowNamedInputCommand
 	| TakeCommand
 	| AutoCommand
-	//	| SelectFadeCommand
 	| SelectIndexCommand
 	| SpeedCommand
 	| DelegateCommand
@@ -169,7 +163,7 @@ export interface TriCasterCommandWithContext {
 	timelineObjId: string
 }
 
-export function commandToWsMessage(command: TriCasterCommand): string {
+export function serializeToWebSocketMessage(command: TriCasterCommand): string {
 	const name = `name=${'target' in command ? command.target : ''}${command.name}`
 	const values = Object.keys(command)
 		.filter((key) => key !== 'target' && key !== 'name')
