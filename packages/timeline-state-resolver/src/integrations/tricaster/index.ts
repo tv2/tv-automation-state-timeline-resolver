@@ -13,6 +13,8 @@ import {
 import { WithContext, MappingsTriCaster, TriCasterState, TriCasterStateDiffer } from './triCasterStateDiffer'
 import { TriCasterCommandWithContext } from './triCasterCommands'
 import { TriCasterConnection } from './triCasterConnection'
+import { TriCasterTimelineStateConverter } from './triCasterTimelineStateConverter'
+import { TriCasterShortcutStateConverter } from './triCasterShortcutStateConverter'
 
 const DEFAULT_PORT = 5951
 
@@ -27,6 +29,8 @@ export class TriCasterDevice extends DeviceWithState<WithContext<TriCasterState>
 	private _isTerminating = false
 	private _connection?: TriCasterConnection
 	private _stateDiffer?: TriCasterStateDiffer
+	private _timelineStateConverter?: TriCasterTimelineStateConverter
+	private _shortcutStateConverter?: TriCasterShortcutStateConverter
 
 	constructor(deviceId: string, deviceOptions: DeviceOptionsTriCasterInternal, getCurrentTime: () => Promise<number>) {
 		super(deviceId, deviceOptions, getCurrentTime)
@@ -43,7 +47,9 @@ export class TriCasterDevice extends DeviceWithState<WithContext<TriCasterState>
 		})
 		this._connection = new TriCasterConnection(options.host, options.port ?? DEFAULT_PORT)
 		this._connection.on('connected', (info, shortcutStateXml) => {
-			this._stateDiffer = new TriCasterStateDiffer(info)
+			this._stateDiffer = new TriCasterStateDiffer(info.availableResourceNames)
+			this._timelineStateConverter = new TriCasterTimelineStateConverter(info.availableResourceNames)
+			this._shortcutStateConverter = new TriCasterShortcutStateConverter(info.availableResourceNames)
 			this._setInitialState(shortcutStateXml)
 			this._setConnected(true)
 			this._initialized = true
@@ -64,11 +70,11 @@ export class TriCasterDevice extends DeviceWithState<WithContext<TriCasterState>
 	}
 
 	private _setInitialState(shortcutStateXml: string): void {
-		if (!this._stateDiffer) {
+		if (!this._stateDiffer || !this._shortcutStateConverter) {
 			throw new Error('State Differ not available')
 		}
 		const time = this.getCurrentTime()
-		const state = this._stateDiffer.shortcutStateConverter.getTriCasterStateFromShortcutState(shortcutStateXml)
+		const state = this._shortcutStateConverter.getTriCasterStateFromShortcutState(shortcutStateXml)
 		this.setState(state, time)
 	}
 
@@ -93,17 +99,16 @@ export class TriCasterDevice extends DeviceWithState<WithContext<TriCasterState>
 	handleState(newState: TimelineState, newMappings: Mappings): void {
 		const triCasterMappings: MappingsTriCaster = this.filterTriCasterMappings(newMappings)
 		super.onHandleState(newState, newMappings)
-		if (!this._initialized || !this._stateDiffer) {
+		if (!this._initialized || !this._stateDiffer || !this._timelineStateConverter || !this._shortcutStateConverter) {
 			// before it's initialized don't do anything
 			this.emit('warning', 'TriCaster not initialized yet')
 			return
 		}
 
 		const previousStateTime = Math.max(this.getCurrentTime(), newState.time)
-		const oldState =
-			this.getStateBefore(previousStateTime)?.state ?? this._stateDiffer.getDefaultState(triCasterMappings)
+		const oldState = this.getStateBefore(previousStateTime)?.state ?? this._stateDiffer.getDefaultBlankState()
 
-		const newTriCasterState = this._stateDiffer.timelineStateConverter.getTriCasterStateFromTimelineState(
+		const newTriCasterState = this._timelineStateConverter.getTriCasterStateFromTimelineState(
 			newState,
 			triCasterMappings
 		)

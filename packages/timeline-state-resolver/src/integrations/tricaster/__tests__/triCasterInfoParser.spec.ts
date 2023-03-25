@@ -25,6 +25,34 @@ describe('TriCasterInfoParser', () => {
 			outputCount: 8,
 		})
 	})
+
+	test('getAvailableResources returns resource names', () => {
+		const parser = new TriCasterInfoParser()
+
+		const resources = parser.getAvailableResources(
+			{
+				inputCount: 4,
+				dskCount: 3,
+				meCount: 2,
+				ddrCount: 3,
+			},
+			{
+				productModel: 'TC2ELITE',
+				sessionName: 'TEST SESSION',
+				outputCount: 5,
+			}
+		)
+
+		expect(resources).toEqual({
+			mixEffects: ['main', 'v1', 'v2'],
+			inputs: ['input1', 'input2', 'input3', 'input4'],
+			audioChannels: ['ddr1', 'ddr2', 'ddr3', 'sound', 'master', 'input1', 'input2', 'input3', 'input4'],
+			layers: ['a', 'b', 'c', 'd'],
+			keyers: ['dsk1', 'dsk2', 'dsk3'],
+			mixOutputs: ['mix1', 'mix2', 'mix3', 'mix4', 'mix5'],
+			matrixOutputs: ['out1', 'out2', 'out3', 'out4', 'out5', 'out6', 'out7', 'out8'],
+		})
+	})
 })
 
 const MOCK_SWITCHER_UPDATE = `<switcher_update main_source="INPUT2" preview_source="INPUT9" effect="C:\\ProgramData\\NewTek\\Effects\\Transitions\\Fades\\Non Additive Fade.trans" iso_label="INPUT 9" button_label="9">

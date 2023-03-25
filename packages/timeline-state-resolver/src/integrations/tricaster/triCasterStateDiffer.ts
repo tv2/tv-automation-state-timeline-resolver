@@ -1,13 +1,11 @@
 import {
 	TriCasterLayer,
 	TriCasterKeyer,
-	TriCasterKeyerName,
 	TriCasterLayerName,
 	TriCasterInputName,
 	TriCasterAudioChannelName,
 	TriCasterMixEffectName,
 	TriCasterMatrixOutputName,
-	TriCasterSourceName,
 	TriCasterMixOutputName,
 	TriCasterAudioChannel,
 	TriCasterInput,
@@ -15,7 +13,6 @@ import {
 	TriCasterMixEffectWithPreview,
 	TriCasterMixEffectInMixMode,
 	MappingTriCaster,
-	MappingTriCasterType,
 	Mappings,
 } from 'timeline-state-resolver-types'
 import {
@@ -25,16 +22,14 @@ import {
 	TriCasterGenericCommandName,
 	TriCasterGenericCommand,
 } from './triCasterCommands'
-import { TriCasterShortcutStateConverter } from './triCasterShortcutStateConverter'
-import { TriCasterTimelineStateConverter } from './triCasterTimelineStateConverter'
-import { TriCasterInfo } from './triCasterConnection'
 import _ = require('underscore')
+import { fillRecord } from './util'
+import { TriCasterResourceNames } from './triCasterInfoParser'
 
-const BLACK_INPUT = 'black'
-const DEFAULT_TRANSITION_DURATION = 1 // in seconds
+export const BLACK_INPUT = 'black'
+export const DEFAULT_TRANSITION_DURATION = 1 // in seconds
 const A_ROW_SUFFIX = '_a' // the Program row
 const B_ROW_SUFFIX = '_b' // the Preview row
-const MATRIX_OUTPUTS_COUNT = 8 // @todo: hardcoded for now; only a few models have this feature; how to query for it?
 const DEFAULT_TEMPORAL_PRIORITY = 0
 
 export type RequiredDeep<T> = T extends object
@@ -66,8 +61,8 @@ type CommandGenerator<T> = {
 } & { $target?: string }
 
 export interface TriCasterState {
-	mixEffects: Record<TriCasterMixEffectName, TriCasterMixEffectState>
-	audioChannels: Record<TriCasterAudioChannelName, TriCasterAudioChannelState>
+	mixEffects: Partial<Record<TriCasterMixEffectName, TriCasterMixEffectState>>
+	audioChannels: Partial<Record<TriCasterAudioChannelName, TriCasterAudioChannelState>>
 	inputs: Record<TriCasterInputName, TriCasterInputState>
 	isRecording: boolean
 	isStreaming: boolean
@@ -117,157 +112,27 @@ export interface TriCasterMatrixOutputState {
 	source?: string
 }
 
-type TriCasterStateDifferOptions = TriCasterInfo
-
-interface TriCasterControlledResourceNames {
-	mixEffects: Set<TriCasterMixEffectName>
-	inputs: Set<TriCasterInputName>
-	audioChannels: Set<TriCasterAudioChannelName>
-	mixOutputs: Set<TriCasterMixOutputName>
-	matrixOutputs: Set<TriCasterMatrixOutputName>
-}
 export interface MappingsTriCaster extends Mappings {
 	[layerName: string]: MappingTriCaster
 }
 
 export class TriCasterStateDiffer {
-	private readonly inputCount: number
-	private readonly meNames: TriCasterMixEffectName[]
-	private readonly dskNames: TriCasterKeyerName[]
-	private readonly layerNames: TriCasterLayerName[] = ['a', 'b', 'c', 'd']
-	private readonly inputNames: TriCasterInputName[]
-	private readonly audioChannelNames: TriCasterAudioChannelName[]
-	private readonly mixOutputNames: TriCasterMixOutputName[]
-	private readonly matrixOutputNames: TriCasterMatrixOutputName[]
-
 	private readonly commandGenerator: CommandGenerator<TriCasterState>
 
-	public readonly timelineStateConverter: TriCasterTimelineStateConverter
-	public readonly shortcutStateConverter: TriCasterShortcutStateConverter
-
-	constructor(options: TriCasterStateDifferOptions) {
-		this.inputCount = options.inputCount
-		this.meNames = ['main', ...fillArray<TriCasterMixEffectName>(options.meCount, (i) => `v${i + 1}`)]
-		this.dskNames = fillArray<TriCasterKeyerName>(options.dskCount, (i) => `dsk${i + 1}`)
-
-		this.inputNames = fillArray<TriCasterInputName>(this.inputCount, (i) => `input${i + 1}`)
-		const extraAudioChannelNames: TriCasterAudioChannelName[] = [
-			...fillArray<TriCasterSourceName>(options.ddrCount, (i) => `ddr${i + 1}`),
-			'sound',
-			'master',
-		]
-		this.audioChannelNames = [...extraAudioChannelNames, ...this.inputNames]
-		this.mixOutputNames = fillArray<TriCasterMixOutputName>(options.outputCount, (i) => `mix${i + 1}`)
-		this.matrixOutputNames = fillArray<TriCasterMatrixOutputName>(MATRIX_OUTPUTS_COUNT, (i) => `out${i + 1}`)
+	constructor(private readonly availableResources: TriCasterResourceNames) {
 		this.commandGenerator = this.getGenerator()
-
-		const resourceNames = {
-			mixEffects: this.meNames,
-			inputs: this.inputNames,
-			audioChannels: this.audioChannelNames,
-			layers: this.layerNames,
-			keyers: this.dskNames,
-			mixOutputs: this.mixOutputNames,
-			matrixOutputs: this.matrixOutputNames,
-		}
-
-		this.timelineStateConverter = new TriCasterTimelineStateConverter(
-			(mappings) => this.getDefaultState(mappings),
-			resourceNames
-		)
-		this.shortcutStateConverter = new TriCasterShortcutStateConverter(resourceNames)
 	}
 
-	getDefaultState(mappings: MappingsTriCaster): WithContext<CompleteTriCasterState> {
-		const controlledResources = this.getControlledResourcesNames(mappings)
-		return wrapStateInContext<CompleteTriCasterState>({
-			mixEffects: fillRecord(
-				Array.from(controlledResources.mixEffects),
-				(meName): CompleteTriCasterMixEffectState => ({
-					programInput: BLACK_INPUT,
-					previewInput: undefined,
-					isInEffectMode: false,
-					transitionEffect: 'cut',
-					transitionDuration: DEFAULT_TRANSITION_DURATION,
-					layers: meName !== 'main' ? fillRecord(this.layerNames, () => this.getDefaultLayerState()) : {},
-					keyers: fillRecord(this.dskNames, () => this.getDefaultKeyerState()),
-					delegates: ['background'],
-				})
-			),
-			inputs: fillRecord(
-				Array.from(controlledResources.inputs),
-				(): CompleteTriCasterInputState => ({ videoSource: undefined, videoActAsAlpha: false })
-			),
-			audioChannels: fillRecord(
-				Array.from(controlledResources.audioChannels),
-				(): RequiredDeep<TriCasterAudioChannelState> => ({ volume: 0, isMuted: true })
-			),
+	getDefaultBlankState(): WithContext<TriCasterState> {
+		return wrapStateInContext<TriCasterState>({
+			mixEffects: {},
+			inputs: {},
+			audioChannels: {},
 			isRecording: false,
 			isStreaming: false,
-			mixOutputs: fillRecord(
-				Array.from(controlledResources.mixOutputs),
-				(): RequiredDeep<TriCasterMixOutputState> => ({ source: 'program', meClean: false })
-			),
-			matrixOutputs: fillRecord(
-				Array.from(controlledResources.matrixOutputs),
-				(): RequiredDeep<TriCasterMatrixOutputState> => ({ source: 'mix1' })
-			),
+			mixOutputs: {},
+			matrixOutputs: {},
 		})
-	}
-
-	private getControlledResourcesNames(mappings: MappingsTriCaster): TriCasterControlledResourceNames {
-		const result: TriCasterControlledResourceNames = {
-			mixEffects: new Set(),
-			inputs: new Set(),
-			audioChannels: new Set(),
-			mixOutputs: new Set(),
-			matrixOutputs: new Set(),
-		}
-		for (const mapping of Object.values(mappings)) {
-			switch (mapping.mappingType) {
-				case MappingTriCasterType.ME:
-					result.mixEffects.add(mapping.name)
-					break
-				case MappingTriCasterType.DSK:
-					// these require full control of the Main switcher - not ideal, the granularity will probably be improved
-					result.mixEffects.add('main')
-					break
-				case MappingTriCasterType.INPUT:
-					result.inputs.add(mapping.name)
-					break
-				case MappingTriCasterType.AUDIO_CHANNEL:
-					result.audioChannels.add(mapping.name)
-					break
-				case MappingTriCasterType.MIX_OUTPUT:
-					result.mixOutputs.add(mapping.name)
-					break
-				case MappingTriCasterType.MATRIX_OUTPUT:
-					result.matrixOutputs.add(mapping.name)
-					break
-			}
-		}
-		return result
-	}
-
-	private getDefaultLayerState(): RequiredDeep<TriCasterLayerState> {
-		return {
-			input: BLACK_INPUT,
-			positioningAndCropEnabled: false,
-			position: { x: 0, y: 0 },
-			scale: { x: 1, y: 1 },
-			rotation: { x: 0, y: 0, z: 0 },
-			crop: { left: 0, right: 0, up: 0, down: 0 },
-			feather: 0,
-		}
-	}
-
-	private getDefaultKeyerState(): RequiredDeep<TriCasterKeyerState> {
-		return {
-			onAir: false,
-			transitionEffect: 'cut',
-			transitionDuration: DEFAULT_TRANSITION_DURATION,
-			...this.getDefaultLayerState(),
-		}
 	}
 
 	getCommandsToAchieveState(
@@ -281,9 +146,13 @@ export class TriCasterStateDiffer {
 
 	private getGenerator(): CommandGenerator<TriCasterState> {
 		return {
-			mixEffects: fillRecord(this.meNames, (meName) => this.getMixEffectGenerator(meName)),
-			inputs: fillRecord(this.inputNames, (inputName) => ({ $target: inputName, ...this.inputCommandGenerator })),
-			audioChannels: fillRecord(this.audioChannelNames, (inputName) => ({
+			mixEffects: fillRecord(this.availableResources.mixEffects, (meName) => this.getMixEffectGenerator(meName)),
+			inputs: fillRecord(this.availableResources.inputs, (inputName) => ({
+				$target: inputName,
+				...this.inputCommandGenerator,
+			})),
+			// @ts-ignore Partial messed this up
+			audioChannels: fillRecord(this.availableResources.audioChannels, (inputName) => ({
 				$target: inputName,
 				...this.audioCommandGenerator,
 			})),
@@ -293,11 +162,11 @@ export class TriCasterStateDiffer {
 			isStreaming: ({ entry }) => [
 				wrapInContext({ name: CommandName.STREAMING_TOGGLE, value: entry.value ? 1 : 0 }, entry),
 			],
-			mixOutputs: fillRecord(this.mixOutputNames, (mixOutputName) => ({
+			mixOutputs: fillRecord(this.availableResources.mixOutputs, (mixOutputName) => ({
 				$target: mixOutputName,
 				...this.mixOutputCommandGenerator,
 			})),
-			matrixOutputs: fillRecord(this.matrixOutputNames, (matrixOutputName) => ({
+			matrixOutputs: fillRecord(this.availableResources.matrixOutputs, (matrixOutputName) => ({
 				$target: matrixOutputName,
 				...this.matrixOutputCommandGenerator,
 			})),
@@ -419,7 +288,10 @@ export class TriCasterStateDiffer {
 					transitionEffect: this.mixEffectEffectCommandGenerator,
 					transitionDuration: this.durationCommandGenerator,
 					delegates: this.delegateCommandGenerator,
-					keyers: fillRecord(this.dskNames, (name) => ({ $target: name, ...this.keyerCommandGenerator })),
+					keyers: fillRecord(this.availableResources.keyers, (name) => ({
+						$target: name,
+						...this.keyerCommandGenerator,
+					})),
 					layers: null,
 					previewInput: !entry.isInEffectMode?.value ? this.previewInputCommandGenerator : null,
 					programInput: !entry.isInEffectMode?.value ? this.programInputCommandGenerator : null,
@@ -431,7 +303,7 @@ export class TriCasterStateDiffer {
 			if (entry.isInEffectMode?.value && entry.layers) {
 				this.recursivelyGenerateCommands<Partial<Record<TriCasterLayerName, TriCasterLayerState>>>(
 					commands,
-					fillRecord(this.layerNames, (name) => ({
+					fillRecord(this.availableResources.layers, (name) => ({
 						$target: name,
 						...this.layerCommandGenerator,
 					})),
@@ -553,23 +425,6 @@ export class TriCasterStateDiffer {
 			(isStateEntry(entry) && (entry.value === undefined || entry.value === null))
 		)
 	}
-}
-
-function fillArray<T>(length: number, mapFn: (index: number) => T): T[]
-function fillArray<T>(length: number, value: T): T[]
-function fillArray<T>(length: number, valueOrMapFn: T | ((index: number) => T)): T[] {
-	return valueOrMapFn instanceof Function
-		? Array.from({ length }, (_, i) => valueOrMapFn(i))
-		: new Array(length).fill(valueOrMapFn)
-}
-
-export function fillRecord<T extends string, U>(keys: T[], mapFn: (key: T) => U): Record<T, U>
-export function fillRecord<T extends string, U>(keys: T[], value: U): Record<T, U>
-export function fillRecord<T extends string, U>(keys: T[], valueOrMapFn: U | ((key: T) => U)): Record<T, U> {
-	return keys.reduce((accumulator, key) => {
-		accumulator[key] = valueOrMapFn instanceof Function ? valueOrMapFn(key) : valueOrMapFn
-		return accumulator
-	}, {} as Record<T, U>)
 }
 
 export function wrapStateInContext<T extends object>(state: T): WithContext<T> {

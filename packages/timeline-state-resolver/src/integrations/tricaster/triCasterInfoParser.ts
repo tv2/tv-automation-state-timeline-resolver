@@ -1,4 +1,17 @@
+import {
+	TriCasterAudioChannelName,
+	TriCasterInputName,
+	TriCasterKeyerName,
+	TriCasterLayerName,
+	TriCasterMatrixOutputName,
+	TriCasterMixEffectName,
+	TriCasterMixOutputName,
+	TriCasterSourceName,
+} from 'timeline-state-resolver-types'
 import { ElementCompact, xml2js } from 'xml-js'
+import { fillArray } from './util'
+
+const MATRIX_OUTPUTS_COUNT = 8 // @todo: hardcoded for now; only a few models have this feature; how to query for it?
 
 export interface TriCasterSwitcherInfo {
 	inputCount: number
@@ -11,6 +24,19 @@ export interface TriCasterProductInfo {
 	productModel: string
 	sessionName: string
 	outputCount: number
+}
+
+export interface TriCasterResourceNames {
+	mixEffects: TriCasterMixEffectName[]
+	inputs: TriCasterInputName[]
+	audioChannels: TriCasterAudioChannelName[]
+	layers: TriCasterLayerName[]
+	keyers: TriCasterKeyerName[]
+	mixOutputs: TriCasterMixOutputName[]
+	matrixOutputs: TriCasterMatrixOutputName[]
+}
+export interface TriCasterInfo extends TriCasterSwitcherInfo, TriCasterProductInfo {
+	availableResourceNames: TriCasterResourceNames
 }
 
 export class TriCasterInfoParser {
@@ -46,6 +72,37 @@ export class TriCasterInfoParser {
 			productModel: parsedProduct.product_information?.product_model?._text ?? '',
 			sessionName: parsedProduct.product_information?.session_name?._text ?? '',
 			outputCount: Number(parsedProduct.product_information?.output_count?._text ?? 8),
+		}
+	}
+
+	getAvailableResources(
+		switcherInfo: TriCasterSwitcherInfo,
+		productInfo: TriCasterProductInfo
+	): TriCasterResourceNames {
+		const mixEffects: TriCasterMixEffectName[] = [
+			'main',
+			...fillArray<TriCasterMixEffectName>(switcherInfo.meCount, (i) => `v${i + 1}`),
+		]
+		const keyers = fillArray<TriCasterKeyerName>(switcherInfo.dskCount, (i) => `dsk${i + 1}`)
+		const layers: TriCasterLayerName[] = ['a', 'b', 'c', 'd']
+		const inputs = fillArray<TriCasterInputName>(switcherInfo.inputCount, (i) => `input${i + 1}`)
+		const extraAudioChannelNames: TriCasterAudioChannelName[] = [
+			...fillArray<TriCasterSourceName>(switcherInfo.ddrCount, (i) => `ddr${i + 1}`),
+			'sound',
+			'master',
+		]
+		const audioChannels = [...extraAudioChannelNames, ...inputs]
+		const mixOutputs = fillArray<TriCasterMixOutputName>(productInfo.outputCount, (i) => `mix${i + 1}`)
+		const matrixOutputs = fillArray<TriCasterMatrixOutputName>(MATRIX_OUTPUTS_COUNT, (i) => `out${i + 1}`)
+
+		return {
+			mixEffects,
+			keyers,
+			layers,
+			inputs,
+			audioChannels,
+			mixOutputs,
+			matrixOutputs,
 		}
 	}
 }

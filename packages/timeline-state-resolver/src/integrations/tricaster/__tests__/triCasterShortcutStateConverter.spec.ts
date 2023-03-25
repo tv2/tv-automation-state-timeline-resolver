@@ -1,15 +1,8 @@
 import { TriCasterShortcutStateConverter } from '../triCasterShortcutStateConverter'
+import { MOCK_RESOURCES } from './helpers'
 
 function setUpShortcutStateConverter() {
-	return new TriCasterShortcutStateConverter({
-		mixEffects: ['main', 'v1', 'v2'],
-		inputs: ['input1', 'input2'],
-		audioChannels: ['input1', 'input2', 'sound', 'master'],
-		layers: ['a', 'b'],
-		keyers: ['dsk1', 'dsk2', 'dsk3', 'dsk4'],
-		mixOutputs: ['mix1', 'mix2'],
-		matrixOutputs: ['out1', 'out2'],
-	})
+	return new TriCasterShortcutStateConverter(MOCK_RESOURCES)
 }
 
 describe('TriCasterShortcutStateConverter.getTriCasterStateFromShortcutState', () => {
@@ -22,8 +15,8 @@ describe('TriCasterShortcutStateConverter.getTriCasterStateFromShortcutState', (
 	<shortcut_state name="main_b_row_named_input" value="DDR2" type="" sender="unknown"/>
 </shortcut_states>`)
 
-			expect(state.mixEffects['main'].programInput).toEqual({ value: 'input7' })
-			expect(state.mixEffects['main'].previewInput).toEqual({ value: 'ddr2' })
+			expect(state.mixEffects['main']?.programInput).toEqual({ value: 'input7' })
+			expect(state.mixEffects['main']?.previewInput).toEqual({ value: 'ddr2' })
 		})
 	})
 
@@ -38,10 +31,10 @@ describe('TriCasterShortcutStateConverter.getTriCasterStateFromShortcutState', (
 	<shortcut_state name="main_dsk4_value" value="0" type="double" sender="unknown" />
 </shortcut_states>`)
 
-			expect(state.mixEffects.main.keyers?.dsk1.onAir).toEqual({ value: false })
-			expect(state.mixEffects.main.keyers?.dsk2.onAir).toEqual({ value: true })
-			expect(state.mixEffects.main.keyers?.dsk3.onAir).toEqual({ value: true })
-			expect(state.mixEffects.main.keyers?.dsk4.onAir).toEqual({ value: false })
+			expect(state.mixEffects.main?.keyers?.dsk1.onAir).toEqual({ value: false })
+			expect(state.mixEffects.main?.keyers?.dsk2.onAir).toEqual({ value: true })
+			expect(state.mixEffects.main?.keyers?.dsk3.onAir).toEqual({ value: true })
+			expect(state.mixEffects.main?.keyers?.dsk4.onAir).toEqual({ value: false })
 		})
 
 		test('sets input', () => {
@@ -51,7 +44,7 @@ describe('TriCasterShortcutStateConverter.getTriCasterStateFromShortcutState', (
 	<shortcut_state name="main_dsk3_select_named_input" value="v6" type="" sender="unknown"/>
 </shortcut_states>`)
 
-			expect(state.mixEffects.main.keyers?.dsk3.input).toEqual({ value: 'v6' })
+			expect(state.mixEffects.main?.keyers?.dsk3.input).toEqual({ value: 'v6' })
 		})
 	})
 
@@ -63,7 +56,7 @@ describe('TriCasterShortcutStateConverter.getTriCasterStateFromShortcutState', (
 	<shortcut_state name="v2_a_row_named_input" value="v6" type="" sender="unknown"/>
 </shortcut_states>`)
 
-			expect(state.mixEffects.v2.layers?.a?.input).toEqual({ value: 'v6' })
+			expect(state.mixEffects.v2?.layers?.a?.input).toEqual({ value: 'v6' })
 		})
 	})
 

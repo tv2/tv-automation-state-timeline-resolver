@@ -10,7 +10,6 @@ import {
 } from 'timeline-state-resolver-types'
 import { ElementCompact, xml2js } from 'xml-js'
 import {
-	fillRecord,
 	TriCasterMixEffectState,
 	TriCasterAudioChannelState,
 	TriCasterInputState,
@@ -23,23 +22,15 @@ import {
 	TriCasterMatrixOutputState,
 } from './triCasterStateDiffer'
 import { CommandName, TriCasterGenericCommandName } from './triCasterCommands'
+import { TriCasterResourceNames } from './triCasterInfoParser'
+import { fillRecord } from './util'
 
 type ShortcutStates = {
 	[key: string]: string | number
 }
 
 export class TriCasterShortcutStateConverter {
-	constructor(
-		private readonly resourceNames: {
-			mixEffects: TriCasterMixEffectName[]
-			inputs: TriCasterInputName[]
-			audioChannels: TriCasterAudioChannelName[]
-			layers: TriCasterLayerName[]
-			keyers: TriCasterKeyerName[]
-			mixOutputs: TriCasterMixOutputName[]
-			matrixOutputs: TriCasterMatrixOutputName[]
-		}
-	) {}
+	constructor(private readonly resourceNames: TriCasterResourceNames) {}
 
 	getTriCasterStateFromShortcutState(shortcutStatesXml: string): WithContext<TriCasterState> {
 		const parsedStates = xml2js(shortcutStatesXml, { compact: true }) as ElementCompact

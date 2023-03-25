@@ -1,7 +1,7 @@
 import got from 'got'
 import { EventEmitter } from 'eventemitter3'
 import WebSocket = require('ws')
-import { TriCasterInfoParser, TriCasterProductInfo, TriCasterSwitcherInfo } from './triCasterInfoParser'
+import { TriCasterInfo, TriCasterInfoParser } from './triCasterInfoParser'
 import { serializeToWebSocketMessage, TriCasterCommand } from './triCasterCommands'
 
 export interface TriCasterConnectionEvents {
@@ -9,8 +9,6 @@ export interface TriCasterConnectionEvents {
 	disconnected: (reason: string) => void
 	error: (reason: any) => void
 }
-
-export interface TriCasterInfo extends TriCasterSwitcherInfo, TriCasterProductInfo {}
 
 const RECONNECT_TIMEOUT = 1000
 const PING_INTERVAL = 10000
@@ -93,9 +91,12 @@ export class TriCasterConnection extends EventEmitter<TriCasterConnectionEvents>
 		const switcherUpdateXml = got.get(`http://${this._host}:${this._port}/v1/dictionary?key=switcher`, GOT_OPTIONS)
 		const productInformationXml = got.get(`http://${this._host}:${this._port}/v1/version`, GOT_OPTIONS)
 		const parser = new TriCasterInfoParser()
+		const switcherInfo = parser.parseSwitcherUpdate(await switcherUpdateXml.text())
+		const productInfo = parser.parseProductInformation(await productInformationXml.text())
 		return {
-			...parser.parseSwitcherUpdate(await switcherUpdateXml.text()),
-			...parser.parseProductInformation(await productInformationXml.text()),
+			...switcherInfo,
+			...productInfo,
+			availableResourceNames: parser.getAvailableResources(switcherInfo, productInfo),
 		}
 	}
 

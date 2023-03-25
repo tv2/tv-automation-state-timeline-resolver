@@ -10,7 +10,7 @@ import {
 import { TriCasterDevice } from '..'
 import { TriCasterConnectionEvents, TriCasterConnection } from '../triCasterConnection'
 import { literal } from '../../../devices/device'
-import { wrapIntoResolvedInstance } from './helpers'
+import { MOCK_RESOURCES, wrapIntoResolvedInstance } from './helpers'
 
 const MOCK_CONNECT = jest.fn()
 const MOCK_SEND = jest.fn(async () => Promise.resolve())
@@ -70,7 +70,30 @@ describe('TriCasterDevice', () => {
 		device.handleState({ time: 11000, layers: {}, nextEvents: [] }, mappings)
 		await mockTime.advanceTimeToTicks(11010)
 
-		// check that initial commands are sent after connection
+		expect(MOCK_SEND).toHaveBeenCalledTimes(0)
+
+		device.handleState(
+			{
+				time: 11500,
+				layers: {
+					tc_me0_0: wrapIntoResolvedInstance<TimelineObjTriCasterME>({
+						layer: 'tc_me0_0',
+						enable: { while: '1' },
+						id: 't0',
+						content: {
+							deviceType: DeviceType.TRICASTER,
+							type: TimelineContentTypeTriCaster.ME,
+							me: {},
+						},
+					}),
+				},
+				nextEvents: [],
+			},
+			mappings
+		)
+		await mockTime.advanceTimeToTicks(11510)
+
+		// check that initial commands are sent after starting to control an M/E
 		// the number of them is not that relevant, but they have to only affect the mapped resource
 		expect(MOCK_SEND).toBeCalled()
 		expect(MOCK_SEND.mock.calls.filter((call) => (call as any)[0].target.startsWith('main')).length).toEqual(
@@ -128,6 +151,7 @@ class TriCasterConnectionMock extends EventEmitter<TriCasterConnectionEvents> {
 				productModel: 'TEST-MODEL',
 				sessionName: 'TEST-SESSION',
 				outputCount: 8,
+				availableResourceNames: MOCK_RESOURCES,
 			},
 			`<shortcut_states>
 	<shortcut_state name="main_a_row_named_input" value="INPUT7" type="" sender="unknown"/>

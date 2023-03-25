@@ -1,58 +1,13 @@
-import { DeviceType, MappingTriCasterType as MappingType } from 'timeline-state-resolver-types'
-import { TriCasterInfo } from '../triCasterConnection'
-import { MappingsTriCaster, TriCasterStateDiffer } from '../triCasterStateDiffer'
+import { TriCasterStateDiffer } from '../triCasterStateDiffer'
+import { mockGetBlankState, mockGetDefaultState, MOCK_RESOURCES } from './helpers'
 
-const MOCK_DEVICE_ID = 'tc0'
-const MOCK_MAPPINGS: MappingsTriCaster = {
-	main: { device: DeviceType.TRICASTER, mappingType: MappingType.ME, deviceId: MOCK_DEVICE_ID, name: 'main' },
-	v1: { device: DeviceType.TRICASTER, mappingType: MappingType.ME, deviceId: MOCK_DEVICE_ID, name: 'v1' },
-	v2: { device: DeviceType.TRICASTER, mappingType: MappingType.ME, deviceId: MOCK_DEVICE_ID, name: 'v2' },
-	input1: { device: DeviceType.TRICASTER, mappingType: MappingType.INPUT, deviceId: MOCK_DEVICE_ID, name: 'input1' },
-	input2: { device: DeviceType.TRICASTER, mappingType: MappingType.INPUT, deviceId: MOCK_DEVICE_ID, name: 'input2' },
-	audio_input1: {
-		device: DeviceType.TRICASTER,
-		mappingType: MappingType.AUDIO_CHANNEL,
-		deviceId: MOCK_DEVICE_ID,
-		name: 'input1',
-	},
-	audio_input2: {
-		device: DeviceType.TRICASTER,
-		mappingType: MappingType.AUDIO_CHANNEL,
-		deviceId: MOCK_DEVICE_ID,
-		name: 'input2',
-	},
-	mix1: { device: DeviceType.TRICASTER, mappingType: MappingType.MIX_OUTPUT, deviceId: MOCK_DEVICE_ID, name: 'mix1' },
-	mix2: { device: DeviceType.TRICASTER, mappingType: MappingType.MIX_OUTPUT, deviceId: MOCK_DEVICE_ID, name: 'mix2' },
-	out1: {
-		device: DeviceType.TRICASTER,
-		mappingType: MappingType.MATRIX_OUTPUT,
-		deviceId: MOCK_DEVICE_ID,
-		name: 'out1',
-	},
-	out2: {
-		device: DeviceType.TRICASTER,
-		mappingType: MappingType.MATRIX_OUTPUT,
-		deviceId: MOCK_DEVICE_ID,
-		name: 'out2',
-	},
-}
-
-function setupStateDiffer(oldMappings = MOCK_MAPPINGS, newMappings = MOCK_MAPPINGS) {
-	const mockInfo: TriCasterInfo = {
-		inputCount: 2,
-		meCount: 2,
-		dskCount: 2,
-		ddrCount: 2,
-		productModel: 'TEST',
-		sessionName: 'TEST',
-		outputCount: 3,
-	}
-	const stateDiffer = new TriCasterStateDiffer(mockInfo)
+function setupStateDiffer() {
+	const stateDiffer = new TriCasterStateDiffer(MOCK_RESOURCES)
 
 	return {
 		stateDiffer,
-		oldState: stateDiffer.getDefaultState(oldMappings),
-		newState: stateDiffer.getDefaultState(newMappings),
+		oldState: mockGetDefaultState(),
+		newState: mockGetDefaultState(),
 	}
 }
 
@@ -519,9 +474,9 @@ describe('TriCasterStateDiffer.getCommandsToAchieveState', () => {
 
 			const commands = stateDiffer.getCommandsToAchieveState(newState, oldState)
 
-			expect(commands.length).toEqual(56)
+			expect(commands.length).toEqual(28)
 			const layerCommands = commands.filter(
-				(command) => 'target' in command.command && ['v1_a', 'v1_b', 'v1_c', 'v1_d'].includes(command.command.target)
+				(command) => 'target' in command.command && ['v1_a', 'v1_b'].includes(command.command.target)
 			)
 			expect(commands.length).toEqual(layerCommands.length)
 		})
@@ -559,7 +514,7 @@ describe('TriCasterStateDiffer.getCommandsToAchieveState', () => {
 		test('unmutes', () => {
 			const { stateDiffer, oldState, newState } = setupStateDiffer()
 
-			newState.audioChannels.input2.isMuted.value = false
+			newState.audioChannels.input2!.isMuted.value = false
 
 			const commands = stateDiffer.getCommandsToAchieveState(newState, oldState)
 
@@ -570,7 +525,7 @@ describe('TriCasterStateDiffer.getCommandsToAchieveState', () => {
 		test('sets volume', () => {
 			const { stateDiffer, oldState, newState } = setupStateDiffer()
 
-			newState.audioChannels.input2.volume.value = 5
+			newState.audioChannels.input2!.volume.value = 5
 
 			const commands = stateDiffer.getCommandsToAchieveState(newState, oldState)
 
@@ -617,35 +572,10 @@ describe('TriCasterStateDiffer.getCommandsToAchieveState', () => {
 	})
 
 	describe('Mapping changes', () => {
-		test('added mapings generate commands with default state, only for the mapped resource', () => {
-			const { stateDiffer, oldState, newState } = setupStateDiffer(
-				{},
-				{
-					mix1: {
-						device: DeviceType.TRICASTER,
-						mappingType: MappingType.MIX_OUTPUT,
-						deviceId: MOCK_DEVICE_ID,
-						name: 'mix1',
-					},
-				}
-			)
+		test('removed state does not generate commands', () => {
+			const { stateDiffer, oldState } = setupStateDiffer()
 
-			const commands = stateDiffer.getCommandsToAchieveState(newState, oldState)
-
-			expect(commands.length).toEqual(2)
-			expect(commands[0].command).toEqual({ target: 'mix1', name: '_output_source', value: 'program' })
-			expect(commands[1].command).toEqual({ name: 'set_output_config_video_source', output_index: 0, me_clean: false })
-		})
-
-		test('removed mapings do not generate commands', () => {
-			const { stateDiffer, oldState, newState } = setupStateDiffer(MOCK_MAPPINGS, {})
-
-			// some example state
-			oldState.mixEffects.main.keyers.dsk2.transitionDuration.value = 5.2
-			oldState.mixEffects.main.keyers.dsk2.transitionEffect.value = 5
-			oldState.mixEffects.main.keyers.dsk2.input.value = 'input1'
-
-			const commands = stateDiffer.getCommandsToAchieveState(newState, oldState)
+			const commands = stateDiffer.getCommandsToAchieveState(mockGetBlankState(), oldState)
 
 			expect(commands.length).toEqual(0)
 		})
@@ -709,14 +639,14 @@ describe('TriCasterStateDiffer.getCommandsToAchieveState', () => {
 			newState.mixEffects.main.keyers.dsk2.input.temporalPriority = 1
 			newState.mixEffects.main.keyers.dsk2.onAir.value = true
 			newState.mixEffects.main.keyers.dsk2.onAir.temporalPriority = 0
-			newState.mixEffects.v2.keyers.dsk2.input.value = 'input3'
-			newState.mixEffects.v2.keyers.dsk2.input.temporalPriority = -1
+			newState.mixEffects.v1.keyers.dsk2.input.value = 'input3'
+			newState.mixEffects.v1.keyers.dsk2.input.temporalPriority = -1
 
 			const commands = stateDiffer.getCommandsToAchieveState(newState, oldState)
 
 			expect(commands.length).toEqual(3)
 			expect(commands[0]).toMatchObject({
-				command: { target: 'v2_dsk2', name: '_select_named_input', value: 'input3' },
+				command: { target: 'v1_dsk2', name: '_select_named_input', value: 'input3' },
 				temporalPriority: -1,
 			})
 			expect(commands[1]).toMatchObject({
