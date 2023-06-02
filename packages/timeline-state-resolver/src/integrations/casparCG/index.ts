@@ -687,93 +687,15 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 		}
 		this.emitDebug(cwc)
 
-		const { request, error } = await this._ccg.executeCommand(cmd)
-		if (error) {
-			this.emit('commandError', error, cwc)
-		}
-
-		try {
-			const response = await request
-
-			// I forgot what this means.. oh well... todo
-			if (!response) return
-
-			if (
-				response.responseCode < 300 && // TODO - maybe we accept every code except 404?
-				response.command.match(/Loadbg|Play|Load|Clear|Stop|Resume/i) &&
-				'channel' in cmd.params &&
-				cmd.params.channel !== undefined &&
-				'layer' in cmd.params &&
-				cmd.params.layer !== undefined
-			) {
-				const currentState = this.getState(time)
-				if (currentState) {
-					const currentCasparState = currentState.state
-
-					const trackedState = this._currentState
-
-					const channel = currentCasparState.channels[cmd.params.channel]
-					if (channel) {
-						if (!trackedState.channels[cmd.params.channel]) {
-							trackedState.channels[cmd.params.channel] = {
-								channelNo: channel.channelNo,
-								fps: channel.fps || 0,
-								videoMode: channel.videoMode || null,
-								layers: {},
-							}
-
-							// copy into the trackedState
-							if (
-								(resCommand.name === 'PlayCommand' && resCommand.getParam('clip')) ||
-								(!resCommand.getParam('clip') &&
-									trackedState.channels[resCommand.channel].layers[resCommand.layer].nextUp)
-							) {
-								console.log(
-									resCommand.name === 'PlayCommand' && resCommand.getParam('clip'),
-									!resCommand.getParam('clip') &&
-										trackedState.channels[resCommand.channel].layers[resCommand.layer].nextUp
-								)
-								// a play command without parameters (channel/layer) is only succesful if the nextUp worked
-								// a play command with params can always be accepted
-								trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
-									...channel.layers[resCommand.layer],
-									nextUp: undefined, // a play command always clears nextUp
-								}
-							} else if (resCommand.name === 'LoadbgCommand') {
-								// only loadbg can set nextUp and nextUp can only be set by loadbg
-								trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
-									...trackedState.channels[resCommand.channel].layers[resCommand.layer],
-									nextUp: channel.layers[resCommand.layer].nextUp,
-								}
-							} else if (
-								resCommand.name === 'StopCommand' &&
-								trackedState.channels[resCommand.channel].layers[resCommand.layer].nextUp?.auto
-							) {
-								// auto next + stop means bg -> fg => nextUp cleared
-								trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
-									...channel.layers[resCommand.layer],
-									nextUp: undefined, // a play command always clears nextUp
-								}
-							} else if (resCommand.name === 'ResumeCommand' || resCommand.name === 'StopCommand') {
-								// stop and resume can be done without affecting nextup
-								trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
-									...channel.layers[resCommand.layer],
-									nextUp: trackedState.channels[resCommand.channel].layers[resCommand.layer].nextUp,
-								}
-							} else {
-								// anything else can always be copied but also clears nextUp
-								// @todo - can LOADBG be followed by an empty LOAD? (if yes, apply same logic as PLAY)
-								trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
-									...channel.layers[resCommand.layer],
-									nextUp: undefined,
-								}
-							}
-						}
-						// Copy the tracked from current state:
-						trackedState.channels[cmd.params.channel].layers[cmd.params.layer] = channel.layers[cmd.params.layer]
-					}
+		return this._ccg
+			.do(cmd)
+			.then((resCommand) => {
+				if (this._queue[resCommand.token]) {
+					delete this._queue[resCommand.token]
 				}
-			}
+				// If the command was performed successfully, copy the state from the current state into the tracked caspar-state:
+				// This is later used in _assertIntendedState
+				this._changeTrackedStateFromCommand(resCommand, time)
 
 			if (response.responseCode === 504 && !this._queueOverflow) {
 				this._queueOverflow = true
@@ -796,6 +718,79 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 		} catch (e) {
 			// This shouldn't really happen
 			this.emit('commandError', Error('Command not sent: ' + e), cwc)
+		}
+	}
+
+	private _changeTrackedStateFromCommand(resCommand: CommandNS.IAMCPCommand, time: number) {
+		if (
+			(resCommand.name === 'LoadbgCommand' ||
+				resCommand.name === 'PlayCommand' ||
+				resCommand.name === 'LoadCommand' ||
+				resCommand.name === 'ClearCommand' ||
+				resCommand.name === 'StopCommand' ||
+				resCommand.name === 'ResumeCommand') &&
+			resCommand.channel &&
+			resCommand.layer
+		) {
+			const currentState = this.getState(time)
+			if (currentState) {
+				const currentCasparState = currentState.state
+
+				const trackedState = this._currentState
+
+				const channel = currentCasparState.channels[resCommand.channel]
+				if (channel) {
+					if (!trackedState.channels[resCommand.channel]) {
+						trackedState.channels[resCommand.channel] = {
+							channelNo: channel.channelNo,
+							fps: channel.fps || 0,
+							videoMode: channel.videoMode || null,
+							layers: {},
+						}
+					}
+
+					// copy into the trackedState
+					if (
+						(resCommand.name === 'PlayCommand' && resCommand.getParam('clip')) ||
+						(!resCommand.getParam('clip') && trackedState.channels[resCommand.channel].layers[resCommand.layer].nextUp)
+					) {
+						// a play command without parameters (channel/layer) is only succesful if the nextUp worked
+						// a play command with params can always be accepted
+						trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
+							...channel.layers[resCommand.layer],
+							nextUp: undefined, // a play command always clears nextUp
+						}
+					} else if (resCommand.name === 'LoadbgCommand') {
+						// only loadbg can set nextUp and nextUp can only be set by loadbg
+						trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
+							...trackedState.channels[resCommand.channel].layers[resCommand.layer],
+							nextUp: channel.layers[resCommand.layer].nextUp,
+						}
+					} else if (
+						resCommand.name === 'StopCommand' &&
+						trackedState.channels[resCommand.channel].layers[resCommand.layer].nextUp?.auto
+					) {
+						// auto next + stop means bg -> fg => nextUp cleared
+						trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
+							...channel.layers[resCommand.layer],
+							nextUp: undefined, // a play command always clears nextUp
+						}
+					} else if (resCommand.name === 'ResumeCommand' || resCommand.name === 'StopCommand') {
+						// stop and resume can be done without affecting nextup
+						trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
+							...channel.layers[resCommand.layer],
+							nextUp: trackedState.channels[resCommand.channel].layers[resCommand.layer].nextUp,
+						}
+					} else {
+						// anything else can always be copied but also clears nextUp
+						// @todo - can LOADBG be followed by an empty LOAD? (if yes, apply same logic as PLAY)
+						trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
+							...channel.layers[resCommand.layer],
+							nextUp: undefined,
+						}
+					}
+				}
+			}
 		}
 	}
 

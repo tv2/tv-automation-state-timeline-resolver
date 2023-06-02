@@ -1478,32 +1478,9 @@ describe('CasparCG', () => {
 		})
 
 		// apply command to internal ccg-state
+		const resCommand = getMockCall(commandReceiver0, 1, 1)
 		// @ts-ignore
-		const currentState = await device.getState(mockTime.getCurrentTime())
-		const resCommand = getMockCall(commandReceiver0, 1, 1).params
-		if (currentState) {
-			// @ts-ignore
-			const currentCasparState = currentState.state
-
-			// @ts-ignore
-			const trackedState = await (await device._ccgState).getState()
-
-			const channel = currentCasparState.channels[resCommand.channel]
-			if (channel) {
-				if (!trackedState.channels[resCommand.channel]) {
-					trackedState.channels[resCommand.channel] = {
-						channelNo: channel.channelNo,
-						fps: channel.fps || 0,
-						videoMode: channel.videoMode || null,
-						layers: {},
-					}
-				}
-				// Copy the tracked from current state:
-				trackedState.channels[resCommand.channel].layers[resCommand.layer] = channel.layers[resCommand.layer]
-				// @ts-ignore
-				await (await device._ccgState).setState(trackedState)
-			}
-		}
+		await device._changeTrackedStateFromCommand(resCommand, mockTime.getCurrentTime())
 		// trigger retry mechanism
 		await (device as any)._assertIntendedState()
 		await mockTime.advanceTimeToTicks(10900)
@@ -1622,31 +1599,9 @@ describe('CasparCG', () => {
 
 		// apply command to internal ccg-state
 		// @ts-ignore
-		const currentState = await device.getState(mockTime.getCurrentTime())
-		const resCommand = getMockCall(commandReceiver0, 0, 1).params
-		if (currentState) {
-			// @ts-ignore
-			const currentCasparState = currentState.state
-
-			// @ts-ignore
-			const trackedState = await (await device._ccgState).getState()
-
-			const channel = currentCasparState.channels[resCommand.channel]
-			if (channel) {
-				if (!trackedState.channels[resCommand.channel]) {
-					trackedState.channels[resCommand.channel] = {
-						channelNo: channel.channelNo,
-						fps: channel.fps || 0,
-						videoMode: channel.videoMode || null,
-						layers: {},
-					}
-				}
-				// Copy the tracked from current state:
-				trackedState.channels[resCommand.channel].layers[resCommand.layer] = channel.layers[resCommand.layer]
-				// @ts-ignore
-				await (await device._ccgState).setState(trackedState)
-			}
-		}
+		const resCommand = getMockCall(commandReceiver0, 0, 1)
+		// @ts-ignore
+		await device._changeTrackedStateFromCommand(resCommand, mockTime.getCurrentTime())
 
 		// advance before half way
 		await mockTime.advanceTimeToTicks(10500)
