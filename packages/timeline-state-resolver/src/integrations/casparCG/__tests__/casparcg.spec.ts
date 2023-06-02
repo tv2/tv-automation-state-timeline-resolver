@@ -1496,7 +1496,11 @@ describe('CasparCG', () => {
 		// apply command to internal ccg-state
 		const resCommand = getMockCall(commandReceiver0, 1, 1)
 		// @ts-ignore
-		await device._changeTrackedStateFromCommand(resCommand, mockTime.getCurrentTime())
+		await device._changeTrackedStateFromCommand(
+			resCommand,
+			{ responseCode: 202, command: resCommand.command },
+			mockTime.getCurrentTime()
+		)
 		// trigger retry mechanism
 		await (device as any)._assertIntendedState()
 		await mockTime.advanceTimeToTicks(10900)
@@ -1618,7 +1622,11 @@ describe('CasparCG', () => {
 		// @ts-ignore
 		const resCommand = getMockCall(commandReceiver0, 0, 1)
 		// @ts-ignore
-		await device._changeTrackedStateFromCommand(resCommand, mockTime.getCurrentTime())
+		await device._changeTrackedStateFromCommand(
+			resCommand,
+			{ responseCode: 202, command: resCommand.command },
+			mockTime.getCurrentTime()
+		)
 
 		// advance before half way
 		await mockTime.advanceTimeToTicks(10500)
