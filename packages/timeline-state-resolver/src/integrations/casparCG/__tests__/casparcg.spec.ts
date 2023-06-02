@@ -56,6 +56,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		await mockTime.advanceTimeToTicks(10100)
 
@@ -131,6 +132,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		await mockTime.advanceTimeToTicks(10100)
 
@@ -196,6 +198,7 @@ describe('CasparCG', () => {
 				fps: 50,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		await mockTime.advanceTimeToTicks(10100)
 
@@ -274,6 +277,7 @@ describe('CasparCG', () => {
 				useScheduling: false,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		myConductor.setTimelineAndMappings(
@@ -344,6 +348,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		// await mockTime.advanceTimeToTicks(10050)
@@ -430,6 +435,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		await mockTime.advanceTimeToTicks(10050)
@@ -506,6 +512,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		await mockTime.advanceTimeToTicks(10050)
@@ -580,6 +587,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		const deviceContainer = myConductor.getDevice('myCCG')
@@ -693,6 +701,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		// Check that no commands has been sent:
@@ -809,6 +818,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		// Check that no commands has been sent:
@@ -944,6 +954,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		expect(mockTime.getCurrentTime()).toEqual(10000)
@@ -1046,6 +1057,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		expect(mockTime.getCurrentTime()).toEqual(10000)
@@ -1147,6 +1159,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		await mockTime.advanceTimeToTicks(10050)
@@ -1244,6 +1257,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		await mockTime.advanceTimeToTicks(10050)
@@ -1330,6 +1344,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		await mockTime.advanceTimeToTicks(10100)
 
@@ -1412,6 +1427,7 @@ describe('CasparCG', () => {
 				retryInterval: undefined, // disable retries explicitly, we will manually trigger them
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		myConductor.setTimelineAndMappings([], myLayerMapping)
 		await mockTime.advanceTimeToTicks(10100)
@@ -1532,6 +1548,7 @@ describe('CasparCG', () => {
 				retryInterval: undefined, // disable retries explicitly, we will manually trigger them
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		myConductor.setTimelineAndMappings([], myLayerMapping)
 		await mockTime.advanceTimeToTicks(10100)
@@ -1653,6 +1670,7 @@ describe('CasparCG', () => {
 				useScheduling: false,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		await mockTime.advanceTimeToTicks(10100)
 
@@ -1746,6 +1764,7 @@ describe('CasparCG', () => {
 				useScheduling: false,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		await mockTime.advanceTimeToTicks(10100)
 

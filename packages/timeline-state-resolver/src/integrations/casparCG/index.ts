@@ -1,7 +1,7 @@
 import * as _ from 'underscore'
 import * as deepMerge from 'deepmerge'
 import { DeviceWithState, CommandWithContext, DeviceStatus, StatusCode, literal } from '../../devices/device'
-import { AMCPCommand, BasicCasparCGAPI, Commands } from 'casparcg-connection'
+import { AMCPCommand, BasicCasparCGAPI, Commands, Response } from 'casparcg-connection'
 import {
 	DeviceType,
 	TimelineContentTypeCasparCg,
@@ -45,13 +45,14 @@ import * as request from 'request'
 import { InternalTransitionHandler } from '../../devices/transitions/transitionHandler'
 import Debug from 'debug'
 import { endTrace, startTrace } from '../../lib'
-import { InternalState } from 'casparcg-state/dist/lib/stateObjectStorage'
 const debug = Debug('timeline-state-resolver:casparcg')
 
 const MEDIA_RETRY_INTERVAL = 10 * 1000 // default time in ms between checking whether a file needs to be retried loading
 
 export interface DeviceOptionsCasparCGInternal extends DeviceOptionsCasparCG {
 	commandReceiver?: CommandReceiver
+	/** Allow skipping the resync upon connection, for unit tests */
+	skipVirginCheck?: boolean
 }
 export type CommandReceiver = (time: number, cmd: AMCPCommand, context: string, timelineObjId: string) => Promise<any>
 /**
@@ -105,18 +106,66 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 			this.makeReady(false) // always make sure timecode is correct, setting it can never do bad
 				.catch((e) => this.emit('error', 'casparCG.makeReady', e))
 
-			this._connected = true
-			this._connectionChanged()
+			Promise.resolve()
+				.then(async () => {
+					if (this.deviceOptions.skipVirginCheck) return false
 
-			// TODO - maybe add this back based on info command
-			// if (event.valueOf().virginServer === true) {
-			// 	// a "virgin server" was just restarted (so it is cleared & black).
-			// 	// Otherwise it was probably just a loss of connection
+					// a "virgin server" was just restarted (so it is cleared & black).
+					// Otherwise it was probably just a loss of connection
 
-			// 	this._ccgState.softClearState()
-			// 	this.clearStates()
-			// 	this.emit('resetResolver')
-			// }
+					const { error, request } = await this._ccg.executeCommand({ command: Commands.Info, params: {} })
+					if (error) return true
+
+					const response = await request
+
+					const channelPromises: Promise<Response>[] = []
+					const channelLength: number = response?.data?.['length'] ?? 0
+
+					// Issue commands
+					for (let i = 1; i <= channelLength; i++) {
+						// 1-based index for channels
+
+						const { error, request } = await this._ccg.executeCommand({
+							command: Commands.Info,
+							params: { channel: i },
+						})
+						if (error) {
+							// We can't return here, as that will leave anything in channelPromises as potentially unhandled
+							channelPromises.push(Promise.reject('execute failed'))
+							break
+						} else if (request) {
+							channelPromises.push(request)
+						}
+					}
+
+					// Wait for all commands
+					const channelResults = await Promise.all(channelPromises)
+
+					// Resync if all channels have no stage object (no possibility of anything playing)
+					return !channelResults.find((ch) => ch.data['stage'])
+				})
+				.catch((e) => {
+					this.emit('error', 'connect virgin check failed', e)
+					// Something failed, force the resync as glitching playback is better than black output
+					return true
+				})
+				.then((doResync) => {
+					// Finally we can report it as connected
+					this._connected = true
+					this._connectionChanged()
+
+					if (doResync) {
+						this._currentState = { channels: {} }
+						this.clearStates()
+						this.emit('resetResolver')
+					}
+				})
+				.catch((e) => {
+					this.emit('error', 'connect state resync failed', e)
+					// Some unknwon error occured, report the connection as failed
+					this._connected = false
+					this._connectionChanged()
+				})
 		})
 
 		this._ccg.on('disconnect', () => {
@@ -687,15 +736,18 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 		}
 		this.emitDebug(cwc)
 
-		return this._ccg
-			.do(cmd)
-			.then((resCommand) => {
-				if (this._queue[resCommand.token]) {
-					delete this._queue[resCommand.token]
-				}
-				// If the command was performed successfully, copy the state from the current state into the tracked caspar-state:
-				// This is later used in _assertIntendedState
-				this._changeTrackedStateFromCommand(resCommand, time)
+		const { request, error } = await this._ccg.executeCommand(cmd)
+		if (error) {
+			this.emit('commandError', error, cwc)
+		}
+
+		try {
+			const response = await request
+
+			// I forgot what this means.. oh well... todo
+			if (!response) return
+
+			this._changeTrackedStateFromCommand(cmd, response, time)
 
 			if (response.responseCode === 504 && !this._queueOverflow) {
 				this._queueOverflow = true
