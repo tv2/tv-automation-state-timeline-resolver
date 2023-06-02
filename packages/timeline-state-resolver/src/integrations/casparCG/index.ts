@@ -133,9 +133,8 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 							// We can't return here, as that will leave anything in channelPromises as potentially unhandled
 							channelPromises.push(Promise.reject('execute failed'))
 							break
-						} else {
-							channelPromises.push(request)
 						}
+						channelPromises.push(request)
 					}
 
 					// Wait for all commands
@@ -180,9 +179,9 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 		const response = await request
 
 		if (response?.data[0]) {
-			response.data.forEach((obj, i) => {
-				this._currentState.channels[i + 1] = {
-					channelNo: i + 1,
+			response.data.forEach((obj) => {
+				this._currentState.channels[obj.channel] = {
+					channelNo: obj.channel,
 					videoMode: obj.format.toUpperCase(),
 					fps: obj.frameRate,
 					layers: {},
