@@ -773,72 +773,83 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 		}
 	}
 
-	private _changeTrackedStateFromCommand(resCommand: CommandNS.IAMCPCommand, time: number) {
+	private _changeTrackedStateFromCommand(command: AMCPCommand, response: Response, time: number) {
 		if (
-			(resCommand.name === 'LoadbgCommand' ||
-				resCommand.name === 'PlayCommand' ||
-				resCommand.name === 'LoadCommand' ||
-				resCommand.name === 'ClearCommand' ||
-				resCommand.name === 'StopCommand' ||
-				resCommand.name === 'ResumeCommand') &&
-			resCommand.channel &&
-			resCommand.layer
+			response.responseCode < 300 && // TODO - maybe we accept every code except 404?
+			response.command.match(/Loadbg|Play|Load|Clear|Stop|Resume/i) &&
+			'channel' in command.params &&
+			command.params.channel !== undefined &&
+			'layer' in command.params &&
+			command.params.layer !== undefined
 		) {
-			const currentState = this.getState(time)
-			if (currentState) {
-				const currentCasparState = currentState.state
+			const currentExpectedState = this.getState(time)
+			if (currentExpectedState) {
+				const confirmedState = this._currentState
 
-				const trackedState = this._currentState
-
-				const channel = currentCasparState.channels[resCommand.channel]
-				if (channel) {
-					if (!trackedState.channels[resCommand.channel]) {
-						trackedState.channels[resCommand.channel] = {
-							channelNo: channel.channelNo,
-							fps: channel.fps || 0,
-							videoMode: channel.videoMode || null,
+				const expectedChannelState = currentExpectedState.state.channels[command.params.channel]
+				if (expectedChannelState) {
+					let confirmedChannelState = confirmedState.channels[command.params.channel]
+					if (!confirmedState.channels[command.params.channel]) {
+						confirmedChannelState = confirmedState.channels[command.params.channel] = {
+							channelNo: expectedChannelState.channelNo,
+							fps: expectedChannelState.fps || 0,
+							videoMode: expectedChannelState.videoMode || null,
 							layers: {},
 						}
 					}
 
 					// copy into the trackedState
-					if (
-						(resCommand.name === 'PlayCommand' && resCommand.getParam('clip')) ||
-						(!resCommand.getParam('clip') && trackedState.channels[resCommand.channel].layers[resCommand.layer].nextUp)
-					) {
-						// a play command without parameters (channel/layer) is only succesful if the nextUp worked
-						// a play command with params can always be accepted
-						trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
-							...channel.layers[resCommand.layer],
-							nextUp: undefined, // a play command always clears nextUp
-						}
-					} else if (resCommand.name === 'LoadbgCommand') {
-						// only loadbg can set nextUp and nextUp can only be set by loadbg
-						trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
-							...trackedState.channels[resCommand.channel].layers[resCommand.layer],
-							nextUp: channel.layers[resCommand.layer].nextUp,
-						}
-					} else if (
-						resCommand.name === 'StopCommand' &&
-						trackedState.channels[resCommand.channel].layers[resCommand.layer].nextUp?.auto
-					) {
-						// auto next + stop means bg -> fg => nextUp cleared
-						trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
-							...channel.layers[resCommand.layer],
-							nextUp: undefined, // a play command always clears nextUp
-						}
-					} else if (resCommand.name === 'ResumeCommand' || resCommand.name === 'StopCommand') {
-						// stop and resume can be done without affecting nextup
-						trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
-							...channel.layers[resCommand.layer],
-							nextUp: trackedState.channels[resCommand.channel].layers[resCommand.layer].nextUp,
-						}
-					} else {
-						// anything else can always be copied but also clears nextUp
-						// @todo - can LOADBG be followed by an empty LOAD? (if yes, apply same logic as PLAY)
-						trackedState.channels[resCommand.channel].layers[resCommand.layer] = {
-							...channel.layers[resCommand.layer],
-							nextUp: undefined,
+					switch (command.command) {
+						case Commands.Play:
+						case Commands.Load:
+							if (!('clip' in command.params) && !confirmedChannelState.layers[command.params.layer]?.nextUp) {
+								// Ignore, no clip was loaded in confirmedChannelState
+							} else {
+								// a play/load command without parameters (channel/layer) is only succesful if the nextUp worked
+								// a play/load command with params can always be accepted
+								confirmedChannelState.layers[command.params.layer] = {
+									...expectedChannelState.layers[command.params.layer],
+									nextUp: undefined, // a play command always clears nextUp
+								}
+							}
+							break
+						case Commands.Loadbg:
+							// only loadbg can set nextUp and nextUp can only be set by loadbg
+							confirmedChannelState.layers[command.params.layer] = {
+								...confirmedChannelState.layers[command.params.layer],
+								nextUp: expectedChannelState.layers[command.params.layer]?.nextUp,
+							}
+							break
+						case Commands.Stop:
+							if (confirmedChannelState.layers[command.params.layer]?.nextUp?.auto) {
+								// auto next + stop means bg -> fg => nextUp cleared
+								confirmedChannelState.layers[command.params.layer] = {
+									...expectedChannelState.layers[command.params.layer],
+									nextUp: undefined, // auto next + stop means bg -> fg => nextUp cleared
+								}
+							} else {
+								// stop does not affect nextup
+								confirmedChannelState.layers[command.params.layer] = {
+									...expectedChannelState.layers[command.params.layer],
+									nextUp: confirmedChannelState.layers[command.params.layer]?.nextUp,
+								}
+							}
+							break
+						case Commands.Resume:
+							// resume does not affect nextup
+							confirmedChannelState.layers[command.params.layer] = {
+								...expectedChannelState.layers[command.params.layer],
+								nextUp: confirmedChannelState.layers[command.params.layer]?.nextUp,
+							}
+							break
+						case Commands.Clear:
+							// Remove both the background and foreground
+							delete confirmedChannelState.layers[command.params.layer]
+							break
+						default: {
+							// Never hit
+							// const _a: never = command.params.name
+							break
 						}
 					}
 				}
