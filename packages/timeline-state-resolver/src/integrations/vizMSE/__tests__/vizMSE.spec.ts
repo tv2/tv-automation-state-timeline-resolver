@@ -1062,6 +1062,7 @@ describe('vizMSE', () => {
 					templateName: 'bund',
 					templateData: ['foo', 'bar'],
 					channel: 'my_channel',
+					showLayer: 'viz0',
 				},
 			])
 		)
@@ -1116,6 +1117,7 @@ describe('vizMSE', () => {
 					templateName: 'bund',
 					templateData: ['foo', 'bar'],
 					channel: 'my_channel',
+					showLayer: 'viz0',
 				},
 			])
 		)
@@ -1175,6 +1177,7 @@ describe('vizMSE', () => {
 					templateName: 'bund',
 					templateData: ['foo', 'bar'],
 					channel: 'my_channel',
+					showLayer: 'viz0',
 				},
 			])
 		)

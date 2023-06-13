@@ -91,7 +91,7 @@ export class VizMSEManager extends EventEmitter {
 	private _activeRundownPlaylistId: string | undefined
 	private _preloadedRundownPlaylistId: string | undefined
 	private _updateAfterReconnect = false
-	private _currentShowId: string | undefined
+	private _currentShowIds = new Map<string, string>()
 	private _initializedShows = new Set<string>()
 	private _showToIdMap: Map<string, string> | undefined
 
@@ -518,7 +518,7 @@ export class VizMSEManager extends EventEmitter {
 
 	public async initializeShow(cmd: VizMSECommandInitializeShow): Promise<void> {
 		const rundown = await this._getRundown()
-		this._currentShowId = cmd.showId
+		this._currentShowIds.set(cmd.layerId, cmd.showId)
 		const expectedPlayoutItems = await this._prepareAndGetExpectedPlayoutItems()
 		if (this.purgeUnknownElements) {
 			this.emit('debug', `Purging shows ${cmd.showId} `)
@@ -545,6 +545,11 @@ export class VizMSEManager extends EventEmitter {
 	}
 
 	public async cleanupShows(cmd: VizMSECommandCleanupShows): Promise<void> {
+		for (const [key, value] of this._currentShowIds.entries()) {
+			if (cmd.showIds.includes(value)) {
+				this._currentShowIds.delete(key)
+			}
+		}
 		this._triggerCommandSent()
 		await this._cleanupShows(cmd.showIds)
 		this._triggerCommandSent()
@@ -593,7 +598,9 @@ export class VizMSEManager extends EventEmitter {
 		if (isVIZMSEPlayoutItemContentExternal(playoutItem)) {
 			return playoutItem
 		}
-		const showId = playoutItem.showName ? this.resolveShowNameToId(playoutItem.showName) : this._currentShowId
+		const showId = playoutItem.showName
+			? this.resolveShowNameToId(playoutItem.showName)
+			: this._currentShowIds.get(playoutItem.showLayer ?? '')
 		if (!showId) {
 			this.emit(
 				'warning',

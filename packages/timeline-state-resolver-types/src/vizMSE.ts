@@ -239,6 +239,8 @@ export interface VIZMSEPlayoutItemContentInternal extends VIZMSEPlayoutItemConte
 	templateData?: string[]
 	/** Which Show to place this element in. Not required when using TimelineObjVIZMSEInitializeShow. */
 	showName?: string
+	/** Layer on which to look for TimelineObjVIZMSEInitializeShow objects containing the Show Name */
+	showLayer?: string
 }
 
 export interface VIZMSEPlayoutItemContentExternal extends VIZMSEPlayoutItemContentBase {

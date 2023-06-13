@@ -578,6 +578,7 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState, DeviceOptionsVizM
 							timelineObjId: newLayer.timelineObjId,
 							showId: newLayer.showId,
 							time: time,
+							layerId,
 						}),
 						newLayer.lookahead
 					)

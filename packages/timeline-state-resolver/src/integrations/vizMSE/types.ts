@@ -153,6 +153,7 @@ export interface VizMSECommandInitializeShows extends VizMSECommandBase {
 export interface VizMSECommandInitializeShow extends VizMSECommandBase {
 	type: VizMSECommandType.INITIALIZE_SHOW
 	showId: string
+	layerId: string
 }
 export interface VizMSECommandCleanupShows extends VizMSECommandBase {
 	type: VizMSECommandType.CLEANUP_SHOWS
