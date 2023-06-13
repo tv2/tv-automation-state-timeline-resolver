@@ -37,6 +37,7 @@ import {
 	isVIZMSEPlayoutItemContentExternal,
 	VizMSEPlayoutItemContentExternalInstance,
 	isVIZMSEPlayoutItemContentInternal,
+	VizMSECommandInitializeShow,
 } from './types'
 import { VizEngineTcpSender } from './vizEngineTcpSender'
 import * as crypto from 'crypto'
@@ -90,6 +91,7 @@ export class VizMSEManager extends EventEmitter {
 	private _activeRundownPlaylistId: string | undefined
 	private _preloadedRundownPlaylistId: string | undefined
 	private _updateAfterReconnect = false
+	private _currentShowId: string | undefined
 	private _initializedShows = new Set<string>()
 	private _showToIdMap: Map<string, string> | undefined
 
@@ -514,6 +516,20 @@ export class VizMSEManager extends EventEmitter {
 		}
 	}
 
+	public async initializeShow(cmd: VizMSECommandInitializeShow): Promise<void> {
+		const rundown = await this._getRundown()
+		this._currentShowId = cmd.showId
+		const expectedPlayoutItems = await this._prepareAndGetExpectedPlayoutItems()
+		if (this.purgeUnknownElements) {
+			this.emit('debug', `Purging shows ${cmd.showId} `)
+			const elementsToKeep = Object.values(expectedPlayoutItems).filter(isVizMSEPlayoutItemContentInternalInstance)
+			await rundown.purgeInternalElements([cmd.showId], true, elementsToKeep)
+		}
+		this._triggerCommandSent()
+		await this._initializeShows([cmd.showId])
+		this._triggerCommandSent()
+	}
+
 	public async initializeShows(cmd: VizMSECommandInitializeShows): Promise<void> {
 		const rundown = await this._getRundown()
 		this._initializedShows = new Set(cmd.showIds)
@@ -577,7 +593,7 @@ export class VizMSEManager extends EventEmitter {
 		if (isVIZMSEPlayoutItemContentExternal(playoutItem)) {
 			return playoutItem
 		}
-		const showId = this.resolveShowNameToId(playoutItem.showName)
+		const showId = playoutItem.showName ? this.resolveShowNameToId(playoutItem.showName) : this._currentShowId
 		if (!showId) {
 			this.emit(
 				'warning',
@@ -738,12 +754,14 @@ export class VizMSEManager extends EventEmitter {
 			}
 		}
 	}
+
 	private async _deleteElement(content: VizMSEPlayoutItemContentInstance) {
 		const rundown = await this._getRundown()
 		this._triggerCommandSent()
 		await rundown.deleteElement(content)
 		this._triggerCommandSent()
 	}
+
 	private async _prepareAndGetExpectedPlayoutItems(): Promise<{ [hash: string]: VizMSEPlayoutItemContentInstance }> {
 		this.emit('debug', `VISMSE: _prepareAndGetExpectedPlayoutItems (${this._expectedPlayoutItems.length})`)
 
@@ -829,50 +847,7 @@ export class VizMSEManager extends EventEmitter {
 						this.emit('debug', `Updating status of element ${cachedEl.hash}`)
 
 						// Update cached status of the element:
-						const newEl = await rundown.getElement(cachedEl.content)
-
-						const newLoadedEl = {
-							...cachedEl,
-							isExpected: true,
-							isLoaded: this._isElementLoaded(newEl),
-							isLoading: this._isElementLoading(newEl),
-						}
-						this._elementCache[cachedEl.hash] = newLoadedEl
-						this.emit('debug', `Element ${cachedEl.hash}: ${JSON.stringify(newEl)}`)
-						if (isVizMSEPlayoutItemContentExternalInstance(cachedEl.content)) {
-							if (this._updateAfterReconnect || cachedEl?.isLoaded !== newLoadedEl.isLoaded) {
-								if (cachedEl?.isLoaded && !newLoadedEl.isLoaded) {
-									newLoadedEl.wasLoaded = true
-								} else if (!cachedEl?.isLoaded && newLoadedEl.isLoaded) {
-									newLoadedEl.wasLoaded = false
-								}
-								const vcpid = cachedEl.content.vcpid
-								if (newLoadedEl.isLoaded) {
-									const mediaObject: MediaObject = {
-										_id: cachedEl.hash,
-										mediaId: 'PILOT_' + vcpid,
-										mediaPath: vcpid.toString(),
-										mediaSize: 0,
-										mediaTime: 0,
-										thumbSize: 0,
-										thumbTime: 0,
-										cinf: '',
-										tinf: '',
-										_rev: '',
-									}
-									this.emit('updateMediaObject', cachedEl.hash, mediaObject)
-								} else {
-									this.emit('updateMediaObject', cachedEl.hash, null)
-								}
-							}
-							if (newLoadedEl.wasLoaded && !newLoadedEl.isLoaded && !newLoadedEl.isLoading) {
-								this.emit(
-									'debug',
-									`Element "${this._getElementReference(newEl)}" went from loaded to not loaded, initializing`
-								)
-								await rundown.initialize(cachedEl.content)
-							}
-						}
+						await this._updateCachedStatus(rundown, cachedEl)
 					} catch (e) {
 						this.emit('error', `Error in updateElementsLoadedStatus: ${(e as Error).toString()}`)
 					}
@@ -884,6 +859,54 @@ export class VizMSEManager extends EventEmitter {
 			throw Error('VizMSE.v-connection not initialized yet')
 		}
 	}
+
+	private async _updateCachedStatus(rundown: VRundown, cachedEl: CachedVElement) {
+		const newEl = await rundown.getElement(cachedEl.content)
+
+		const newLoadedEl = {
+			...cachedEl,
+			isExpected: true,
+			isLoaded: this._isElementLoaded(newEl),
+			isLoading: this._isElementLoading(newEl),
+		}
+		this._elementCache[cachedEl.hash] = newLoadedEl
+		this.emit('debug', `Element ${cachedEl.hash}: ${JSON.stringify(newEl)}`)
+
+		if (!isVizMSEPlayoutItemContentExternalInstance(cachedEl.content)) {
+			return
+		}
+
+		if (this._updateAfterReconnect || cachedEl?.isLoaded !== newLoadedEl.isLoaded) {
+			if (cachedEl?.isLoaded && !newLoadedEl.isLoaded) {
+				newLoadedEl.wasLoaded = true
+			} else if (!cachedEl?.isLoaded && newLoadedEl.isLoaded) {
+				newLoadedEl.wasLoaded = false
+			}
+			const vcpid = cachedEl.content.vcpid
+			if (newLoadedEl.isLoaded) {
+				const mediaObject: MediaObject = {
+					_id: cachedEl.hash,
+					mediaId: 'PILOT_' + vcpid,
+					mediaPath: vcpid.toString(),
+					mediaSize: 0,
+					mediaTime: 0,
+					thumbSize: 0,
+					thumbTime: 0,
+					cinf: '',
+					tinf: '',
+					_rev: '',
+				}
+				this.emit('updateMediaObject', cachedEl.hash, mediaObject)
+			} else {
+				this.emit('updateMediaObject', cachedEl.hash, null)
+			}
+		}
+		if (newLoadedEl.wasLoaded && !newLoadedEl.isLoaded && !newLoadedEl.isLoading) {
+			this.emit('debug', `Element "${this._getElementReference(newEl)}" went from loaded to not loaded, initializing`)
+			await rundown.initialize(cachedEl.content)
+		}
+	}
+
 	private async _triggerRundownActivate(rundown: VRundown): Promise<void> {
 		try {
 			this.emit('debug', 'rundown.activate triggered')

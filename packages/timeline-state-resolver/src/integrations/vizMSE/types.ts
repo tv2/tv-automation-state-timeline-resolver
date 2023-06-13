@@ -24,6 +24,7 @@ export type VizMSEStateLayer =
 	| VizMSEStateLayerPilot
 	| VizMSEStateLayerContinue
 	| VizMSEStateLayerLoadAllElements
+	| VizMSEStateLayerInitializeShow
 	| VizMSEStateLayerInitializeShows
 	| VizMSEStateLayerCleanupShows
 	| VizMSEStateLayerConcept
@@ -62,6 +63,11 @@ export interface VizMSEStateLayerContinue extends VizMSEStateLayerBase {
 	reference: string
 	referenceContent?: VizMSEStateLayerInternal | VizMSEStateLayerPilot
 }
+export interface VizMSEStateLayerInitializeShow extends VizMSEStateLayerBase {
+	contentType: TimelineContentTypeVizMSE.INITIALIZE_SHOW
+
+	showId: string
+}
 export interface VizMSEStateLayerInitializeShows extends VizMSEStateLayerBase {
 	contentType: TimelineContentTypeVizMSE.INITIALIZE_SHOWS
 
@@ -96,6 +102,7 @@ export enum VizMSECommandType {
 	LOAD_ALL_ELEMENTS = 'load_all_elements',
 	CLEAR_ALL_ELEMENTS = 'clear_all_elements',
 	CLEAR_ALL_ENGINES = 'clear_all_engines',
+	INITIALIZE_SHOW = 'initialize_show',
 	INITIALIZE_SHOWS = 'initialize_shows',
 	CLEANUP_SHOWS = 'cleanup_shows',
 	SET_CONCEPT = 'set_concept',
@@ -143,6 +150,10 @@ export interface VizMSECommandInitializeShows extends VizMSECommandBase {
 	type: VizMSECommandType.INITIALIZE_SHOWS
 	showIds: string[]
 }
+export interface VizMSECommandInitializeShow extends VizMSECommandBase {
+	type: VizMSECommandType.INITIALIZE_SHOW
+	showId: string
+}
 export interface VizMSECommandCleanupShows extends VizMSECommandBase {
 	type: VizMSECommandType.CLEANUP_SHOWS
 	showIds: string[]
@@ -162,6 +173,7 @@ export type VizMSECommand =
 	| VizMSECommandLoadAllElements
 	| VizMSECommandClearAllElements
 	| VizMSECommandClearAllEngines
+	| VizMSECommandInitializeShow
 	| VizMSECommandInitializeShows
 	| VizMSECommandCleanupShows
 	| VizMSECommandSetConcept

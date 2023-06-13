@@ -51,6 +51,8 @@ import {
 	VizMSECommandTakeOut,
 	VizMSECommandClearAllElements,
 	VizMSECommandClearAllEngines,
+	VizMSEStateLayerInitializeShow,
+	VizMSECommandInitializeShow,
 } from './types'
 
 /** The ideal time to prepare elements before going on air */
@@ -294,6 +296,22 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState, DeviceOptionsVizM
 								reference: l.content.reference,
 							})
 							break
+						case TimelineContentTypeVizMSE.INITIALIZE_SHOW: {
+							const showId = this._vizmseManager?.resolveShowNameToId(l.content.showName)
+							if (!showId) {
+								this.emit(
+									'warning',
+									`convertStateToVizMSE: Unable to find Show Id to initialize for Show Name "${l.content.showName}"`
+								)
+								break
+							}
+							state.layer[layerName] = literal<VizMSEStateLayerInitializeShow>({
+								timelineObjId: l.id,
+								contentType: TimelineContentTypeVizMSE.INITIALIZE_SHOW,
+								showId,
+							})
+							break
+						}
 						case TimelineContentTypeVizMSE.INITIALIZE_SHOWS:
 							state.layer[layerName] = literal<VizMSEStateLayerInitializeShows>({
 								timelineObjId: l.id,
@@ -551,6 +569,18 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState, DeviceOptionsVizM
 							newLayer.lookahead
 						)
 					}
+				}
+			} else if (newLayer.contentType === TimelineContentTypeVizMSE.INITIALIZE_SHOW) {
+				if (!oldLayer || !_.isEqual(newLayer, oldLayer)) {
+					addCommand(
+						literal<VizMSECommandInitializeShow>({
+							type: VizMSECommandType.INITIALIZE_SHOW,
+							timelineObjId: newLayer.timelineObjId,
+							showId: newLayer.showId,
+							time: time,
+						}),
+						newLayer.lookahead
+					)
 				}
 			} else if (newLayer.contentType === TimelineContentTypeVizMSE.INITIALIZE_SHOWS) {
 				if (!oldLayer || !_.isEqual(newLayer, oldLayer)) {
@@ -872,6 +902,9 @@ export class VizMSEDevice extends DeviceWithState<VizMSEState, DeviceOptionsVizM
 					break
 				case VizMSECommandType.SET_CONCEPT:
 					await this._vizmseManager.setConcept(cmd)
+					break
+				case VizMSECommandType.INITIALIZE_SHOW:
+					await this._vizmseManager.initializeShow(cmd)
 					break
 				case VizMSECommandType.INITIALIZE_SHOWS:
 					await this._vizmseManager.initializeShows(cmd)

@@ -52,6 +52,7 @@ export enum TimelineContentTypeVizMSE {
 	LOAD_ALL_ELEMENTS = 'load_all_elements',
 	CLEAR_ALL_ELEMENTS = 'clear_all_elements',
 	CLEANUP_SHOWS = 'cleanup_shows',
+	INITIALIZE_SHOW = 'initialize_show',
 	INITIALIZE_SHOWS = 'initialize_shows',
 	CONCEPT = 'concept',
 }
@@ -62,6 +63,7 @@ export type TimelineObjVIZMSEAny =
 	| TimelineObjVIZMSEElementContinue
 	| TimelineObjVIZMSELoadAllElements
 	| TimelineObjVIZMSEClearAllElements
+	| TimelineObjVIZMSEInitializeShow
 	| TimelineObjVIZMSEInitializeShows
 	| TimelineObjVIZMSECleanupShows
 	| TimelineObjVIZMSEConcept
@@ -173,6 +175,15 @@ export interface TimelineObjVIZMSEClearAllElements extends TSRTimelineObjBase {
 		showName: string
 	} & TimelineDatastoreReferencesContent
 }
+export interface TimelineObjVIZMSEInitializeShow extends TSRTimelineObjBase {
+	content: {
+		deviceType: DeviceType.VIZMSE
+		type: TimelineContentTypeVizMSE.INITIALIZE_SHOW
+
+		/** Name of the Shows to initialize and place Expected Playout Items in */
+		showName: string
+	} & TimelineDatastoreReferencesContent
+}
 export interface TimelineObjVIZMSEInitializeShows extends TSRTimelineObjBase {
 	content: {
 		deviceType: DeviceType.VIZMSE
@@ -226,8 +237,8 @@ export interface VIZMSEPlayoutItemContentInternal extends VIZMSEPlayoutItemConte
 	templateName: string
 	/** Data fields of the element */
 	templateData?: string[]
-	/** Which Show to place this element in */
-	showName: string
+	/** Which Show to place this element in. Not required when using TimelineObjVIZMSEInitializeShow. */
+	showName?: string
 }
 
 export interface VIZMSEPlayoutItemContentExternal extends VIZMSEPlayoutItemContentBase {
