@@ -2684,21 +2684,21 @@ caseless@~0.12.0:
   resolved "https://registry.yarnpkg.com/caseless/-/caseless-0.12.0.tgz#1b681c21ff84033c826543090689420d187151dc"
   integrity sha512-4tYFyifaFfGacoiObjJegolkwSU4xQNGbVgUiNYVUxbQ2x2lUsFvY4hVgVzGiIe6WLOPqycWXA40l+PWsxthUw==
 
-casparcg-connection@^5.1.0:
-  version "5.1.0"
-  resolved "https://registry.yarnpkg.com/casparcg-connection/-/casparcg-connection-5.1.0.tgz#6ea23c2895b5a28e2cd362a0ab0cd19c6ce68805"
-  integrity sha512-efYJG3jO2HPNJ0RUCvwmVlesXSbPfTxSoMuiUoOO86C7H5mTte4O8jGa6it7YShyBr8NTpUfPqiPEb7bKTAW3w==
+casparcg-connection@^6.0.0:
+  version "6.0.0"
+  resolved "https://registry.yarnpkg.com/casparcg-connection/-/casparcg-connection-6.0.0.tgz#a8739ed5a970414ad4a2b801d24be56a9bcadee1"
+  integrity sha512-eiQd60bkgDNyZnj6qrDWATCNRbABRuQw/kLLO7ax6mOHI6WVbaXh4N22vuNEujJF+6xmXqb9T6Abs4KqJ0UMSQ==
   dependencies:
-    highland "^3.0.0-beta.6"
-    xml2js "^0.4.19"
-    xmlbuilder "^9.0.7"
+    eventemitter3 "^4.0.7"
+    tslib "^2.4.0"
+    xml2js "^0.4.23"
 
-casparcg-state@2.1.2-nightly-latest-20220819-074840-588e6e7.0:
-  version "2.1.2-nightly-latest-20220819-074840-588e6e7.0"
-  resolved "https://registry.yarnpkg.com/casparcg-state/-/casparcg-state-2.1.2-nightly-latest-20220819-074840-588e6e7.0.tgz#9245f5d906189cb78e377dc3da31eefb883a7557"
-  integrity sha512-B34c/Ts3pw0U7w0bHaR5SyFrPHaJt9IVNk4KU0yGphEd8NCmoX/6rQhpfecHStjY0uTFQwXpkiVaGaWcj+rkcw==
+casparcg-state@^3.0.1:
+  version "3.0.1"
+  resolved "https://registry.yarnpkg.com/casparcg-state/-/casparcg-state-3.0.1.tgz#e6aa97db649c66fe58fe03ab02ed0d776ad80fa2"
+  integrity sha512-KVGCh4VZfKAfyOw3MzyhHxc54wZuhUb9kZaB4J96rzGEOoDiEA0Qqyni2MTAqWElCOL4+oDFY7hJeSYIDgFv1w==
   dependencies:
-    casparcg-connection "^5.1.0"
+    casparcg-connection "^6.0.0"
     fast-clone "^1.5.13"
     underscore "^1.13.2"
 
@@ -4408,11 +4408,6 @@ has@^1.0.3:
   integrity sha512-f2dvO0VU6Oej7RkWJGrehjbzMAjFp5/VKPp5tTpWIV4JHHZK1/BxbFRtf/siA2SWTe09caDmVtYYzWEIbBS4zw==
   dependencies:
     function-bind "^1.1.1"
-
-highland@^3.0.0-beta.6:
-  version "3.0.0-beta.10"
-  resolved "https://registry.yarnpkg.com/highland/-/highland-3.0.0-beta.10.tgz#e07869611de2109134c523e2479ef5af5334c112"
-  integrity sha512-fBxAarP4g0AFWRKd+SJBWsKmkyw1WZdQZ1jjFSAVrxLXIhEo5NnEBy+rDEM695Z/i4/tP2lMYW6iuotStDFHYw==
 
 hosted-git-info@^2.1.4:
   version "2.8.9"
@@ -8914,18 +8909,13 @@ xml-name-validator@^3.0.0:
   resolved "https://registry.yarnpkg.com/xml-name-validator/-/xml-name-validator-3.0.0.tgz#6ae73e06de4d8c6e47f9fb181f78d648ad457c6a"
   integrity sha512-A5CUptxDsvxKJEU3yO6DuWBSJz/qizqzJKOMIfUJHETbBw/sFaDxgd6fxm1ewUaM0jZ444Fc5vC5ROYurg/4Pw==
 
-xml2js@^0.4.19, xml2js@^0.4.23:
+xml2js@^0.4.23:
   version "0.4.23"
   resolved "https://registry.yarnpkg.com/xml2js/-/xml2js-0.4.23.tgz#a0c69516752421eb2ac758ee4d4ccf58843eac66"
   integrity sha512-ySPiMjM0+pLDftHgXY4By0uswI3SPKLDw/i3UXbnO8M/p28zqexCUoPmQFrYD+/1BzhGJSs2i1ERWKJAtiLrug==
   dependencies:
     sax ">=0.6.0"
     xmlbuilder "~11.0.0"
-
-xmlbuilder@^9.0.7:
-  version "9.0.7"
-  resolved "https://registry.yarnpkg.com/xmlbuilder/-/xmlbuilder-9.0.7.tgz#132ee63d2ec5565c557e20f4c22df9aca686b10d"
-  integrity sha512-7YXTQc3P2l9+0rjaUbLwMKRhtmwg1M1eDf6nag7urC7pIPYLD9W/jmzQ4ptRSUbodw5S0jfoGTflLemQibSpeQ==
 
 xmlbuilder@~11.0.0:
   version "11.0.1"
