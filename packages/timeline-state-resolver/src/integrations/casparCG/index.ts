@@ -1,7 +1,7 @@
 import * as _ from 'underscore'
 import * as deepMerge from 'deepmerge'
 import { DeviceWithState, CommandWithContext, DeviceStatus, StatusCode, literal } from '../../devices/device'
-import { AMCPCommand, BasicCasparCGAPI, Commands } from 'casparcg-connection'
+import { AMCPCommand, BasicCasparCGAPI, Commands, Response } from 'casparcg-connection'
 import {
 	DeviceType,
 	TimelineContentTypeCasparCg,
@@ -51,6 +51,8 @@ const MEDIA_RETRY_INTERVAL = 10 * 1000 // default time in ms between checking wh
 
 export interface DeviceOptionsCasparCGInternal extends DeviceOptionsCasparCG {
 	commandReceiver?: CommandReceiver
+	/** Allow skipping the resync upon connection, for unit tests */
+	skipVirginCheck?: boolean
 }
 export type CommandReceiver = (time: number, cmd: AMCPCommand, context: string, timelineObjId: string) => Promise<any>
 /**
@@ -61,7 +63,6 @@ export type CommandReceiver = (time: number, cmd: AMCPCommand, context: string, 
  */
 export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCGInternal> {
 	private _ccg: BasicCasparCGAPI
-	private _ccgState: CasparCGState
 	private _commandReceiver: CommandReceiver
 	private _doOnTime: DoOnTime
 	private initOptions?: CasparCGOptions
@@ -70,6 +71,7 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 	private _transitionHandler: InternalTransitionHandler = new InternalTransitionHandler()
 	private _retryTimeout: NodeJS.Timeout
 	private _retryTime: number | null = null
+	private _currentState: InternalState = { channels: {} }
 
 	constructor(deviceId: string, deviceOptions: DeviceOptionsCasparCGInternal, getCurrentTime: () => Promise<number>) {
 		super(deviceId, deviceOptions, getCurrentTime)
@@ -79,7 +81,6 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 			else this._commandReceiver = this._defaultCommandReceiver.bind(this)
 		}
 
-		this._ccgState = new CasparCGState()
 		this._doOnTime = new DoOnTime(
 			() => {
 				return this.getCurrentTime()
@@ -105,18 +106,65 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 			this.makeReady(false) // always make sure timecode is correct, setting it can never do bad
 				.catch((e) => this.emit('error', 'casparCG.makeReady', e))
 
-			this._connected = true
-			this._connectionChanged()
+			Promise.resolve()
+				.then(async () => {
+					if (this.deviceOptions.skipVirginCheck) return false
 
-			// TODO - maybe add this back based on info command
-			// if (event.valueOf().virginServer === true) {
-			// 	// a "virgin server" was just restarted (so it is cleared & black).
-			// 	// Otherwise it was probably just a loss of connection
+					// a "virgin server" was just restarted (so it is cleared & black).
+					// Otherwise it was probably just a loss of connection
 
-			// 	this._ccgState.softClearState()
-			// 	this.clearStates()
-			// 	this.emit('resetResolver')
-			// }
+					const { error, request } = await this._ccg.executeCommand({ command: Commands.Info, params: {} })
+					if (error) return true
+
+					const response = await request
+
+					const channelPromises: Promise<Response>[] = []
+					const channelLength: number = response?.data?.['length'] ?? 0
+
+					// Issue commands
+					for (let i = 1; i <= channelLength; i++) {
+						// 1-based index for channels
+
+						const { error, request } = await this._ccg.executeCommand({
+							command: Commands.Info,
+							params: { channel: i },
+						})
+						if (error) {
+							// We can't return here, as that will leave anything in channelPromises as potentially unhandled
+							channelPromises.push(Promise.reject('execute failed'))
+							break
+						}
+						channelPromises.push(request)
+					}
+
+					// Wait for all commands
+					const channelResults = await Promise.all(channelPromises)
+
+					// Resync if all channels have no stage object (no possibility of anything playing)
+					return !channelResults.find((ch) => ch.data['stage'])
+				})
+				.catch((e) => {
+					this.emit('error', 'connect virgin check failed', e)
+					// Something failed, force the resync as glitching playback is better than black output
+					return true
+				})
+				.then((doResync) => {
+					// Finally we can report it as connected
+					this._connected = true
+					this._connectionChanged()
+
+					if (doResync) {
+						this._currentState = { channels: {} }
+						this.clearStates()
+						this.emit('resetResolver')
+					}
+				})
+				.catch((e) => {
+					this.emit('error', 'connect state resync failed', e)
+					// Some unknwon error occured, report the connection as failed
+					this._connected = false
+					this._connectionChanged()
+				})
 		})
 
 		this._ccg.on('disconnect', () => {
@@ -131,16 +179,14 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 		const response = await request
 
 		if (response?.data[0]) {
-			this._ccgState.initStateFromChannelInfo(
-				response.data.map((obj) => {
-					return {
-						channelNo: obj.channel,
-						videoMode: obj.format.toUpperCase(),
-						fps: obj.frameRate,
-					}
-				}),
-				this.getCurrentTime()
-			)
+			response.data.forEach((obj) => {
+				this._currentState.channels[obj.channel] = {
+					channelNo: obj.channel,
+					videoMode: obj.format.toUpperCase(),
+					fps: obj.frameRate,
+					layers: {},
+				}
+			})
 		} else {
 			return false // not being able to get channel count is a problem for us
 		}
@@ -182,11 +228,6 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 	 */
 	handleState(newState: TimelineState, newMappings: Mappings) {
 		super.onHandleState(newState, newMappings)
-		// check if initialized:
-		if (!this._ccgState.isInitialised) {
-			this.emit('warning', 'CasparCG State not initialized yet')
-			return
-		}
 
 		const previousStateTime = Math.max(this.getCurrentTime(), newState.time)
 
@@ -641,11 +682,6 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 			}
 		}
 
-		if (!this._ccgState.isInitialised) {
-			statusCode = StatusCode.BAD
-			messages.push(`CasparCG device connection not initialized (restart required)`)
-		}
-
 		if (this._queueOverflow) {
 			statusCode = StatusCode.BAD
 			messages.push('Command queue overflow: CasparCG server has to be restarted')
@@ -710,36 +746,7 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 			// I forgot what this means.. oh well... todo
 			if (!response) return
 
-			if (
-				response.responseCode < 300 && // TODO - maybe we accept every code except 404?
-				response.command.match(/Loadbg|Play|Load|Clear|Stop|Resume/i) &&
-				'channel' in cmd.params &&
-				cmd.params.channel !== undefined &&
-				'layer' in cmd.params &&
-				cmd.params.layer !== undefined
-			) {
-				const currentState = this.getState(time)
-				if (currentState) {
-					const currentCasparState = currentState.state
-
-					const trackedState = this._ccgState.getState()
-
-					const channel = currentCasparState.channels[cmd.params.channel]
-					if (channel) {
-						if (!trackedState.channels[cmd.params.channel]) {
-							trackedState.channels[cmd.params.channel] = {
-								channelNo: channel.channelNo,
-								fps: channel.fps || 0,
-								videoMode: channel.videoMode || null,
-								layers: {},
-							}
-						}
-						// Copy the tracked from current state:
-						trackedState.channels[cmd.params.channel].layers[cmd.params.layer] = channel.layers[cmd.params.layer]
-						this._ccgState.setState(trackedState)
-					}
-				}
-			}
+			this._changeTrackedStateFromCommand(cmd, response, time)
 
 			if (response.responseCode === 504 && !this._queueOverflow) {
 				this._queueOverflow = true
@@ -765,6 +772,90 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 		}
 	}
 
+	private _changeTrackedStateFromCommand(command: AMCPCommand, response: Response, time: number) {
+		if (
+			response.responseCode < 300 && // TODO - maybe we accept every code except 404?
+			response.command.match(/Loadbg|Play|Load|Clear|Stop|Resume/i) &&
+			'channel' in command.params &&
+			command.params.channel !== undefined &&
+			'layer' in command.params &&
+			command.params.layer !== undefined
+		) {
+			const currentExpectedState = this.getState(time)
+			if (currentExpectedState) {
+				const confirmedState = this._currentState
+
+				const expectedChannelState = currentExpectedState.state.channels[command.params.channel]
+				if (expectedChannelState) {
+					let confirmedChannelState = confirmedState.channels[command.params.channel]
+					if (!confirmedState.channels[command.params.channel]) {
+						confirmedChannelState = confirmedState.channels[command.params.channel] = {
+							channelNo: expectedChannelState.channelNo,
+							fps: expectedChannelState.fps || 0,
+							videoMode: expectedChannelState.videoMode || null,
+							layers: {},
+						}
+					}
+
+					// copy into the trackedState
+					switch (command.command) {
+						case Commands.Play:
+						case Commands.Load:
+							if (!('clip' in command.params) && !confirmedChannelState.layers[command.params.layer]?.nextUp) {
+								// Ignore, no clip was loaded in confirmedChannelState
+							} else {
+								// a play/load command without parameters (channel/layer) is only succesful if the nextUp worked
+								// a play/load command with params can always be accepted
+								confirmedChannelState.layers[command.params.layer] = {
+									...expectedChannelState.layers[command.params.layer],
+									nextUp: undefined, // a play command always clears nextUp
+								}
+							}
+							break
+						case Commands.Loadbg:
+							// only loadbg can set nextUp and nextUp can only be set by loadbg
+							confirmedChannelState.layers[command.params.layer] = {
+								...confirmedChannelState.layers[command.params.layer],
+								nextUp: expectedChannelState.layers[command.params.layer]?.nextUp,
+							}
+							break
+						case Commands.Stop:
+							if (confirmedChannelState.layers[command.params.layer]?.nextUp?.auto) {
+								// auto next + stop means bg -> fg => nextUp cleared
+								confirmedChannelState.layers[command.params.layer] = {
+									...expectedChannelState.layers[command.params.layer],
+									nextUp: undefined, // auto next + stop means bg -> fg => nextUp cleared
+								}
+							} else {
+								// stop does not affect nextup
+								confirmedChannelState.layers[command.params.layer] = {
+									...expectedChannelState.layers[command.params.layer],
+									nextUp: confirmedChannelState.layers[command.params.layer]?.nextUp,
+								}
+							}
+							break
+						case Commands.Resume:
+							// resume does not affect nextup
+							confirmedChannelState.layers[command.params.layer] = {
+								...expectedChannelState.layers[command.params.layer],
+								nextUp: confirmedChannelState.layers[command.params.layer]?.nextUp,
+							}
+							break
+						case Commands.Clear:
+							// Remove both the background and foreground
+							delete confirmedChannelState.layers[command.params.layer]
+							break
+						default: {
+							// Never hit
+							// const _a: never = command.params.name
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
 	/**
 	 * This function takes the current timeline-state, and diffs it with the known
 	 * CasparCG state. If any media has failed to load, it will create a diff with
@@ -781,7 +872,7 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 
 		const ccgState = tlState.state
 
-		const diff = this._ccgState.getDiff(ccgState, this.getCurrentTime())
+		const diff = CasparCGState.diffStates(this._currentState, ccgState, this.getCurrentTime())
 
 		const cmd: Array<AMCPCommandWithContext> = []
 		for (const layer of diff) {

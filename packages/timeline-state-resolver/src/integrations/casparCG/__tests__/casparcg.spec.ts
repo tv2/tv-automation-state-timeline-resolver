@@ -56,6 +56,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		await mockTime.advanceTimeToTicks(10100)
 
@@ -131,6 +132,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		await mockTime.advanceTimeToTicks(10100)
 
@@ -196,6 +198,7 @@ describe('CasparCG', () => {
 				fps: 50,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		await mockTime.advanceTimeToTicks(10100)
 
@@ -274,6 +277,7 @@ describe('CasparCG', () => {
 				useScheduling: false,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		myConductor.setTimelineAndMappings(
@@ -344,6 +348,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		// await mockTime.advanceTimeToTicks(10050)
@@ -430,6 +435,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		await mockTime.advanceTimeToTicks(10050)
@@ -506,6 +512,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		await mockTime.advanceTimeToTicks(10050)
@@ -580,6 +587,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		const deviceContainer = myConductor.getDevice('myCCG')
@@ -693,6 +701,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		// Check that no commands has been sent:
@@ -809,6 +818,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		// Check that no commands has been sent:
@@ -944,6 +954,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		expect(mockTime.getCurrentTime()).toEqual(10000)
@@ -1046,6 +1057,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		expect(mockTime.getCurrentTime()).toEqual(10000)
@@ -1147,6 +1159,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		await mockTime.advanceTimeToTicks(10050)
@@ -1244,6 +1257,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 
 		await mockTime.advanceTimeToTicks(10050)
@@ -1330,6 +1344,7 @@ describe('CasparCG', () => {
 				useScheduling: true,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		await mockTime.advanceTimeToTicks(10100)
 
@@ -1412,6 +1427,7 @@ describe('CasparCG', () => {
 				retryInterval: undefined, // disable retries explicitly, we will manually trigger them
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		myConductor.setTimelineAndMappings([], myLayerMapping)
 		await mockTime.advanceTimeToTicks(10100)
@@ -1478,32 +1494,13 @@ describe('CasparCG', () => {
 		})
 
 		// apply command to internal ccg-state
+		const resCommand = getMockCall(commandReceiver0, 1, 1)
 		// @ts-ignore
-		const currentState = await device.getState(mockTime.getCurrentTime())
-		const resCommand = getMockCall(commandReceiver0, 1, 1).params
-		if (currentState) {
-			// @ts-ignore
-			const currentCasparState = currentState.state
-
-			// @ts-ignore
-			const trackedState = await (await device._ccgState).getState()
-
-			const channel = currentCasparState.channels[resCommand.channel]
-			if (channel) {
-				if (!trackedState.channels[resCommand.channel]) {
-					trackedState.channels[resCommand.channel] = {
-						channelNo: channel.channelNo,
-						fps: channel.fps || 0,
-						videoMode: channel.videoMode || null,
-						layers: {},
-					}
-				}
-				// Copy the tracked from current state:
-				trackedState.channels[resCommand.channel].layers[resCommand.layer] = channel.layers[resCommand.layer]
-				// @ts-ignore
-				await (await device._ccgState).setState(trackedState)
-			}
-		}
+		await device._changeTrackedStateFromCommand(
+			resCommand,
+			{ responseCode: 202, command: resCommand.command },
+			mockTime.getCurrentTime()
+		)
 		// trigger retry mechanism
 		await (device as any)._assertIntendedState()
 		await mockTime.advanceTimeToTicks(10900)
@@ -1555,6 +1552,7 @@ describe('CasparCG', () => {
 				retryInterval: undefined, // disable retries explicitly, we will manually trigger them
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		myConductor.setTimelineAndMappings([], myLayerMapping)
 		await mockTime.advanceTimeToTicks(10100)
@@ -1622,31 +1620,13 @@ describe('CasparCG', () => {
 
 		// apply command to internal ccg-state
 		// @ts-ignore
-		const currentState = await device.getState(mockTime.getCurrentTime())
-		const resCommand = getMockCall(commandReceiver0, 0, 1).params
-		if (currentState) {
-			// @ts-ignore
-			const currentCasparState = currentState.state
-
-			// @ts-ignore
-			const trackedState = await (await device._ccgState).getState()
-
-			const channel = currentCasparState.channels[resCommand.channel]
-			if (channel) {
-				if (!trackedState.channels[resCommand.channel]) {
-					trackedState.channels[resCommand.channel] = {
-						channelNo: channel.channelNo,
-						fps: channel.fps || 0,
-						videoMode: channel.videoMode || null,
-						layers: {},
-					}
-				}
-				// Copy the tracked from current state:
-				trackedState.channels[resCommand.channel].layers[resCommand.layer] = channel.layers[resCommand.layer]
-				// @ts-ignore
-				await (await device._ccgState).setState(trackedState)
-			}
-		}
+		const resCommand = getMockCall(commandReceiver0, 0, 1)
+		// @ts-ignore
+		await device._changeTrackedStateFromCommand(
+			resCommand,
+			{ responseCode: 202, command: resCommand.command },
+			mockTime.getCurrentTime()
+		)
 
 		// advance before half way
 		await mockTime.advanceTimeToTicks(10500)
@@ -1698,6 +1678,7 @@ describe('CasparCG', () => {
 				useScheduling: false,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		await mockTime.advanceTimeToTicks(10100)
 
@@ -1791,6 +1772,7 @@ describe('CasparCG', () => {
 				useScheduling: false,
 			},
 			commandReceiver: commandReceiver0,
+			skipVirginCheck: true,
 		})
 		await mockTime.advanceTimeToTicks(10100)
 
