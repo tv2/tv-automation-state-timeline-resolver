@@ -17,13 +17,12 @@ const TELEMETRICS_NAME = 'Telemetrics'
 const TELEMETRICS_COMMAND_PREFIX = 'P0C'
 const DEFAULT_SOCKET_PORT = 5000
 const TIMEOUT_IN_MS = 2000
+const SESSION_KEEPER_INTERVAL_MS = 1990
+const EMPTY_COMMAND_HEX = '0D'
 
 interface TelemetricsState {
 	presetShotIdentifiers: number[]
 }
-
-const SESSION_KEEPER_INTERVAL_MS = 2000
-const EMPTY_COMMAND_HEX = '0D'
 
 /**
  * Connects to a Telemetrics Device on port 5000 using a TCP socket.
@@ -38,7 +37,7 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 	private resolveInitPromise: (value: boolean) => void
 
 	private retryConnectionTimer: Timer | undefined
-	private sessionKeeperTimer: ReturnType<typeof setTimeout>
+	private sessionKeeperTimer: Timer | undefined
 
 	constructor(deviceId: string, deviceOptions: DeviceOptionsTelemetrics, getCurrentTime: () => Promise<number>) {
 		super(deviceId, deviceOptions, getCurrentTime)
@@ -179,11 +178,14 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 		})
 	}
 
-	private startSessionKeeper() {
+	private startSessionKeeper(): void {
+		if (!this.sessionKeeperTimer) {
+			return
+		}
 		this.sessionKeeperTimer = setTimeout(this.keepSessionAlive.bind(this), SESSION_KEEPER_INTERVAL_MS)
 	}
 
-	private keepSessionAlive() {
+	private keepSessionAlive(): void {
 		if (!this.socket) {
 			return
 		}
@@ -191,7 +193,7 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 		this.socket.write(emptyCommand, this.startSessionKeeper.bind(this))
 	}
 
-	private stopSessionKeeper() {
+	private stopSessionKeeper(): void {
 		if (!this.sessionKeeperTimer) {
 			return
 		}
