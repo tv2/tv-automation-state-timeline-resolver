@@ -22,6 +22,9 @@ interface TelemetricsState {
 	presetShotIdentifiers: number[]
 }
 
+const SESSION_KEEPER_INTERVAL_MS = 2000
+const EMPTY_COMMAND_HEX = '0D'
+
 /**
  * Connects to a Telemetrics Device on port 5000 using a TCP socket.
  * This class uses a fire and forget approach.
@@ -35,6 +38,7 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 	private resolveInitPromise: (value: boolean) => void
 
 	private retryConnectionTimer: Timer | undefined
+	private sessionKeeperTimer: ReturnType<typeof setTimeout>
 
 	constructor(deviceId: string, deviceOptions: DeviceOptionsTelemetrics, getCurrentTime: () => Promise<number>) {
 		super(deviceId, deviceOptions, getCurrentTime)
@@ -144,7 +148,9 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 		this.socket = new Socket()
 
 		this.socket.on('data', (data: Buffer) => {
+			this.stopSessionKeeper()
 			this.emit('debug', `${this.deviceName} received data: ${data.toString()}`)
+			this.startSessionKeeper()
 		})
 
 		this.socket.on('error', (error: Error) => {
@@ -152,6 +158,7 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 		})
 
 		this.socket.on('close', (hadError: boolean) => {
+			this.stopSessionKeeper()
 			this.doOnTime.dispose()
 			if (hadError) {
 				this.updateStatus(StatusCode.BAD)
@@ -166,6 +173,29 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 			this.updateStatus(StatusCode.GOOD)
 			this.resolveInitPromise(true)
 		})
+
+		this.socket.on('ready', () => {
+			this.startSessionKeeper()
+		})
+	}
+
+	private startSessionKeeper() {
+		this.sessionKeeperTimer = setTimeout(this.keepSessionAlive.bind(this), SESSION_KEEPER_INTERVAL_MS)
+	}
+
+	private keepSessionAlive() {
+		if (!this.socket) {
+			return
+		}
+		const emptyCommand: Buffer = Buffer.from(EMPTY_COMMAND_HEX, 'hex')
+		this.socket.write(emptyCommand, this.startSessionKeeper.bind(this))
+	}
+
+	private stopSessionKeeper() {
+		if (!this.sessionKeeperTimer) {
+			return
+		}
+		clearTimeout(this.sessionKeeperTimer)
 	}
 
 	private updateStatus(statusCode: StatusCode, error?: Error): void {
