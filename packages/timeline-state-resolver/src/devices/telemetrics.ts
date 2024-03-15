@@ -179,7 +179,7 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 	}
 
 	private startSessionKeeper(): void {
-		if (!this.sessionKeeperTimer) {
+		if (this.sessionKeeperTimer) {
 			return
 		}
 		this.sessionKeeperTimer = setTimeout(this.keepSessionAlive.bind(this), SESSION_KEEPER_INTERVAL_MS)
