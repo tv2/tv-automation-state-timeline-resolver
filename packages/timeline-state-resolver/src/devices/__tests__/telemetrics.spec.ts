@@ -11,6 +11,7 @@ jest.spyOn(global, 'setTimeout')
 
 const SERVER_PORT = 5000
 const SERVER_HOST = '1.1.1.1'
+const SESSION_KEEPER_INTERVAL_MS = 1990
 const EMPTY_COMMAND_HEX = '0D'
 
 const MOCKED_SOCKET_START_KEEP_ALIVE = jest.fn()
@@ -89,7 +90,7 @@ describe('telemetrics', () => {
 			device = createInitializedTelemetricsDevice()
 			SOCKET_EVENTS.get('ready')!()
 
-			expect(setTimeout).toBeCalledWith(expect.any(Function), 1990)
+			expect(setTimeout).toBeCalledWith(expect.any(Function), SESSION_KEEPER_INTERVAL_MS)
 		})
 
 		it('upon reaching timeout an emptyCommand is written on the already ready socket', async () => {
