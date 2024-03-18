@@ -187,9 +187,9 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 		this.socket.write(emptyCommand, (error: Error | undefined) => {
 			if (error) {
 				this.updateStatus(StatusCode.BAD, error)
-				this.stopSessionKeeper()
+			} else {
+				this.startSessionKeeper()
 			}
-			this.startSessionKeeper()
 		})
 	}
 
