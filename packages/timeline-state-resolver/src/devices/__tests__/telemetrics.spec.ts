@@ -10,7 +10,7 @@ import { DoOrderFunctionNothing } from '../doOnTime'
 jest.spyOn(global, 'setTimeout')
 
 const SERVER_PORT = 5000
-const SERVER_HOST = '127.0.0.1'
+const SERVER_HOST = '1.1.1.1'
 const EMPTY_COMMAND_HEX = '0D'
 
 const MOCKED_SOCKET_START_KEEP_ALIVE = jest.fn()
