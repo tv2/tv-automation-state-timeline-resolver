@@ -93,7 +93,7 @@ describe('telemetrics', () => {
 			expect(setTimeout).toBeCalledWith(expect.any(Function), SESSION_KEEPER_INTERVAL_MS)
 		})
 
-		it('upon reaching timeout an emptyCommand is written on the already ready socket', async () => {
+		it('upon reaching timeout an emptyCommand is written on the already ready socket', () => {
 			jest.useFakeTimers()
 
 			device = createInitializedTelemetricsDevice()
