@@ -7,10 +7,16 @@ import { TimelineState } from 'superfly-timeline'
 import { ResolvedTimelineObjectInstance } from 'superfly-timeline/dist/api/api'
 import { DoOrderFunctionNothing } from '../doOnTime'
 
-const SERVER_PORT = 5000
-const SERVER_HOST = '1.1.1.1'
+jest.spyOn(global, 'setTimeout')
 
+const SERVER_PORT = 5000
+const SERVER_HOST = '127.0.0.1'
+const EMPTY_COMMAND_HEX = '0D'
+
+const MOCKED_SOCKET_START_KEEP_ALIVE = jest.fn()
 const MOCKED_SOCKET_CONNECT = jest.fn()
+const MOCKED_SOCKET_ON_READY = jest.fn()
+const MOCKED_SOCKET_READY = jest.fn((cb) => MOCKED_SOCKET_ON_READY.mockImplementation(cb))
 const MOCKED_SOCKET_WRITE = jest.fn()
 const SOCKET_EVENTS: Map<string, (...args: any[]) => void> = new Map()
 
@@ -19,6 +25,7 @@ jest.mock('net', () => {
 		Socket: jest.fn().mockImplementation(() => {
 			return {
 				connect: MOCKED_SOCKET_CONNECT,
+				ready: MOCKED_SOCKET_READY,
 				write: MOCKED_SOCKET_WRITE,
 				on: (event: string, listener: (...args: any[]) => void) => {
 					SOCKET_EVENTS.set(event, listener)
@@ -52,7 +59,9 @@ describe('telemetrics', () => {
 	beforeEach(() => {
 		mockedSocket.mockClear()
 		MOCKED_SOCKET_CONNECT.mockClear()
+		MOCKED_SOCKET_READY.mockClear()
 		MOCKED_SOCKET_WRITE.mockClear()
+		MOCKED_SOCKET_START_KEEP_ALIVE.mockClear()
 		SOCKET_EVENTS.clear()
 	})
 
@@ -72,6 +81,29 @@ describe('telemetrics', () => {
 			const result = device.deviceName
 
 			expect(result).toBe(`Telemetrics ${deviceId}`)
+		})
+	})
+
+	describe('keeping socket session alive activity', () => {
+		it('upon socket ready a 1990ms timer is started', () => {
+			device = createInitializedTelemetricsDevice()
+			SOCKET_EVENTS.get('ready')!()
+
+			expect(setTimeout).toBeCalledWith(expect.any(Function), 1990)
+		})
+
+		it('upon reaching timeout an emptyCommand is written on the already ready socket', async () => {
+			jest.useFakeTimers()
+
+			device = createInitializedTelemetricsDevice()
+			SOCKET_EVENTS.get('ready')!()
+
+			jest.runOnlyPendingTimers()
+
+			const emptyCommand: Buffer = Buffer.from(EMPTY_COMMAND_HEX, 'hex')
+			expect(MOCKED_SOCKET_WRITE).toBeCalledWith(emptyCommand, expect.any(Function))
+
+			jest.useRealTimers()
 		})
 	})
 

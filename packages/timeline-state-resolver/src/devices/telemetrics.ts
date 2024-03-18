@@ -178,19 +178,28 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 		})
 	}
 
-	private startSessionKeeper(): void {
-		if (this.sessionKeeperTimer) {
-			return
-		}
-		this.sessionKeeperTimer = setTimeout(this.keepSessionAlive.bind(this), SESSION_KEEPER_INTERVAL_MS)
-	}
-
 	private keepSessionAlive(): void {
+		clearTimeout(this.sessionKeeperTimer)
 		if (!this.socket) {
 			return
 		}
 		const emptyCommand: Buffer = Buffer.from(EMPTY_COMMAND_HEX, 'hex')
-		this.socket.write(emptyCommand, this.startSessionKeeper.bind(this))
+		this.socket.write(emptyCommand, (err) => {
+			if (err) {
+				this.updateStatus(StatusCode.BAD, err)
+				this.stopSessionKeeper()
+			}
+			this.startSessionKeeper()
+		})
+	}
+
+	private startSessionKeeper(): void {
+		if (this.sessionKeeperTimer) {
+			return
+		}
+		this.sessionKeeperTimer = setTimeout(() => {
+			this.keepSessionAlive()
+		}, SESSION_KEEPER_INTERVAL_MS)
 	}
 
 	private stopSessionKeeper(): void {
