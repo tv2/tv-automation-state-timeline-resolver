@@ -29,7 +29,7 @@ interface TelemetricsState {
  * This class uses a fire and forget approach.
  */
 export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceOptionsTelemetrics> {
-	private doOnTime: DoOnTime
+	private readonly doOnTime: DoOnTime
 
 	private socket: Socket
 	private statusCode: StatusCode = StatusCode.UNKNOWN
