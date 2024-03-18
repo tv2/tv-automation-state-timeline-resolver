@@ -184,9 +184,9 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 			return
 		}
 		const emptyCommand: Buffer = Buffer.from(EMPTY_COMMAND_HEX, 'hex')
-		this.socket.write(emptyCommand, (err) => {
-			if (err) {
-				this.updateStatus(StatusCode.BAD, err)
+		this.socket.write(emptyCommand, (error: Error | undefined) => {
+			if (error) {
+				this.updateStatus(StatusCode.BAD, error)
 				this.stopSessionKeeper()
 			}
 			this.startSessionKeeper()
