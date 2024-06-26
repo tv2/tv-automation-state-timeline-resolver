@@ -498,7 +498,9 @@ export class VizMSEManager extends EventEmitter {
 	 */
 	public async loadAllElements(_cmd: VizMSECommandLoadAllElements): Promise<void> {
 		this._triggerCommandSent()
-		await this._triggerLoadAllElements()
+		// For some reason elements that finished loading while being called by this did not get an updated MediaObject.
+		// By letting the parameter 'loadTwice' be true it triggers the update twice which will let the newly loaded elements get a MediaObject.
+		await this._triggerLoadAllElements(true)
 		this._triggerCommandSent()
 	}
 
@@ -942,13 +944,10 @@ export class VizMSEManager extends EventEmitter {
 				await this._initializeShows(Array.from(showIdsToInitialize))
 			}
 
-			// He's making a list:
 			await loadAllElementsThatNeedsLoading()
 			await this._wait(2000)
 			if (loadTwice) {
-				// He's checking it twice:
 				await this._updateElementsLoadedStatus()
-				// Gonna find out what's loaded and nice:
 				await loadAllElementsThatNeedsLoading()
 			}
 
