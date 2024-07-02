@@ -1162,7 +1162,7 @@ export class Conductor extends EventEmitter<ConductorEvents> {
 		return nextResolveTime
 	}
 
-	private _setDeviceState(deviceId: string, time: number, state: TimelineState, mappings: Mappings) {
+	private async _setDeviceState(deviceId: string, time: number, state: TimelineState, mappings: Mappings) {
 		if (!this._deviceStates[deviceId]) this._deviceStates[deviceId] = []
 
 		// find all references to the datastore that are in this state

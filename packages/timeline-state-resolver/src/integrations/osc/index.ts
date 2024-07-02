@@ -223,7 +223,7 @@ export class OSCMessageDevice extends DeviceWithState<OSCDeviceState, DeviceOpti
 			this._doOnTime.queue(
 				time,
 				undefined,
-				(cmd: Command) => {
+				async (cmd: Command) => {
 					if (cmd.commandName === 'added' || cmd.commandName === 'changed') {
 						return this._commandReceiver(time, cmd.content, cmd.context, cmd.timelineObjId)
 					} else {

@@ -70,7 +70,7 @@ const gotMethods = {
 		return _mockDelete(options)
 	},
 }
-const got: any = (options: Options) => {
+const got: any = async (options: Options) => {
 	if (options.method === 'POST') return gotMethods.post(options)
 	else if (options.method === 'GET') return gotMethods.get(options)
 	else if (options.method === 'PUT') return gotMethods.put(options)

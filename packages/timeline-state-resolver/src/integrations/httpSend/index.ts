@@ -163,7 +163,7 @@ export class HTTPSendDevice extends DeviceWithState<HTTPSendState, DeviceOptions
 			this._doOnTime.queue(
 				time,
 				cmd.content.queueId,
-				(cmd: Command) => {
+				async (cmd: Command) => {
 					if (cmd.commandName === 'added' || cmd.commandName === 'changed') {
 						this.activeLayers.set(cmd.layer, JSON.stringify(cmd.content))
 						return this._commandReceiver(time, cmd.content, cmd.context, cmd.timelineObjId, cmd.layer)
