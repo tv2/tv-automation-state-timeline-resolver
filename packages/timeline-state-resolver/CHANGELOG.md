@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [3.7.0](https://github.com/tv2/tv-automation-state-timeline-resolver/compare/3.5.1...3.7.0) (2024-07-02)
+
+
+### Features
+
+* update for casparcg-connection rewrite ([90209b8](https://github.com/tv2/tv-automation-state-timeline-resolver/commit/90209b8b9b047dcc3061a28585a074df8e3da9a1))
+
+
+### Bug Fixes
+
+* casparcg doesnt resync state after server restart SOFIE-2156 ([#248](https://github.com/tv2/tv-automation-state-timeline-resolver/issues/248)) ([44e3e8d](https://github.com/tv2/tv-automation-state-timeline-resolver/commit/44e3e8dded7d803d46c45e3896356b3492f4ea6c))
+* track ccg state internally ([9951edf](https://github.com/tv2/tv-automation-state-timeline-resolver/commit/9951edfe58be3ff11cf71fed020eb1e8c8aea09f))
+
+
+
 ## [3.6.0](https://github.com/tv2/tv-automation-state-timeline-resolver/compare/3.5.1...3.6.0) (2024-07-01)
 
 
