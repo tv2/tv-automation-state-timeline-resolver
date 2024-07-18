@@ -90,8 +90,6 @@ export class AtemDevice extends DeviceWithState<DeviceState, DeviceOptionsAtemIn
 			this._deviceOptions
 		)
 		this.handleDoOnTime(this._doOnTime, 'Atem')
-
-		this.emit('info', '###################### HELLO WORLD ############################')
 	}
 
 	/**
