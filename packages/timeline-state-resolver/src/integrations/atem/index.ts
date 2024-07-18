@@ -1,31 +1,31 @@
 import * as _ from 'underscore'
 import * as underScoreDeepExtend from 'underscore-deep-extend'
-import { DeviceWithState, CommandWithContext, DeviceStatus, StatusCode } from './../../devices/device'
+import { CommandWithContext, DeviceStatus, DeviceWithState, StatusCode } from './../../devices/device'
 import {
+	AtemOptions,
+	AtemTransitionStyle,
+	DeviceOptionsAtem,
 	DeviceType,
-	TimelineContentTypeAtem,
 	MappingAtem,
 	MappingAtemType,
-	AtemOptions,
-	TimelineObjAtemME,
-	TimelineObjAtemDSK,
-	TimelineObjAtemMediaPlayer,
-	TimelineObjAtemAudioChannel,
-	TimelineObjAtemSsrc,
-	TimelineObjAtemAUX,
-	TimelineObjAtemSsrcProps,
-	TimelineObjAtemMacroPlayer,
-	DeviceOptionsAtem,
 	Mappings,
-	AtemTransitionStyle,
+	TimelineContentTypeAtem,
+	TimelineObjAtemAudioChannel,
+	TimelineObjAtemAUX,
+	TimelineObjAtemDSK,
+	TimelineObjAtemMacroPlayer,
+	TimelineObjAtemME,
+	TimelineObjAtemMediaPlayer,
+	TimelineObjAtemSsrc,
+	TimelineObjAtemSsrcProps,
 } from 'timeline-state-resolver-types'
 import { TimelineState } from 'superfly-timeline'
-import { AtemState, State as DeviceState, Defaults as StateDefault } from 'atem-state'
+import { AtemState, Defaults as StateDefault, State as DeviceState } from 'atem-state'
 import {
-	BasicAtem,
-	Commands as AtemCommands,
 	AtemState as NativeAtemState,
 	AtemStateUtil,
+	BasicAtem,
+	Commands as AtemCommands,
 	Enums as ConnectionEnums,
 } from 'atem-connection'
 import { DoOnTime, SendMode } from '../../devices/doOnTime'
@@ -90,6 +90,8 @@ export class AtemDevice extends DeviceWithState<DeviceState, DeviceOptionsAtemIn
 			this._deviceOptions
 		)
 		this.handleDoOnTime(this._doOnTime, 'Atem')
+
+		this.emit('info', '###################### HELLO WORLD ############################')
 	}
 
 	/**
@@ -307,6 +309,11 @@ export class AtemDevice extends DeviceWithState<DeviceState, DeviceOptionsAtemIn
 							if (tlObject.content.type === TimelineContentTypeAtem.AUX) {
 								const atemObj = tlObject as any as TimelineObjAtemAUX
 								deviceState.video.auxilliaries[mapping.index] = atemObj.content.aux.input
+								// TODO: Remove again. Test if we can set preview with lookahead for T-bar test.
+								if (mapping.layerName === 'atem_aux_lookahead') {
+									const me = AtemStateUtil.getMixEffect(deviceState, mapping.index)
+									me.previewInput = atemObj.content.aux.input
+								}
 							}
 							break
 						case MappingAtemType.MediaPlayer:
