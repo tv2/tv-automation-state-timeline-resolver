@@ -20,7 +20,7 @@ import {
 	TimelineObjAtemSsrcProps,
 } from 'timeline-state-resolver-types'
 import { TimelineState } from 'superfly-timeline'
-import { AtemState, Defaults as StateDefault, State as DeviceState } from 'atem-state'
+import { AtemState, Defaults as StateDefault, MixEffect, State as DeviceState } from 'atem-state'
 import {
 	AtemState as NativeAtemState,
 	AtemStateUtil,
@@ -309,8 +309,10 @@ export class AtemDevice extends DeviceWithState<DeviceState, DeviceOptionsAtemIn
 								deviceState.video.auxilliaries[mapping.index] = atemObj.content.aux.input
 								// TODO: Remove again. Test if we can set preview with lookahead for T-bar test.
 								if (mapping.layerName === 'atem_aux_lookahead') {
-									const me = AtemStateUtil.getMixEffect(deviceState, mapping.index)
-									me.previewInput = atemObj.content.aux.input
+									const mixEffect: MixEffect | undefined = deviceState.video.mixEffects[0]
+									if (mixEffect) {
+										mixEffect.previewInput = atemObj.content.aux.input
+									}
 								}
 							}
 							break
