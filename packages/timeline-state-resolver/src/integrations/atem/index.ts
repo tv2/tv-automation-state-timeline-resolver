@@ -307,12 +307,11 @@ export class AtemDevice extends DeviceWithState<DeviceState, DeviceOptionsAtemIn
 							if (tlObject.content.type === TimelineContentTypeAtem.AUX) {
 								const atemObj = tlObject as any as TimelineObjAtemAUX
 								deviceState.video.auxilliaries[mapping.index] = atemObj.content.aux.input
-								// TODO: Remove again. Test if we can set preview with lookahead for T-bar test.
-								if (mapping.layerName === 'atem_aux_lookahead') {
-									const mixEffect: MixEffect | undefined = deviceState.video.mixEffects[0]
-									if (mixEffect) {
-										mixEffect.previewInput = atemObj.content.aux.input
-									}
+								// TODO: Remove again. Hack to make Atem update its own Next with our input.
+								const tv2LookaheadLayerMappingName = 'atem_aux_lookahead'
+								if (layerName === tv2LookaheadLayerMappingName) {
+									const me: MixEffect = AtemStateUtil.getMixEffect(deviceState, 0)
+									me.previewInput = atemObj.content.aux.input
 								}
 							}
 							break
