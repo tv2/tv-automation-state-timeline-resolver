@@ -35,6 +35,7 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 	private resolveInitPromise: (value: boolean) => void
 
 	private retryConnectionTimer: Timer | undefined
+	private shouldReconnectOnWebSocketClose: boolean = true
 
 	constructor(deviceId: string, deviceOptions: DeviceOptionsTelemetrics, getCurrentTime: () => Promise<number>) {
 		super(deviceId, deviceOptions, getCurrentTime)
@@ -126,6 +127,7 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 	}
 
 	async init(options: TelemetricsOptions): Promise<boolean> {
+		this.shouldReconnectOnWebSocketClose = true
 		const initPromise = new Promise<boolean>((resolve) => {
 			this.resolveInitPromise = resolve
 		})
@@ -151,9 +153,9 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 			this.updateStatus(StatusCode.BAD, error)
 		})
 
-		this.socket.on('close', (hadError: boolean) => {
+		this.socket.on('close', () => {
 			this.doOnTime.dispose()
-			if (hadError) {
+			if (this.shouldReconnectOnWebSocketClose) {
 				this.updateStatus(StatusCode.BAD)
 				this.reconnect(host, port)
 			} else {
@@ -194,6 +196,7 @@ export class TelemetricsDevice extends DeviceWithState<TelemetricsState, DeviceO
 	}
 
 	async terminate(): Promise<boolean> {
+		this.shouldReconnectOnWebSocketClose = false
 		this.doOnTime.dispose()
 		if (this.retryConnectionTimer) {
 			clearTimeout(this.retryConnectionTimer)
