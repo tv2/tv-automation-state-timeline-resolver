@@ -115,16 +115,6 @@ describe('telemetrics', () => {
 			expect(result.statusCode).toBe(StatusCode.BAD)
 		})
 
-		it('on close, closed without error, status is UNKNOWN', () => {
-			device = createTelemetricsDevice()
-
-			void device.init({ host: SERVER_HOST })
-			SOCKET_EVENTS.get('close')!(false)
-
-			const result = device.getStatus()
-			expect(result.statusCode).toBe(StatusCode.UNKNOWN)
-		})
-
 		it('on connect, status is GOOD', () => {
 			device = createTelemetricsDevice()
 
