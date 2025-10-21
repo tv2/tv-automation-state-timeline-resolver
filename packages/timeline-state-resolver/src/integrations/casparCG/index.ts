@@ -2,13 +2,13 @@ import * as _ from 'underscore'
 import * as deepMerge from 'deepmerge'
 import { DeviceWithState, CommandWithContext, DeviceStatus, StatusCode, literal } from '../../devices/device'
 import {
-    AMCPCommand,
-    BasicCasparCGAPI,
-    Commands,
-    InfoChannelCommand,
-    InfoChannelEntry,
-    InfoCommand,
-    Response
+	AMCPCommand,
+	BasicCasparCGAPI,
+	Commands,
+	InfoChannelCommand,
+	InfoChannelEntry,
+	InfoCommand,
+	Response,
 } from 'casparcg-connection'
 import {
 	DeviceType,
