@@ -715,7 +715,7 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 				async (c: { command: AMCPCommand; cmd: AMCPCommandWithContext }) => {
 					return this._commandReceiver(time, c.command, c.cmd.context.context, c.cmd.context.layerId)
 				},
-				{ command: { command: cmd.command, params: cmd.params } as unknown as AMCPCommand, cmd: cmd } // TODO: Is there a better way?
+				{ command: { command: cmd.command, params: cmd.params } as unknown as AMCPCommand, cmd: cmd }
 			)
 		})
 	}

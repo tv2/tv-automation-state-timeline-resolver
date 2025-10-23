@@ -2702,10 +2702,10 @@ casparcg-connection@^6.3.0:
     tslib "^2.5.0"
     xml2js "^0.6.2"
 
-casparcg-state@^3.0.3:
-  version "3.0.3"
-  resolved "https://registry.yarnpkg.com/casparcg-state/-/casparcg-state-3.0.3.tgz#bafd411d374c042f85cbeba2ba6553ee53097f47"
-  integrity sha512-dhE0VQymoZrbmIyNGf7aovijya0b/98tFsdM3/EG9vqXgdG0XXT09+r6di8pUX6nR49J+ypQP0wGK9UE0eRnfg==
+casparcg-state@^3.0.4:
+  version "3.0.4"
+  resolved "https://registry.yarnpkg.com/casparcg-state/-/casparcg-state-3.0.4.tgz#3bdc07fae86fe8389aeb63fd1a990bcc3a896d0c"
+  integrity sha512-RSOQM1f1LZODn2u2NWQL0qiRTSGw7OVcEHZefrnY8jwsMIrh2xQQKNtlAgrdzZzh/VdB1L8gbkrn/gWi7Ft8+g==
   dependencies:
     casparcg-connection "6.2.0"
     fast-clone "^1.5.13"
