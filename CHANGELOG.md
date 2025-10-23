@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [3.7.11](https://github.com/tv2/tv-automation-state-timeline-resolver/compare/3.7.10...3.7.11) (2025-10-23)
+
+
+### Bug Fixes
+
+* Bumps casparcg-state to 3.0.4 to fix support for audio filters on PLAY commands. ([63b7cb4](https://github.com/tv2/tv-automation-state-timeline-resolver/commit/63b7cb43982b808251f61c7b2b3fb197bb5fca91))
+
+
+
 ## [3.7.10](https://github.com/tv2/tv-automation-state-timeline-resolver/compare/3.7.9...3.7.10) (2025-08-26)
 
 **Note:** Version bump only for package timeline-state-resolver-packages
