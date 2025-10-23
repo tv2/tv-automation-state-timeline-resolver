@@ -1,7 +1,15 @@
 import * as _ from 'underscore'
 import * as deepMerge from 'deepmerge'
 import { DeviceWithState, CommandWithContext, DeviceStatus, StatusCode, literal } from '../../devices/device'
-import { AMCPCommand, BasicCasparCGAPI, Commands, Response } from 'casparcg-connection'
+import {
+	AMCPCommand,
+	BasicCasparCGAPI,
+	Commands,
+	InfoChannelCommand,
+	InfoChannelEntry,
+	InfoCommand,
+	Response,
+} from 'casparcg-connection'
 import {
 	DeviceType,
 	TimelineContentTypeCasparCg,
@@ -111,22 +119,22 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 					if (this.deviceOptions.skipVirginCheck) return false
 
 					// a "virgin server" was just restarted (so it is cleared & black).
-					// Otherwise it was probably just a loss of connection
+					// Otherwise, it was probably just a loss of connection
 
-					const { error, request } = await this._ccg.executeCommand({ command: Commands.Info, params: {} })
+					const { error, request } = await this._ccg.executeCommand<InfoCommand>({ command: Commands.Info, params: {} })
 					if (error) return true
 
 					const response = await request
 
-					const channelPromises: Promise<Response>[] = []
+					const channelPromises: Promise<Response<InfoChannelEntry | undefined>>[] = []
 					const channelLength: number = response?.data?.['length'] ?? 0
 
 					// Issue commands
 					for (let i = 1; i <= channelLength; i++) {
 						// 1-based index for channels
 
-						const { error, request } = await this._ccg.executeCommand({
-							command: Commands.Info,
+						const { error, request } = await this._ccg.executeCommand<InfoChannelCommand>({
+							command: Commands.InfoChannel,
 							params: { channel: i },
 						})
 						if (error) {
@@ -138,10 +146,10 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 					}
 
 					// Wait for all commands
-					const channelResults = await Promise.all(channelPromises)
+					const channelResults: Response<InfoChannelEntry | undefined>[] = await Promise.all(channelPromises)
 
 					// Resync if all channels have no stage object (no possibility of anything playing)
-					return !channelResults.find((ch) => ch.data['stage'])
+					return !channelResults.find((ch: Response<InfoChannelEntry | undefined>) => ch.data?.['stage'])
 				})
 				.catch((e) => {
 					this.emit('error', 'connect virgin check failed', e)
@@ -161,7 +169,7 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 				})
 				.catch((e) => {
 					this.emit('error', 'connect state resync failed', e)
-					// Some unknwon error occured, report the connection as failed
+					// Some unknown error occurred, report the connection as failed
 					this._connected = false
 					this._connectionChanged()
 				})
@@ -707,7 +715,7 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 				async (c: { command: AMCPCommand; cmd: AMCPCommandWithContext }) => {
 					return this._commandReceiver(time, c.command, c.cmd.context.context, c.cmd.context.layerId)
 				},
-				{ command: { command: cmd.command, params: cmd.params }, cmd: cmd }
+				{ command: { command: cmd.command, params: cmd.params } as unknown as AMCPCommand, cmd: cmd }
 			)
 		})
 	}
@@ -722,7 +730,7 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 		context: string,
 		timelineObjId: string
 	): Promise<any> {
-		// do no retry while we are sending commands, instead always retry closely after:
+		// Do not retry while we are sending commands, instead always retry closely after:
 		if (!context.match(/\[RETRY\]/i)) {
 			clearTimeout(this._retryTimeout)
 			if (this._retryTime) this._retryTimeout = setTimeout(() => this._assertIntendedState(), this._retryTime)
@@ -772,7 +780,7 @@ export class CasparCGDevice extends DeviceWithState<State, DeviceOptionsCasparCG
 		}
 	}
 
-	private _changeTrackedStateFromCommand(command: AMCPCommand, response: Response, time: number) {
+	private _changeTrackedStateFromCommand(command: AMCPCommand, response: Response<unknown>, time: number) {
 		if (
 			response.responseCode < 300 && // TODO - maybe we accept every code except 404?
 			response.command.match(/Loadbg|Play|Load|Clear|Stop|Resume/i) &&

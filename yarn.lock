@@ -2684,23 +2684,32 @@ caseless@~0.12.0:
   resolved "https://registry.yarnpkg.com/caseless/-/caseless-0.12.0.tgz#1b681c21ff84033c826543090689420d187151dc"
   integrity sha512-4tYFyifaFfGacoiObjJegolkwSU4xQNGbVgUiNYVUxbQ2x2lUsFvY4hVgVzGiIe6WLOPqycWXA40l+PWsxthUw==
 
-casparcg-connection@^6.0.0:
-  version "6.0.0"
-  resolved "https://registry.yarnpkg.com/casparcg-connection/-/casparcg-connection-6.0.0.tgz#a8739ed5a970414ad4a2b801d24be56a9bcadee1"
-  integrity sha512-eiQd60bkgDNyZnj6qrDWATCNRbABRuQw/kLLO7ax6mOHI6WVbaXh4N22vuNEujJF+6xmXqb9T6Abs4KqJ0UMSQ==
+casparcg-connection@6.2.0:
+  version "6.2.0"
+  resolved "https://registry.yarnpkg.com/casparcg-connection/-/casparcg-connection-6.2.0.tgz#592d45ff5338f99585a873ea863ec014fe36e992"
+  integrity sha512-iFVmaU2BgCiZlClP3j6tVPuab3CUrhXi9ZYz3U1ENDNa6HQBtWfclwdRqdJWhCwrZc+YAFxR31sovuQ+BznVlQ==
   dependencies:
-    eventemitter3 "^4.0.7"
-    tslib "^2.4.0"
-    xml2js "^0.4.23"
+    eventemitter3 "^5.0.1"
+    tslib "^2.5.0"
+    xml2js "^0.6.2"
 
-casparcg-state@^3.0.1:
-  version "3.0.1"
-  resolved "https://registry.yarnpkg.com/casparcg-state/-/casparcg-state-3.0.1.tgz#e6aa97db649c66fe58fe03ab02ed0d776ad80fa2"
-  integrity sha512-KVGCh4VZfKAfyOw3MzyhHxc54wZuhUb9kZaB4J96rzGEOoDiEA0Qqyni2MTAqWElCOL4+oDFY7hJeSYIDgFv1w==
+casparcg-connection@^6.3.0:
+  version "6.3.0"
+  resolved "https://registry.yarnpkg.com/casparcg-connection/-/casparcg-connection-6.3.0.tgz#57152190c1c6cfb3a5247bef41923cf1117c0b47"
+  integrity sha512-5Pz2K50m1hI5j11LPqrLxBxy1QnaGywh8KuLYglBeKaOKsDh9nBbcnCV7eNWW9de6skYDhUfIWg4vI6lqMXgzQ==
   dependencies:
-    casparcg-connection "^6.0.0"
+    eventemitter3 "^5.0.1"
+    tslib "^2.5.0"
+    xml2js "^0.6.2"
+
+casparcg-state@^3.0.4:
+  version "3.0.4"
+  resolved "https://registry.yarnpkg.com/casparcg-state/-/casparcg-state-3.0.4.tgz#3bdc07fae86fe8389aeb63fd1a990bcc3a896d0c"
+  integrity sha512-RSOQM1f1LZODn2u2NWQL0qiRTSGw7OVcEHZefrnY8jwsMIrh2xQQKNtlAgrdzZzh/VdB1L8gbkrn/gWi7Ft8+g==
+  dependencies:
+    casparcg-connection "6.2.0"
     fast-clone "^1.5.13"
-    underscore "^1.13.2"
+    underscore "^1.13.6"
 
 chalk@4.1.0:
   version "4.1.0"
@@ -3715,6 +3724,11 @@ eventemitter3@^4.0.4, eventemitter3@^4.0.7:
   version "4.0.7"
   resolved "https://registry.yarnpkg.com/eventemitter3/-/eventemitter3-4.0.7.tgz#2de9b68f6528d5644ef5c59526a1b4a07306169f"
   integrity sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw==
+
+eventemitter3@^5.0.1:
+  version "5.0.1"
+  resolved "https://registry.yarnpkg.com/eventemitter3/-/eventemitter3-5.0.1.tgz#53f5ffd0a492ac800721bb42c66b841de96423c4"
+  integrity sha512-GWkBvjiSZK87ELrYOSESUYeVIc9mvLLf/nXalMOS5dYrgZq9o5OVkbZAVM06CVxYsCwH9BDZFPlQTlPA1j4ahA==
 
 exec-sh@^0.3.2:
   version "0.3.6"
@@ -8346,6 +8360,11 @@ tslib@^2.1.0, tslib@^2.3.0, tslib@^2.3.1, tslib@^2.4.0:
   resolved "https://registry.yarnpkg.com/tslib/-/tslib-2.4.0.tgz#7cecaa7f073ce680a05847aa77be941098f36dc3"
   integrity sha512-d6xOpEDfsi2CZVlPQzGeux8XMwLT9hssAsaPYExaQMuYskwb+x1x7J371tWlbBdWHroy99KnVB6qIkUbs5X3UQ==
 
+tslib@^2.5.0:
+  version "2.8.1"
+  resolved "https://registry.yarnpkg.com/tslib/-/tslib-2.8.1.tgz#612efe4ed235d567e8aba5f2a5fab70280ade83f"
+  integrity sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==
+
 tsutils@^3.21.0:
   version "3.21.0"
   resolved "https://registry.yarnpkg.com/tsutils/-/tsutils-3.21.0.tgz#b48717d394cea6c1e096983eed58e9d61715b623"
@@ -8491,7 +8510,7 @@ underscore-deep-extend@^1.1.5:
   resolved "https://registry.yarnpkg.com/underscore-deep-extend/-/underscore-deep-extend-1.1.5.tgz#962ba1f8b3bb2e2afd182ed86f2e5275543c52bd"
   integrity sha512-Snk/OnraiskaFowKhKrxbE/UzYvYmsE3gHNrGWKCb7gceuz3ebFRwxw9X9wgklrIUt6xDxR5TcE1yj0LneOmnQ==
 
-underscore@^1.13.2, underscore@^1.13.4, underscore@^1.13.6:
+underscore@^1.13.4, underscore@^1.13.6:
   version "1.13.6"
   resolved "https://registry.yarnpkg.com/underscore/-/underscore-1.13.6.tgz#04786a1f589dc6c09f761fc5f45b89e935136441"
   integrity sha512-+A5Sja4HP1M08MaXya7p5LvjuM7K6q/2EaC0+iovj/wOcMsTzMvDFbasi/oSapiwOlt252IqsKqPjCl7huKS0A==
@@ -8913,6 +8932,14 @@ xml2js@^0.4.23:
   version "0.4.23"
   resolved "https://registry.yarnpkg.com/xml2js/-/xml2js-0.4.23.tgz#a0c69516752421eb2ac758ee4d4ccf58843eac66"
   integrity sha512-ySPiMjM0+pLDftHgXY4By0uswI3SPKLDw/i3UXbnO8M/p28zqexCUoPmQFrYD+/1BzhGJSs2i1ERWKJAtiLrug==
+  dependencies:
+    sax ">=0.6.0"
+    xmlbuilder "~11.0.0"
+
+xml2js@^0.6.2:
+  version "0.6.2"
+  resolved "https://registry.yarnpkg.com/xml2js/-/xml2js-0.6.2.tgz#dd0b630083aa09c161e25a4d0901e2b2a929b499"
+  integrity sha512-T4rieHaC1EXcES0Kxxj4JWgaUQHDk+qwHcYOCFHfiwKz7tOVPLq7Hjq9dM1WCMhylqMEfP7hMcOIChvotiZegA==
   dependencies:
     sax ">=0.6.0"
     xmlbuilder "~11.0.0"
