@@ -1,4 +1,5 @@
 import { EventEmitter } from 'eventemitter3'
+import { serialize } from 'v8'
 import {
 	DeviceType,
 	MappingM2LX,
@@ -170,6 +171,40 @@ describe('M2LXDevice', () => {
 	const mockTime = new MockTime()
 
 	beforeEach(() => mockTime.init())
+
+	test('exposes cloneable queue metadata while retaining execution predicates inside the device', async () => {
+		const connection = new MockConnection()
+		const device = new M2LXDevice('m2lx0', { type: DeviceType.M2LX, connection }, mockTime.getCurrentTime2)
+		const errors: unknown[] = []
+		device.on('error', (...args) => errors.push(...args))
+		await device.init({ baseUrl: 'https://m2lx.test', password: 'password' })
+		device.handleState(
+			{
+				time: 11000,
+				nextEvents: [],
+				layers: { mixer: mixerObject('preview', { preview: 'cam3' }) },
+			},
+			{ mixer: mixerMapping }
+		)
+		expect(device.queue).toHaveLength(1)
+		expect(() => serialize(device.queue)).not.toThrow()
+		expect(device.queue[0].args).toEqual([
+			{
+				command: {
+					command: 'set_input_property',
+					node: 'mixer',
+					args: { input_type: 'preview', property: { name: 'video', value: 'cam3' } },
+				},
+				context: 'set preview source to cam3',
+				timelineObjId: 'preview',
+			},
+		])
+		connection.state.preview = 'cam3'
+		await mockTime.advanceTimeToTicks(11100)
+		expect(connection.commands).toEqual([])
+		expect(errors).toEqual([])
+		await device.terminate()
+	})
 
 	test('cancels a dispatched command immediately when standing down during activation preparation', async () => {
 		const connection = new MockConnection()

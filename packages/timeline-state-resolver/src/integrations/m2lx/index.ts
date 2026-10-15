@@ -114,10 +114,11 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 		const generation = this._commandGeneration
 		let validated = false
 		for (const command of commands) {
+			// Keep predicates inside the worker; queue arguments cross the thread boundary.
 			this._doOnTime.queue(
 				newState.time,
 				undefined,
-				async (queuedCommand: M2LXCommandWithContext) => {
+				async () => {
 					if (generation !== this._commandGeneration) {
 						throw new Error('M2L-X scheduled command invalidated by a previous failure or lifecycle change')
 					}
@@ -126,7 +127,7 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 							for (const entry of commands) this._validateCommand(entry.command, false)
 							validated = true
 						}
-						await this._sendCommand(queuedCommand, generation)
+						await this._sendCommand(command, generation)
 					} catch (error) {
 						if (generation === this._commandGeneration) {
 							this._commandGeneration++
@@ -136,7 +137,7 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 						throw error
 					}
 				},
-				command
+				{ command: command.command, context: command.context, timelineObjId: command.timelineObjId }
 			)
 		}
 		this.setState(nextState, newState.time)

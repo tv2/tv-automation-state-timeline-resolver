@@ -102,7 +102,9 @@ Only basic audio-mixer nodes are supported, not similarly named advanced factori
 Signal attenuation and audible PGM output require separate installation verification.
 
 Commands are serialized and require both a code-200 controller reply and matching
-observed state. Native player errors are reported even after a successful reply.
+observed state. Queue diagnostics remain serializable across device-worker boundaries;
+runtime completion predicates stay inside the device. Native player errors are
+reported even after a successful reply.
 Static targets are checked before a batch starts; a failure invalidates its remaining
 commands and already-derived future batches so a failed load cannot take the wrong
 clip on air. Unacknowledged timeouts reconnect to restore reply alignment; an accepted
