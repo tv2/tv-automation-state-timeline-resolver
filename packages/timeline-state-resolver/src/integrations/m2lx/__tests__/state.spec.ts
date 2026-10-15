@@ -259,6 +259,20 @@ describe('M2L-X state differ', () => {
 		).toThrow(/unloaded/)
 	})
 
+	test('an explicit pause is already complete for unloaded players, regardless of stale playback flags', () => {
+		const commands = diffM2LXStates(
+			{ keys: {} },
+			{ keys: {}, players: { vtr3: { playing: false, timelineObjId: 'stop' } } }
+		)
+		expect(commands).toHaveLength(1)
+		for (const playing of [true, false, undefined]) {
+			expect(commands[0].isComplete(observed({ players: { vtr3: { loaded: false, playing } } }))).toBe(true)
+		}
+		expect(commands[0].isComplete(observed({ players: { vtr3: { loaded: true, playing: true } } }))).toBe(false)
+		expect(commands[0].isComplete(observed({ players: { vtr3: { loaded: true, playing: false } } }))).toBe(true)
+		expect(commands[0].isComplete(observed({}))).toBe(false)
+	})
+
 	test('resends an explicit seek on a new instance but does not chase playback time', () => {
 		const player = { seek: 10, playing: true, timelineObjId: 'clip', instanceStart: 1000 }
 		const old: M2LXState = { keys: {}, players: { vtr3: player } }

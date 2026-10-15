@@ -75,7 +75,8 @@ format-independent coordinate limits or multi-M/E support.
 For media, `assetId` selects an **existing** catalog ID; `null` unloads, while
 omitting it leaves the asset unchanged. Explicit asset selection defaults to paused
 and loop off. Loading can enable native looping, so the requested loop state is
-always reapplied after a load. Completion checks `clip.loaded` as well as identity:
+always reapplied after a load. Pausing an unloaded player is already satisfied;
+no native pause command is sent. Completion checks `clip.loaded` as well as identity:
 unloaded players may retain a stale asset ID. Loaded duration/frame rate, not rounded
 catalog values or the mixer format, determine seek bounds and completion tolerance.
 `seek` is a one-shot time in seconds on a changed value/new timeline instance, not

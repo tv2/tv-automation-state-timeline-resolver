@@ -372,6 +372,7 @@ function diffPlayer(
 			return !priorPlaying || state.players?.[node]?.playing === true
 		}
 	} else if (playing !== undefined && (assetChanged || seekChanged || playing !== old?.playing)) {
-		add({ command: playing ? 'play' : 'pause', node }, (state) => state.players?.[node]?.playing === playing)
+		if (playing) add({ command: 'play', node }, (state) => state.players?.[node]?.playing === true)
+		else pause()
 	}
 }

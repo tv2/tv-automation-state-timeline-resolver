@@ -175,6 +175,9 @@ class FakeM2LX {
 			else send()
 		}
 		if (this.extended && command.node === 'vtr3') {
+			if (command.command === 'pause' && !this.player.clip.loaded) {
+				return reply(412, 'Invalid state: media file not loaded')
+			}
 			reply(200, 'OK')
 			if (command.command === 'load') {
 				if (this.failNextLoad) {
@@ -379,6 +382,22 @@ describe('M2LXConnection', () => {
 		expect(device.player.clip.asset_id).toBe('alternate.mp4')
 		expect(connection.state.players?.vtr3.loaded).toBe(false)
 		expect(connection.state.players?.vtr3.assetId).toBeUndefined()
+	})
+
+	test('does not send pause for an unloaded player with retained playback flags', async () => {
+		device.extended = true
+		device.player.clip.loaded = false
+		device.player.playback = { paused: false, rate: 1, time: 10 }
+		connection = new M2LXConnection({ baseUrl, password: 'secret' })
+		await connection.connect()
+		const commands = diffM2LXStates(
+			{ keys: {} },
+			{ keys: {}, players: { vtr3: { playing: false, timelineObjId: 'stop' } } }
+		)
+		expect(commands.map((command) => command.command.command)).toEqual(['pause'])
+		for (const command of commands) await connection.sendCommand(command.command, command)
+		expect(device.received).toEqual([])
+		expect(connection.state.players?.vtr3.loaded).toBe(false)
 	})
 
 	test('rejects player errors even after the controller accepted a load with code 200', async () => {
