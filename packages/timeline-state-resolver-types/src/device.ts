@@ -18,6 +18,7 @@ import {
 	VizMSEOptions,
 	VMixOptions,
 	TriCasterOptions,
+	M2LXOptions,
 } from '.'
 import { ShotokuOptions } from './shotoku'
 import { TelemetricsOptions } from './telemetrics'
@@ -74,6 +75,7 @@ export type DeviceOptionsAny =
 	| DeviceOptionsShotoku
 	| DeviceOptionsTelemetrics
 	| DeviceOptionsTriCaster
+	| DeviceOptionsM2LX
 
 export interface DeviceOptionsAbstract extends DeviceOptionsBase<AbstractOptions> {
 	type: DeviceType.ABSTRACT
@@ -134,4 +136,7 @@ export interface DeviceOptionsTelemetrics extends DeviceOptionsBase<TelemetricsO
 }
 export interface DeviceOptionsTriCaster extends DeviceOptionsBase<TriCasterOptions> {
 	type: DeviceType.TRICASTER
+}
+export interface DeviceOptionsM2LX extends DeviceOptionsBase<M2LXOptions> {
+	type: DeviceType.M2LX
 }
