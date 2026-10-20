@@ -738,10 +738,7 @@ export class Conductor extends EventEmitter<ConductorEvents> {
 		const device = this.devices.get(deviceId)
 		if (device) {
 			try {
-				await Promise.race([
-					device.device.terminate(),
-					new Promise<void>((_, reject) => setTimeout(() => reject('Timeout'), REMOVE_TIMEOUT)),
-				])
+				await PTimeout(device.device.terminate(), REMOVE_TIMEOUT, 'Timeout when terminating device')
 			} catch (e) {
 				// An error while terminating is probably not that important, since we'll kill the instance anyway
 				this.emit('warning', `Error when terminating device ${e}`)
@@ -757,9 +754,13 @@ export class Conductor extends EventEmitter<ConductorEvents> {
 	 * Remove all devices
 	 */
 	public async destroy(): Promise<void> {
+		this._isInitialized = false
 		clearTimeout(this._interval)
 
+		await this._actionQueue.onIdle()
+		if (this._resolveTimelineTrigger) clearTimeout(this._resolveTimelineTrigger)
 		if (this._triggerSendStartStopCallbacksTimeout) clearTimeout(this._triggerSendStartStopCallbacksTimeout)
+		this._doOnTime.dispose()
 
 		await this._mapAllDevices(true, async (d) => this.removeDevice(d.deviceId))
 	}

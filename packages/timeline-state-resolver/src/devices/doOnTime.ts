@@ -62,7 +62,8 @@ export class DoOnTime extends EventEmitter<DoOnTimeEvents> {
 		[queueId: string]: { [id: string]: DoOrder }
 	} = {}
 
-	private _checkQueueTimeout: any = 0
+	private _checkQueueTimeout: ReturnType<typeof setTimeout> | undefined
+	private _disposed = false
 	private _sendMode: SendMode
 	private _commandsToSendNow: {
 		[queueId: string]: (() => Promise<any>)[]
@@ -91,6 +92,7 @@ export class DoOnTime extends EventEmitter<DoOnTimeEvents> {
 		arg2: C
 	): string
 	public queue(time: number, queueId: string | undefined, fcn: DoOrderFunction, ...args: any[]): string {
+		if (this._disposed) throw new Error('DoOnTime is disposed')
 		if (!(time >= 0)) throw Error(`DoOnTime: time argument must be >= 0 (${time})`)
 		if (!_.isFunction(fcn)) throw Error(`DoOnTime: fcn argument must be a function! (${typeof fcn})`)
 		const id = '_' + this._i++
@@ -104,6 +106,7 @@ export class DoOnTime extends EventEmitter<DoOnTimeEvents> {
 			addedTime: this.getCurrentTime(),
 			prepareTime: 0,
 		}
+		if (this._checkQueueTimeout) clearTimeout(this._checkQueueTimeout)
 		this._checkQueueTimeout = setTimeout(() => {
 			this._checkQueue()
 		}, 0)
@@ -147,14 +150,18 @@ export class DoOnTime extends EventEmitter<DoOnTimeEvents> {
 		return removed
 	}
 	dispose(): void {
+		this._disposed = true
 		this.clearQueueAfter(0) // clear all
 		clearTimeout(this._checkQueueTimeout)
+		this._checkQueueTimeout = undefined
 	}
 	private _remove(queueId: string, id: string) {
 		delete this._queues[queueId][id]
 	}
 	private _checkQueue() {
-		clearTimeout(this._checkQueueTimeout)
+		if (this._disposed) return
+		if (this._checkQueueTimeout) clearTimeout(this._checkQueueTimeout)
+		this._checkQueueTimeout = undefined
 
 		const now = this.getCurrentTime()
 		if (isNaN(now)) {
@@ -194,9 +201,11 @@ export class DoOnTime extends EventEmitter<DoOnTimeEvents> {
 
 		// schedule next check:
 		const timeToNext = Math.min(1000, nextTime - now)
-		this._checkQueueTimeout = setTimeout(() => {
-			this._checkQueue()
-		}, timeToNext)
+		if (!this._disposed && !this._checkQueueTimeout) {
+			this._checkQueueTimeout = setTimeout(() => {
+				this._checkQueue()
+			}, timeToNext)
+		}
 	}
 	private _sendNextCommand(queueId: string) {
 		if (this._sendingCommands[queueId]) {
