@@ -51,6 +51,7 @@ import { VizMSEDevice, DeviceOptionsVizMSEInternal } from './integrations/vizMSE
 import { ShotokuDevice, DeviceOptionsShotokuInternal } from './integrations/shotoku'
 import { TelemetricsDevice } from './devices/telemetrics'
 import { TriCasterDevice, DeviceOptionsTriCasterInternal } from './integrations/tricaster'
+import { M2LXDevice, DeviceOptionsM2LXInternal } from './integrations/m2lx'
 
 export { DeviceContainer }
 export { CommandWithContext }
@@ -667,6 +668,15 @@ export class Conductor extends EventEmitter<ConductorEvents> {
 					getCurrentTime,
 					threadedClassOptions
 				)
+			case DeviceType.M2LX:
+				return DeviceContainer.create<DeviceOptionsM2LXInternal, typeof M2LXDevice>(
+					'../../dist/integrations/m2lx/index.js',
+					'M2LXDevice',
+					deviceId,
+					deviceOptions,
+					getCurrentTime,
+					threadedClassOptions
+				)
 			default:
 				return null
 		}
@@ -728,10 +738,7 @@ export class Conductor extends EventEmitter<ConductorEvents> {
 		const device = this.devices.get(deviceId)
 		if (device) {
 			try {
-				await Promise.race([
-					device.device.terminate(),
-					new Promise<void>((_, reject) => setTimeout(() => reject('Timeout'), REMOVE_TIMEOUT)),
-				])
+				await PTimeout(device.device.terminate(), REMOVE_TIMEOUT, 'Timeout when terminating device')
 			} catch (e) {
 				// An error while terminating is probably not that important, since we'll kill the instance anyway
 				this.emit('warning', `Error when terminating device ${e}`)
@@ -747,9 +754,13 @@ export class Conductor extends EventEmitter<ConductorEvents> {
 	 * Remove all devices
 	 */
 	public async destroy(): Promise<void> {
+		this._isInitialized = false
 		clearTimeout(this._interval)
 
+		await this._actionQueue.onIdle()
+		if (this._resolveTimelineTrigger) clearTimeout(this._resolveTimelineTrigger)
 		if (this._triggerSendStartStopCallbacksTimeout) clearTimeout(this._triggerSendStartStopCallbacksTimeout)
+		this._doOnTime.dispose()
 
 		await this._mapAllDevices(true, async (d) => this.removeDevice(d.deviceId))
 	}
@@ -1549,6 +1560,7 @@ export type DeviceOptionsAnyInternal =
 	| DeviceOptionsVizMSEInternal
 	| DeviceOptionsTelemetrics
 	| DeviceOptionsTriCasterInternal
+	| DeviceOptionsM2LXInternal
 
 function removeParentFromState(o: TimelineState): TimelineState {
 	for (const key in o) {

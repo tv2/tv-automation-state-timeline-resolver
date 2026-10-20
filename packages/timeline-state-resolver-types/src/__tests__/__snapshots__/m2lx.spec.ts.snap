@@ -1,0 +1,82 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`M2L-X types models the public first-phase contract 1`] = `
+Object {
+  "deviceOptions": Object {
+    "options": Object {
+      "authenticationTimeout": 5000,
+      "baseUrl": "https://m2lx.example.test",
+      "commandTimeout": 2000,
+      "password": "credential",
+      "reconnectBackoff": Object {
+        "maxDelay": 10000,
+        "minDelay": 500,
+      },
+      "rejectUnauthorized": true,
+      "webSocketConnectTimeout": 5000,
+    },
+    "type": 25,
+  },
+  "mappings": Array [
+    Object {
+      "device": 25,
+      "deviceId": "m2lx0",
+      "mappingType": "mixer",
+    },
+    Object {
+      "bus": "program",
+      "device": 25,
+      "deviceId": "m2lx0",
+      "key": Object {
+        "index": 0,
+        "type": "pip",
+      },
+      "mappingType": "key",
+    },
+    Object {
+      "bus": "preview",
+      "device": 25,
+      "deviceId": "m2lx0",
+      "key": Object {
+        "index": 4,
+        "type": "still",
+      },
+      "mappingType": "key",
+    },
+  ],
+  "timelineObjects": Array [
+    Object {
+      "content": Object {
+        "deviceType": 25,
+        "mixer": Object {
+          "preview": "vtr1",
+          "program": "cam1",
+          "transition": Object {
+            "type": "effect",
+          },
+        },
+        "type": "mixer",
+      },
+      "enable": Object {
+        "start": 0,
+      },
+      "id": "mixer",
+      "layer": "mixer",
+    },
+    Object {
+      "content": Object {
+        "deviceType": 25,
+        "key": Object {
+          "visible": true,
+        },
+        "type": "key",
+      },
+      "enable": Object {
+        "start": 0,
+      },
+      "id": "key",
+      "layer": "key",
+    },
+  ],
+}
+`;
