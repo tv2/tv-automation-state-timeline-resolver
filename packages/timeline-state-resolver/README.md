@@ -137,6 +137,54 @@ using new authentication and a fresh snapshot, and rejects outstanding commands.
 Sofie must supply the lifecycle signals; a quiet mixer is not evidence that it is
 off air.
 
+### Sony M2L-X event selection
+
+Set the optional device-level `eventId` to the event's stable ID, **not its name**:
+
+```ts
+{
+  baseUrl: 'https://m2lx.example.test',
+  password: '<installation credential>',
+  eventId: '<event_id from the event overview>',
+  eventTimeout: 180000, // Optional, milliseconds for stop/start completion
+}
+```
+
+Obtain IDs and display names (`event_id` / `event_name`) with
+`GET /api/events/overview`, using `Authorization: Bearer <access_token>` after
+the usual administrator sign-in. Event management uses Bearer authentication,
+unlike the switcher APIs' access-token query parameter. A future Sofie studio
+blueprint setting can display the name and supply the ID as this device option;
+that Sofie configuration/UI is not implemented here.
+
+Initialization authenticates and checks that the configured event exists, without
+starting it. A stopped event can therefore initialize successfully while reporting
+that its mixer is not ready. On explicit inactive-to-active `makeReady`, TSR stops
+one different Running/Starting event, waits until it is Stopped, starts the selected
+Stopped event, waits for Running, then loads fresh configuration and mixer snapshots.
+An already Running selected event is not restarted; an existing Starting/Stopping
+operation is awaited rather than duplicated. The default stop/start deadline is
+180 seconds for the whole stop/start sequence, and management POSTs are never retried.
+Configured-event timeline control requires successful activation, even when
+initialization or a read-only reconnect connects to a Running mixer.
+Failures or timeout reject activation and prevent controller commands.
+
+**Switching is a full stop/start with downtime, not a seamless on-air change.**
+Reserve the event manager for this installation: multiple other active events,
+Initializing/Resetting states, failed selected events, unknown IDs and mismatched
+event detail are rejected. The event's `switcher` host/port must match the configured
+`baseUrl` origin; cross-origin endpoint discovery is deliberately unsupported.
+TSR checks both the selected event and any event to be stopped before mutating them.
+
+Repeated active `makeReady` and automatic socket recovery never switch/start/stop
+events. Recovery only reconnects if the selected event is Running; if another
+event is running, explicit inactive activation is required. `standDown` and
+`terminate` do **not** stop events. Standing down or terminating during activation
+cancels outstanding work and prevents subsequent start/controller requests, but
+cannot undo a stop/start already accepted by the manager or restore the old event.
+The interrupted activation rejects explicitly; accepted operations can continue
+on the mixer. With `eventId` unset, the existing switcher-only behavior is unchanged.
+
 TSR is primarily developed to be used in the [Playout Gateway](https://github.com/nrkno/tv-automation-playout-gateway) of the [Sofie project](https://github.com/nrkno/Sofie-TV-automation).
 
 When developing support for new devices, a helpful tool for quickly trying out new functionality is the [Quick-TSR repo](https://github.com/nytamin/quickTSR).

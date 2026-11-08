@@ -19,6 +19,10 @@ export interface M2LXOptions {
 	baseUrl: string
 	/** Installation-specific credential for the fixed administrator account. */
 	password: string
+	/** Stable event ID, not its display name. Inactive activation may stop another event and start this one. */
+	eventId?: string
+	/** Maximum time for event stop/start completion in milliseconds. Defaults to 180000. */
+	eventTimeout?: number
 	/** Whether HTTPS and WebSocket certificates must pass verification. Defaults to true. */
 	rejectUnauthorized?: boolean
 	/** REST authentication timeout in milliseconds. */

@@ -1,6 +1,8 @@
 import * as http from 'http'
 import { AddressInfo } from 'net'
 import WebSocket = require('ws')
+import { DeviceType } from 'timeline-state-resolver-types'
+import { M2LXDevice } from '..'
 import { M2LXConnection, M2LX_AUTH_RENEWAL_MARGIN } from '../connection'
 import { createSetInputCommand, createSetKeyCommand, createTransitionCommand, M2LXCommand } from '../protocol'
 import { diffM2LXStates, M2LXState } from '../state'
@@ -34,6 +36,16 @@ class FakeM2LX {
 	dropReplies = false
 	rejectAcceptedCommands = false
 	failNextLoad = false
+	events?: Array<{ event_id: string; event_name: string; status: string }>
+	eventRequests: Array<{ method: string; path: string; body: string; authorization?: string; contentType?: string }> =
+		[]
+	eventOperationStatus = { start: 200, stop: 200 }
+	holdEventTransitions = false
+	holdEventOverview = false
+	switcherEndpoint?: string
+	otherSwitcherEndpoint?: string
+	detailEventId?: string
+	eventRequestObserver?: (path: string) => void
 	readonly player = {
 		clip: { loaded: true, asset_id: 'original.mp4', duration: 300, frame_rate: '50' },
 		playback: { paused: true, rate: 0, time: 0 },
@@ -120,6 +132,71 @@ class FakeM2LX {
 		let body = ''
 		req.on('data', (chunk) => (body += chunk))
 		req.on('end', () => {
+			if (this.events && url.pathname.startsWith('/api/events/')) {
+				this.eventRequests.push({
+					method: req.method ?? '',
+					path: url.pathname,
+					body,
+					authorization: req.headers.authorization,
+					contentType: req.headers['content-type'],
+				})
+				this.eventRequestObserver?.(url.pathname)
+				if (req.headers.authorization !== 'Bearer token' || url.searchParams.has('access_token')) {
+					res.writeHead(401)
+					res.end()
+					return
+				}
+				if (url.pathname === '/api/events/overview') {
+					if (this.holdEventOverview) return
+					res.writeHead(200, { 'Content-Type': 'application/json' })
+					res.end(JSON.stringify(this.events))
+					return
+				}
+				const match = /^\/api\/events\/(detail|start|stop)\/(.+)$/.exec(url.pathname)
+				const event = match && this.events.find((value) => value.event_id === decodeURIComponent(match[2]))
+				if (!match || !event) {
+					res.writeHead(404)
+					res.end()
+					return
+				}
+				const operation = match[1]
+				if (operation === 'detail' && req.method === 'GET') {
+					res.writeHead(200, { 'Content-Type': 'application/json' })
+					res.end(
+						JSON.stringify({
+							...event,
+							event_id: this.detailEventId ?? event.event_id,
+							endpoints: [
+								{
+									name: 'switcher',
+									url:
+										(event.event_id === 'other' ? this.otherSwitcherEndpoint : undefined) ??
+										this.switcherEndpoint ??
+										req.headers.host,
+								},
+							],
+						})
+					)
+				} else if ((operation === 'start' || operation === 'stop') && req.method === 'POST') {
+					const code = this.eventOperationStatus[operation]
+					if (code === 200) {
+						event.status =
+							operation === 'start'
+								? this.holdEventTransitions
+									? 'Starting'
+									: 'Running'
+								: this.holdEventTransitions
+								? 'Stopping'
+								: 'Stopped'
+					}
+					res.writeHead(code)
+					res.end()
+				} else {
+					res.writeHead(405)
+					res.end()
+				}
+				return
+			}
 			if (req.method === 'POST' && url.pathname === '/api/local_auth/signin') {
 				this.signIns++
 				const { alias, password } = JSON.parse(body)
@@ -134,6 +211,11 @@ class FakeM2LX {
 				}, this.signInDelay)
 			} else if (req.method === 'GET' && url.pathname === '/api/v1/switcher_configuration') {
 				this.configurationRequests++
+				if (this.events && !this.events.some((event) => event.status === 'Running')) {
+					res.writeHead(404)
+					res.end()
+					return
+				}
 				if (url.searchParams.get('access_token') !== 'token') {
 					res.writeHead(401)
 					res.end()
@@ -327,6 +409,275 @@ describe('M2LXConnection', () => {
 		await connection?.disconnect()
 		await device.close()
 		jest.restoreAllMocks()
+	})
+
+	describe('configured event lifecycle', () => {
+		const selectedId = 'selected/event ?'
+		beforeEach(() => {
+			device.events = [
+				{ event_id: 'other', event_name: 'Other', status: 'Stopped' },
+				{ event_id: selectedId, event_name: 'Selected', status: 'Stopped' },
+			]
+			connection = new M2LXConnection({
+				baseUrl,
+				password: 'secret',
+				eventId: selectedId,
+				eventTimeout: 500,
+				reconnectBackoff: { minDelay: 60000, maxDelay: 60000 },
+			})
+		})
+		const mutations = () =>
+			device.eventRequests.filter((request) => request.method === 'POST').map((request) => request.path)
+
+		test('initializes a stopped event without switcher requests, then activates with Bearer/no-body/encoded-ID requests', async () => {
+			await connection.connect()
+			expect(connection.connected).toBe(false)
+			expect(connection.eventStatus).toBe('Stopped')
+			expect(device.configurationRequests).toBe(0)
+			expect(mutations()).toEqual([])
+			await connection.ensureFreshAuthentication(true)
+			expect(mutations()).toEqual([`/api/events/start/${encodeURIComponent(selectedId)}`])
+			expect(connection.connected).toBe(true)
+			expect(connection.eventStatus).toBe('Running')
+			expect(connection.state).toMatchObject({ program: 'vtr1', preview: 'replay1' })
+			expect(device.eventRequests.every((request) => request.authorization === 'Bearer token')).toBe(true)
+			expect(device.eventRequests.filter((request) => request.method === 'POST')).toEqual([
+				expect.objectContaining({ body: '', contentType: undefined }),
+			])
+		})
+
+		test('fully stops the different running event before starting the selected one', async () => {
+			device.events![0].status = 'Running'
+			await connection.connect()
+			await connection.ensureFreshAuthentication(true)
+			expect(mutations()).toEqual(['/api/events/stop/other', `/api/events/start/${encodeURIComponent(selectedId)}`])
+			expect(device.events!.map((event) => event.status)).toEqual(['Stopped', 'Running'])
+			expect(connection.connected).toBe(true)
+		})
+
+		test.each(['other', 'Starting', 'Stopping'])(
+			'waits for %s lifecycle completion without duplicate stop/start requests',
+			async (pending) => {
+				device.holdEventTransitions = true
+				if (pending === 'other') device.events![0].status = 'Running'
+				else device.events![1].status = pending
+				await connection.disconnect()
+				connection = new M2LXConnection({
+					baseUrl,
+					password: 'secret',
+					eventId: selectedId,
+					eventTimeout: 2500,
+					reconnectBackoff: { minDelay: 60000 },
+				})
+				await connection.connect()
+				const polling = new Promise<void>((resolve) => {
+					device.eventRequestObserver = (path) => {
+						if (path === '/api/events/overview' && (pending !== 'other' || device.events![0].status === 'Stopping'))
+							resolve()
+					}
+				})
+				const ready = connection.ensureFreshAuthentication(true)
+				await polling
+				await new Promise<void>((resolve) => setTimeout(resolve, 20))
+				expect(mutations()).toEqual(pending === 'other' ? ['/api/events/stop/other'] : [])
+				device.holdEventTransitions = false
+				if (pending === 'other') device.events![0].status = 'Stopped'
+				else device.events![1].status = pending === 'Starting' ? 'Running' : 'Stopped'
+				await ready
+				expect(mutations()).toEqual(
+					pending === 'Starting'
+						? []
+						: [
+								...(pending === 'other' ? ['/api/events/stop/other'] : []),
+								`/api/events/start/${encodeURIComponent(selectedId)}`,
+						  ]
+				)
+				expect(connection.connected).toBe(true)
+			}
+		)
+
+		test('never restarts the already running selected event or recycles active authentication', async () => {
+			device.events![1].status = 'Running'
+			await connection.connect()
+			await connection.ensureFreshAuthentication(true)
+			const controller = [...device.controllers][0]
+			await connection.ensureFreshAuthentication(false)
+			expect(mutations()).toEqual([])
+			expect(device.signIns).toBe(2)
+			expect([...device.controllers]).toContain(controller)
+		})
+
+		test('reconnects with fresh mixer state but never restarts an externally stopped event', async () => {
+			device.events![1].status = 'Running'
+			await connection.disconnect()
+			connection = new M2LXConnection({
+				baseUrl,
+				password: 'secret',
+				eventId: selectedId,
+				reconnectBackoff: { minDelay: 10, maxDelay: 10 },
+			})
+			await connection.connect()
+			const recovered = new Promise<void>((resolve) => connection.once('connected', () => resolve()))
+			device.program = 'ndi2'
+			for (const socket of device.controllers) socket.terminate()
+			await recovered
+			await connection.connect()
+			expect(connection.state.program).toBe('ndi2')
+			device.events![0].status = 'Running'
+			device.events![1].status = 'Stopped'
+			await connection.connect()
+			expect(connection.connected).toBe(false)
+			expect(mutations()).toEqual([])
+			await expect(connection.ensureFreshAuthentication(false)).rejects.toThrow('not connected')
+		})
+
+		test.each(['start', 'stop'] as const)(
+			'does not retry a failed %s or declare mixer readiness',
+			async (operation) => {
+				if (operation === 'stop') device.events![0].status = 'Running'
+				device.eventOperationStatus[operation] = 503
+				await connection.connect()
+				await expect(connection.ensureFreshAuthentication(true)).rejects.toThrow('failed (503)')
+				expect(mutations()).toEqual([
+					operation === 'stop' ? '/api/events/stop/other' : `/api/events/start/${encodeURIComponent(selectedId)}`,
+				])
+				expect(connection.connected).toBe(false)
+				expect(device.configurationRequests).toBe(0)
+				await expect(
+					connection.sendCommand(createTransitionCommand(false), { isComplete: () => false })
+				).rejects.toThrow('not connected')
+				expect(device.received).toEqual([])
+			}
+		)
+
+		test.each(['missing', 'Failed', 'invalid-status', 'endpoint', 'other-endpoint', 'identity', 'multiple-active'])(
+			'rejects %s before event mutations',
+			async (problem) => {
+				if (problem === 'missing') device.events!.pop()
+				else if (problem === 'endpoint') device.switcherEndpoint = 'different.example.test:443'
+				else if (problem === 'other-endpoint') {
+					device.events![0].status = 'Running'
+					device.otherSwitcherEndpoint = 'different.example.test:443'
+				} else if (problem === 'identity') device.detailEventId = 'other'
+				else if (problem === 'multiple-active') {
+					device.events![0].status = 'Running'
+					device.events!.push({ event_id: 'third', event_name: 'Third', status: 'Running' })
+				} else device.events![1].status = problem
+				await expect(connection.ensureFreshAuthentication(true)).rejects.toThrow(/event|identity/i)
+				expect(mutations()).toEqual([])
+				expect(connection.connected).toBe(false)
+				expect(device.configurationRequests).toBe(0)
+			}
+		)
+
+		test('bounds lifecycle polling without resending accepted start', async () => {
+			device.holdEventTransitions = true
+			await connection.connect()
+			await expect(connection.ensureFreshAuthentication(true)).rejects.toThrow('timed out')
+			expect(mutations()).toHaveLength(1)
+			expect(connection.connected).toBe(false)
+		})
+
+		test.each(['stand-down', 'terminate'])(
+			'cancels %s during stop polling without starting the selected event',
+			async (cancel) => {
+				device.events![0].status = 'Running'
+				device.holdEventTransitions = true
+				await connection.connect()
+				const stopping = new Promise<void>((resolve) => {
+					device.eventRequestObserver = (path) => {
+						if (path === '/api/events/stop/other') resolve()
+					}
+				})
+				const preparing = connection.ensureFreshAuthentication(true).catch((error: Error) => error)
+				await stopping
+				if (cancel === 'terminate') await connection.disconnect()
+				else connection.cancelActivation()
+				expect(await preparing).toBeInstanceOf(Error)
+				expect(mutations()).toEqual(['/api/events/stop/other'])
+				expect(connection.connected).toBe(false)
+				expect(device.controllers.size).toBe(0)
+				expect(device.configurationRequests).toBe(0)
+			}
+		)
+
+		test('aborts an outstanding management read on termination', async () => {
+			device.holdEventOverview = true
+			const reading = new Promise<void>((resolve) => {
+				device.eventRequestObserver = () => resolve()
+			})
+			const preparing = connection.ensureFreshAuthentication(true).catch((error: Error) => error)
+			await reading
+			await connection.disconnect()
+			expect(await preparing).toMatchObject({ message: 'M2L-X connection attempt was cancelled' })
+			expect(mutations()).toEqual([])
+		})
+
+		test('does not declare readiness after event start without a fresh full mixer snapshot', async () => {
+			device.sendInitialSnapshot = false
+			device.sendPartialStatus = true
+			await connection.disconnect()
+			connection = new M2LXConnection({
+				baseUrl,
+				password: 'secret',
+				eventId: selectedId,
+				webSocketConnectTimeout: 50,
+				reconnectBackoff: { minDelay: 60000 },
+			})
+			await expect(connection.ensureFreshAuthentication(true)).rejects.toThrow('connection timed out')
+			expect(mutations()).toHaveLength(1)
+			expect(connection.connected).toBe(false)
+		})
+
+		test('device initialization defers stopped-event mixer readiness; activation and stand-down respect the lifecycle', async () => {
+			const integration = new M2LXDevice('event-device', { type: DeviceType.M2LX, connection }, async () => Date.now())
+			await expect(integration.init({ baseUrl, password: 'secret', eventId: selectedId })).resolves.toBe(true)
+			expect(integration.connected).toBe(false)
+			expect(integration.getStatus().messages[0]).toContain('Stopped')
+			integration.handleState({ time: Date.now(), layers: {}, nextEvents: [] }, {})
+			expect(device.received).toEqual([])
+			await integration.makeReady()
+			const signIns = device.signIns
+			await integration.makeReady()
+			expect(device.signIns).toBe(signIns)
+			expect(integration.connected).toBe(true)
+			await integration.standDown()
+			expect(device.events![1].status).toBe('Running')
+			expect(integration.connected).toBe(true)
+			await integration.makeReady()
+			expect(device.signIns).toBe(signIns + 1)
+			await integration.terminate()
+			expect(device.events![1].status).toBe('Running')
+			expect(mutations()).toEqual([`/api/events/start/${encodeURIComponent(selectedId)}`])
+		})
+
+		test.each(['stand-down', 'terminate'])(
+			'device %s cancels in-progress activation without a late start',
+			async (cancel) => {
+				device.events![0].status = 'Running'
+				device.holdEventTransitions = true
+				const integration = new M2LXDevice('event-device', { type: DeviceType.M2LX, connection }, async () =>
+					Date.now()
+				)
+				await integration.init({ baseUrl, password: 'secret', eventId: selectedId })
+				const stopping = new Promise<void>((resolve) => {
+					device.eventRequestObserver = (path) => {
+						if (path === '/api/events/stop/other') resolve()
+					}
+				})
+				const ready = integration.makeReady().catch((error: Error) => error)
+				await stopping
+				let stopped: unknown
+				if (cancel === 'stand-down') {
+					stopped = await integration.standDown().catch((error: Error) => error)
+				} else stopped = await integration.terminate()
+				expect(stopped instanceof Error).toBe(cancel === 'stand-down')
+				expect(await ready).toBeInstanceOf(Error)
+				expect(integration.connected).toBe(false)
+				expect(mutations()).toEqual(['/api/events/stop/other'])
+				await integration.terminate()
+			}
+		)
 	})
 
 	test('waits for configured media/audio/router snapshots, not only mixer status', async () => {

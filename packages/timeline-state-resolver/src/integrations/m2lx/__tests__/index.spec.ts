@@ -43,6 +43,7 @@ class MockConnection extends EventEmitter<M2LXConnectionEvents> implements IM2LX
 	async disconnect(): Promise<void> {
 		this.connected = false
 	}
+	cancelActivation = jest.fn()
 	async sendCommand(command: M2LXCommand, options: M2LXSendOptions): Promise<void> {
 		options.checkState?.(this.state, this.state)
 		if ((options.isRedundant ?? options.isComplete)(this.state)) return
@@ -171,6 +172,39 @@ describe('M2LXDevice', () => {
 	const mockTime = new MockTime()
 
 	beforeEach(() => mockTime.init())
+
+	test('configured-event control requires successful activation even when initialization or recovery connects', async () => {
+		const connection = new MockConnection()
+		const device = new M2LXDevice('m2lx0', { type: DeviceType.M2LX, connection }, mockTime.getCurrentTime2)
+		const warnings = jest.fn()
+		device.on('warning', warnings)
+		await device.init({ baseUrl: 'https://m2lx.test', password: 'password', eventId: 'selected-event' })
+		const apply = (time: number, program: string) =>
+			device.handleState(
+				{ time, layers: { mixer: mixerObject('cut', { program }) }, nextEvents: [] },
+				{ mixer: mixerMapping }
+			)
+		apply(11000, 'cam3')
+		await mockTime.advanceTimeToTicks(11010)
+		expect(connection.commands).toEqual([])
+		connection.ensureFreshAuthentication.mockRejectedValueOnce(new Error('event start failed'))
+		await expect(device.makeReady()).rejects.toThrow('event start failed')
+		await connection.connect()
+		apply(11010, 'cam3')
+		await mockTime.advanceTimeToTicks(11020)
+		expect(connection.commands).toEqual([])
+		expect(warnings).toHaveBeenCalledWith('M2L-X configured-event control requires successful activation')
+		await device.makeReady()
+		apply(11020, 'cam3')
+		await mockTime.advanceTimeToTicks(11030)
+		expect(connection.commands).toHaveLength(1)
+		await device.standDown()
+		await connection.connect()
+		apply(11030, 'cam2')
+		await mockTime.advanceTimeToTicks(11040)
+		expect(connection.commands).toHaveLength(1)
+		await device.terminate()
+	})
 
 	test('exposes cloneable queue metadata while retaining execution predicates inside the device', async () => {
 		const connection = new MockConnection()

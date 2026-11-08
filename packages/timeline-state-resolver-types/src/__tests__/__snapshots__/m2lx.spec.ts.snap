@@ -7,6 +7,8 @@ Object {
       "authenticationTimeout": 5000,
       "baseUrl": "https://m2lx.example.test",
       "commandTimeout": 2000,
+      "eventId": "configured-event-id",
+      "eventTimeout": 180000,
       "password": "credential",
       "reconnectBackoff": Object {
         "maxDelay": 10000,

@@ -37,6 +37,8 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 	private _productionActive = false
 	private _preparingForProduction?: Promise<void>
 	private _commandGeneration = 0
+	private _activationGeneration = 0
+	private _eventId?: string
 
 	constructor(deviceId: string, deviceOptions: DeviceOptionsM2LXInternal, getCurrentTime: () => Promise<number>) {
 		super(deviceId, deviceOptions, getCurrentTime)
@@ -48,6 +50,7 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 	async init(options: M2LXOptions): Promise<boolean> {
 		if (!options?.baseUrl) throw new Error('M2L-X baseUrl is required')
 		if (!options.password) throw new Error('M2L-X password is required')
+		this._eventId = options.eventId
 
 		this._connection = this._connection ?? new M2LXConnection(options)
 		this._connection.on('connected', () => {
@@ -67,6 +70,7 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 		})
 		this._connection.on('error', (error) => this.emit('error', 'M2LXConnection', error))
 		this._connection.on('authenticationChanged', () => this.emit('connectionChanged', this.getStatus()))
+		this._connection.on('eventStateChanged', () => this.emit('connectionChanged', this.getStatus()))
 		let playerErrors = '[]'
 		this._connection.on('stateChanged', () => {
 			const next = JSON.stringify(this._playerErrorMessages())
@@ -77,7 +81,8 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 		})
 
 		await this._connection.connect()
-		this._initialized = true
+		this._initialized = this._connection.connected
+		this.emit('connectionChanged', this.getStatus())
 		return true
 	}
 
@@ -90,6 +95,10 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 		super.onHandleState(newState, newMappings)
 		if (!this._initialized || !this._connection?.connected) {
 			this.emit('warning', 'M2L-X is not ready')
+			return
+		}
+		if (this._eventId && !this._productionActive && !this._preparingForProduction) {
+			this.emit('warning', 'M2L-X configured-event control requires successful activation')
 			return
 		}
 
@@ -150,9 +159,12 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 	async makeReady(_okToDestroyStuff?: boolean, _activeRundownId?: string): Promise<void> {
 		if (!this._connection) throw new Error('M2L-X connection is not initialized')
 		if (!this._preparingForProduction) {
+			const generation = this._activationGeneration
 			this._preparingForProduction = this._connection
 				.ensureFreshAuthentication(!this._productionActive)
 				.then(() => {
+					if (this._eventId && generation !== this._activationGeneration)
+						throw new Error('M2L-X activation was cancelled')
 					this._productionActive = true
 					this.emit('connectionChanged', this.getStatus())
 				})
@@ -164,6 +176,8 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 	}
 
 	async standDown(_okToDestroyStuff?: boolean): Promise<void> {
+		this._activationGeneration++
+		this._connection?.cancelActivation()
 		this._commandGeneration++
 		this._doOnTime.clearQueueNowAndAfter(0)
 		try {
@@ -177,6 +191,7 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 	}
 
 	async terminate(): Promise<boolean> {
+		this._activationGeneration++
 		this._initialized = false
 		this._commandGeneration++
 		this._doOnTime.dispose()
@@ -190,7 +205,13 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 		const messages: string[] = []
 		let statusCode = connected ? StatusCode.GOOD : StatusCode.BAD
 		if (!connected) {
-			messages.push('Not connected or waiting for M2L-X video status')
+			messages.push(
+				this._eventId
+					? `M2L-X event ${this._eventId}: ${
+							this._connection?.eventStatus ?? 'unknown'
+					  }; waiting for selected-event mixer readiness`
+					: 'Not connected or waiting for M2L-X video status'
+			)
 		} else if (expiresAt === undefined) {
 			statusCode = StatusCode.WARNING_MAJOR
 			messages.push('M2L-X token expiry is unknown; authenticate before the next activation')
@@ -428,6 +449,9 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 		if (this._preparingForProduction) await this._preparingForProduction
 		if (generation !== this._commandGeneration) {
 			throw new Error('M2L-X scheduled command invalidated during production preparation')
+		}
+		if (this._eventId && !this._productionActive) {
+			throw new Error('M2L-X configured-event control requires successful activation')
 		}
 		this._productionActive = true
 		this._validateCommand(command.command)

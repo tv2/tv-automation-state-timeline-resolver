@@ -18,6 +18,8 @@ import {
 export interface M2LXConnectionOptions {
 	baseUrl: string
 	password: string
+	eventId?: string
+	eventTimeout?: number
 	rejectUnauthorized?: boolean
 	authenticationTimeout?: number
 	webSocketConnectTimeout?: number
@@ -35,6 +37,7 @@ export type M2LXConnectionEvents = {
 	controllerMessage: [message: unknown]
 	error: [error: Error]
 	authenticationChanged: []
+	eventStateChanged: [status: string]
 }
 
 export interface M2LXSendOptions {
@@ -57,12 +60,14 @@ export interface IM2LXConnection {
 	connect(): Promise<void>
 	ensureFreshAuthentication(allowRenewal: boolean): Promise<void>
 	disconnect(): Promise<void>
+	cancelActivation(): void
 	sendCommand(command: M2LXCommand, options: M2LXSendOptions): Promise<void>
 	readonly connected: boolean
 	readonly sources: ReadonlySet<string>
 	readonly state: M2LXObservedState
 	readonly tokenExpiresAt: number | undefined
 	readonly capabilities?: M2LXCapabilities
+	readonly eventStatus?: string
 }
 
 export const M2LX_AUTH_RENEWAL_MARGIN = 5 * 60 * 1000
@@ -71,6 +76,15 @@ const DEFAULT_CONNECT_TIMEOUT = 5000
 const DEFAULT_COMMAND_TIMEOUT = 3000
 const DEFAULT_RECONNECT_MIN_DELAY = 1000
 const DEFAULT_RECONNECT_MAX_DELAY = 30000
+const DEFAULT_EVENT_TIMEOUT = 180000
+
+interface M2LXEvent {
+	event_id: string
+	event_name: string
+	status: string
+}
+
+const EVENT_STATUSES = ['Initializing', 'Starting', 'Running', 'Stopping', 'Stopped', 'Resetting', 'Failed', 'Dead']
 
 interface M2LXControllerReply {
 	code: number
@@ -105,10 +119,19 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 	private _inFlight = new Set<(error: Error) => void>()
 	private _sendQueue: Promise<void> = Promise.resolve()
 	private _queuedCommands = 0
+	private _activatingEvent = false
+	private _activationGeneration = 0
+	private _eventStatus?: string
 
 	constructor(options: M2LXConnectionOptions) {
 		super()
 		this._options = options
+		if (options.eventId !== undefined && (!options.eventId || options.eventId.trim() !== options.eventId)) {
+			throw new Error('M2L-X eventId must be a non-empty ID without surrounding whitespace')
+		}
+		if (options.eventTimeout !== undefined && (!Number.isFinite(options.eventTimeout) || options.eventTimeout <= 0)) {
+			throw new Error('M2L-X eventTimeout must be positive and finite')
+		}
 	}
 
 	get connected(): boolean {
@@ -131,11 +154,19 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 		return this._tokenExpiresAt
 	}
 
+	get eventStatus(): string | undefined {
+		return this._eventStatus
+	}
+
 	async ensureFreshAuthentication(allowRenewal: boolean): Promise<void> {
+		const activationGeneration = this._activationGeneration
 		if (this._connecting) {
+			const activatingEvent = this._activatingEvent
 			await this._connecting
-			this._assertControllerOpen()
-			return
+			if (!this._options.eventId || !allowRenewal || activatingEvent) {
+				this._assertControllerOpen()
+				return
+			}
 		}
 		if (!allowRenewal) {
 			this._assertControllerOpen()
@@ -144,15 +175,22 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 		if (this._queuedCommands > 0 || this._inFlight.size > 0 || this._state.transition?.running) {
 			throw new Error('M2L-X authentication cannot be renewed while commands or a transition are running')
 		}
-		await this.connect()
+		if (activationGeneration !== this._activationGeneration) throw new Error('M2L-X activation was cancelled')
+		await this._openConnection(!!this._options.eventId)
+		this._assertControllerOpen()
 	}
 
 	async connect(): Promise<void> {
+		return this._openConnection(false)
+	}
+
+	private async _openConnection(activateEvent: boolean): Promise<void> {
 		this._terminated = false
 		if (this._reconnectTimer) clearTimeout(this._reconnectTimer)
 		this._reconnectTimer = undefined
 		if (!this._connecting) {
-			this._connecting = this._connect()
+			this._activatingEvent = activateEvent
+			this._connecting = this._connect(activateEvent)
 				.catch((error) => {
 					this._closeSockets()
 					this._setConnected(false, 'Connection failed')
@@ -161,6 +199,7 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 				})
 				.finally(() => {
 					this._connecting = undefined
+					this._activatingEvent = false
 				})
 		}
 		return this._connecting
@@ -168,10 +207,19 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 
 	async disconnect(): Promise<void> {
 		this._terminated = true
+		this._activationGeneration++
 		if (this._reconnectTimer) clearTimeout(this._reconnectTimer)
 		this._reconnectTimer = undefined
 		this._closeSockets()
 		this._setConnected(false, 'Disconnected')
+	}
+
+	cancelActivation(): void {
+		this._activationGeneration++
+		if (this._activatingEvent) {
+			this._closeSockets()
+			this._setConnected(false, 'M2L-X event activation cancelled')
+		}
 	}
 
 	async sendCommand(command: M2LXCommand, options: M2LXSendOptions): Promise<void> {
@@ -298,7 +346,7 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 		})
 	}
 
-	private async _connect(): Promise<void> {
+	private async _connect(activateEvent: boolean): Promise<void> {
 		this._closeSockets()
 		this._setConnected(false, 'Connecting')
 		this._state = createEmptyObservedState()
@@ -306,6 +354,23 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 
 		const token = await this._authenticate()
 		this._assertConnectionCurrent(generation)
+		if (this._options.eventId) {
+			if (activateEvent) await this._selectEvent(token, generation)
+			const events = await this._getEvents(token, generation)
+			const selected = this._selectedEvent(events)
+			if (selected.status !== 'Running') {
+				this._scheduleReconnect()
+				return
+			}
+			if (
+				events.some(
+					(event) => event.event_id !== selected.event_id && !['Stopped', 'Failed', 'Dead'].includes(event.status)
+				)
+			) {
+				throw new Error('Another M2L-X event is active; selected-event mixer readiness is ambiguous')
+			}
+			await this._verifyEventEndpoint(token, generation, selected.event_id)
+		}
 		const configuration = await this._getSwitcherConfiguration(token)
 		this._assertConnectionCurrent(generation)
 		const sources = extractConfiguredVideoSources(configuration)
@@ -328,7 +393,213 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 		this._reconnectAttempt = 0
 		this._setConnected(true, 'Connected')
 		this.emit('connected', new Set(this._sources), this._state)
+		this._assertConnectionCurrent(generation)
 		this._scheduleAuthenticationStatus()
+	}
+
+	private async _eventRequest(
+		token: string,
+		generation: number,
+		method: 'GET' | 'POST',
+		path: string,
+		deadline?: number
+	): Promise<unknown> {
+		this._assertConnectionCurrent(generation)
+		if (deadline !== undefined && Date.now() >= deadline) throw new Error('M2L-X event activation timed out')
+		const request = got(`${this._getHttpBaseUrl()}${path}`, {
+			method,
+			headers: { authorization: `Bearer ${token}` },
+			retry: 0,
+			timeout: {
+				request: Math.min(
+					this._options.authenticationTimeout ?? DEFAULT_AUTH_TIMEOUT,
+					deadline === undefined ? Infinity : Math.max(1, deadline - Date.now())
+				),
+			},
+			https: { rejectUnauthorized: this._options.rejectUnauthorized ?? true },
+		})
+		const abort = () => request.cancel()
+		this._inFlight.add(abort)
+		try {
+			const response = await request
+			this._assertConnectionCurrent(generation)
+			return method === 'GET' ? JSON.parse(response.body) : undefined
+		} catch (error) {
+			this._assertConnectionCurrent(generation)
+			// Management errors can contain Bearer credentials; do not forward request details.
+			const status = error instanceof got.HTTPError ? error.response.statusCode : 'network, timeout or invalid response'
+			throw new Error(`M2L-X event ${method} ${path} failed (${status})`)
+		} finally {
+			this._inFlight.delete(abort)
+		}
+	}
+
+	private async _getEvents(token: string, generation: number, deadline?: number): Promise<M2LXEvent[]> {
+		const response = await this._eventRequest(token, generation, 'GET', '/api/events/overview', deadline)
+		if (!Array.isArray(response)) throw new Error('M2L-X event overview must be an array')
+		const ids = new Set<string>()
+		return response.map((value: unknown) => {
+			if (typeof value !== 'object' || value === null) throw new Error('Invalid M2L-X event overview entry')
+			const { event_id, event_name, status } = value as Record<string, unknown>
+			if (
+				typeof event_id !== 'string' ||
+				!event_id ||
+				ids.has(event_id) ||
+				typeof event_name !== 'string' ||
+				typeof status !== 'string' ||
+				!EVENT_STATUSES.includes(status)
+			) {
+				throw new Error('Invalid M2L-X event identity or status')
+			}
+			ids.add(event_id)
+			return { event_id, event_name, status }
+		})
+	}
+
+	private _selectedEvent(events: M2LXEvent[]): M2LXEvent {
+		const selected = events.find((event) => event.event_id === this._options.eventId)
+		if (!selected) throw new Error(`Configured M2L-X event ${this._options.eventId} was not found`)
+		if (selected.status !== this._eventStatus) {
+			this._eventStatus = selected.status
+			this.emit('eventStateChanged', selected.status)
+		}
+		return selected
+	}
+
+	private async _eventDelay(generation: number, deadline: number): Promise<void> {
+		this._assertConnectionCurrent(generation)
+		if (Date.now() >= deadline) throw new Error('M2L-X event activation timed out')
+		await new Promise<void>((resolve, reject) => {
+			const abort = (error: Error) => {
+				clearTimeout(timer)
+				this._inFlight.delete(abort)
+				reject(error)
+			}
+			const timer = setTimeout(() => {
+				this._inFlight.delete(abort)
+				resolve()
+			}, Math.min(1000, deadline - Date.now()))
+			this._inFlight.add(abort)
+		})
+		this._assertConnectionCurrent(generation)
+	}
+
+	private async _waitForEvent(
+		token: string,
+		generation: number,
+		id: string,
+		status: string,
+		deadline: number
+	): Promise<void> {
+		while (Date.now() < deadline) {
+			const events = await this._getEvents(token, generation, deadline)
+			this._selectedEvent(events)
+			const event = events.find((value) => value.event_id === id)
+			if (!event) throw new Error(`M2L-X event ${id} disappeared during activation`)
+			if (event.status === status) return
+			if (['Failed', 'Dead', 'Initializing', 'Resetting'].includes(event.status)) {
+				throw new Error(`M2L-X event ${id} entered ${event.status} during activation`)
+			}
+			await this._eventDelay(generation, deadline)
+		}
+		throw new Error(`M2L-X event ${id} did not reach ${status}: activation timed out`)
+	}
+
+	private async _selectEvent(token: string, generation: number): Promise<void> {
+		const deadline = Date.now() + (this._options.eventTimeout ?? DEFAULT_EVENT_TIMEOUT)
+		const events = await this._getEvents(token, generation, deadline)
+		const selected = this._selectedEvent(events)
+		if (!['Stopped', 'Starting', 'Running', 'Stopping'].includes(selected.status)) {
+			throw new Error(`Configured M2L-X event cannot activate from ${selected.status}`)
+		}
+		await this._verifyEventEndpoint(token, generation, selected.event_id, false, deadline)
+		if (
+			events.some(
+				(event) => event.event_id !== selected.event_id && ['Initializing', 'Resetting'].includes(event.status)
+			)
+		) {
+			throw new Error('Another M2L-X event is initializing or resetting; refusing activation')
+		}
+		const others = events.filter(
+			(event) => event.event_id !== selected.event_id && ['Starting', 'Running', 'Stopping'].includes(event.status)
+		)
+		if (others.length > 1) throw new Error('Multiple other M2L-X events are active; refusing activation')
+		for (const event of others) {
+			await this._verifyEventEndpoint(token, generation, event.event_id, false, deadline)
+			if (event.status !== 'Stopping') {
+				await this._eventRequest(
+					token,
+					generation,
+					'POST',
+					`/api/events/stop/${encodeURIComponent(event.event_id)}`,
+					deadline
+				)
+			}
+			await this._waitForEvent(token, generation, event.event_id, 'Stopped', deadline)
+		}
+		if (selected.status === 'Stopping') {
+			await this._waitForEvent(token, generation, selected.event_id, 'Stopped', deadline)
+		}
+		const fresh = await this._getEvents(token, generation, deadline)
+		if (
+			fresh.some(
+				(event) => event.event_id !== selected.event_id && !['Stopped', 'Failed', 'Dead'].includes(event.status)
+			)
+		) {
+			throw new Error('Another M2L-X event became active during activation')
+		}
+		const target = this._selectedEvent(fresh)
+		if (target.status === 'Stopped') {
+			await this._eventRequest(
+				token,
+				generation,
+				'POST',
+				`/api/events/start/${encodeURIComponent(target.event_id)}`,
+				deadline
+			)
+		} else if (!['Starting', 'Running'].includes(target.status)) {
+			throw new Error(`Configured M2L-X event cannot start from ${target.status}`)
+		}
+		await this._waitForEvent(token, generation, target.event_id, 'Running', deadline)
+	}
+
+	private async _verifyEventEndpoint(
+		token: string,
+		generation: number,
+		eventId: string,
+		requireRunning = true,
+		deadline?: number
+	): Promise<void> {
+		const detail = await this._eventRequest(
+			token,
+			generation,
+			'GET',
+			`/api/events/detail/${encodeURIComponent(eventId)}`,
+			deadline
+		)
+		if (typeof detail !== 'object' || detail === null) throw new Error('Invalid M2L-X event detail')
+		const record = detail as Record<string, unknown>
+		if (
+			record.event_id !== eventId ||
+			(requireRunning && record.status !== 'Running') ||
+			!Array.isArray(record.endpoints)
+		) {
+			throw new Error('M2L-X event detail does not confirm the selected running event')
+		}
+		const endpoint: unknown = record.endpoints.find((value) => value?.name === 'switcher')?.url
+		if (typeof endpoint !== 'string') throw new Error('M2L-X event has no switcher endpoint')
+		const base = new URL(this._getHttpBaseUrl())
+		const target = new URL(`${base.protocol}//${endpoint}`)
+		if (
+			target.origin !== base.origin ||
+			target.username ||
+			target.password ||
+			target.pathname !== '/' ||
+			target.search ||
+			target.hash
+		) {
+			throw new Error('M2L-X event switcher endpoint must match the configured baseUrl origin')
+		}
 	}
 
 	private _scheduleAuthenticationStatus(): void {

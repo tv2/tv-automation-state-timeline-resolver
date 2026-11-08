@@ -84,6 +84,8 @@ describe('M2L-X types', () => {
 		const options: M2LXOptions = {
 			baseUrl: 'https://m2lx.example.test',
 			password: 'credential',
+			eventId: 'configured-event-id',
+			eventTimeout: 180000,
 			rejectUnauthorized: true,
 			authenticationTimeout: 5000,
 			webSocketConnectTimeout: 5000,
