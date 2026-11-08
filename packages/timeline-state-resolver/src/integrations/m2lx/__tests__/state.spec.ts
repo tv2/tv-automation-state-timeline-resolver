@@ -1,5 +1,5 @@
 import { createEmptyObservedState, M2LXObservedState } from '../protocol'
-import { diffM2LXStates, keyStateId, M2LXKeyState, M2LXState } from '../state'
+import { diffM2LXStates, keyerStateId, M2LXKeyerState, M2LXState } from '../state'
 
 describe('M2L-X state differ', () => {
 	test('cuts directly to a new program source', () => {
@@ -85,7 +85,7 @@ describe('M2L-X state differ', () => {
 	})
 
 	test('falls back to a cut for an effect transition when the current program is unknown', () => {
-		const commands = diffM2LXStates({ keys: {} }, state('cam3', undefined, 'effect'))
+		const commands = diffM2LXStates({ keyers: {} }, state('cam3', undefined, 'effect'))
 		expect(commands.map((command) => command.command.args)).toEqual([
 			{ input_type: 'program', property: { name: 'video', value: 'cam3' } },
 		])
@@ -147,12 +147,12 @@ describe('M2L-X state differ', () => {
 
 	test('diffs key visibility per bus in index order', () => {
 		const commands = diffM2LXStates(
-			{ keys: {} },
+			{ keyers: {} },
 			{
-				keys: keys(
-					{ index: 4, visible: true, keyType: 'still', bus: 'program', timelineObjId: 'still' },
-					{ index: 1, visible: false, keyType: 'pip', bus: 'preview', timelineObjId: 'pip' },
-					{ index: 1, visible: true, keyType: 'pip', bus: 'program', timelineObjId: 'pip-pgm' }
+				keyers: keyers(
+					{ index: 4, visible: true, keyerType: 'still', bus: 'program', timelineObjId: 'still' },
+					{ index: 1, visible: false, keyerType: 'pip', bus: 'preview', timelineObjId: 'pip' },
+					{ index: 1, visible: true, keyerType: 'pip', bus: 'program', timelineObjId: 'pip-pgm' }
 				),
 			}
 		)
@@ -171,19 +171,19 @@ describe('M2L-X state differ', () => {
 
 	test('completes key commands from the visibility on the targeted bus', () => {
 		const [command] = diffM2LXStates(
-			{ keys: {} },
-			{ keys: keys({ index: 0, visible: true, keyType: 'pip', bus: 'preview', timelineObjId: 'pip' }) }
+			{ keyers: {} },
+			{ keyers: keyers({ index: 0, visible: true, keyerType: 'pip', bus: 'preview', timelineObjId: 'pip' }) }
 		)
 
-		expect(command.isComplete(observed({ keys: { program: { 0: { visible: true } }, preview: {} } }))).toBe(false)
-		expect(command.isComplete(observed({ keys: { program: {}, preview: { 0: { visible: true } } } }))).toBe(true)
+		expect(command.isComplete(observed({ keyers: { program: { 0: { visible: true } }, preview: {} } }))).toBe(false)
+		expect(command.isComplete(observed({ keyers: { program: {}, preview: { 0: { visible: true } } } }))).toBe(true)
 		expect(command.waitFor?.(observed({ transition: { running: true, progress: 0.5 } }))).toBe(false)
 		expect(command.waitFor?.(observed({ transition: { running: false, progress: 1 } }))).toBe(true)
 	})
 
-	test('does not resend unchanged keys', () => {
-		const key: M2LXKeyState = { index: 2, visible: true, keyType: 'pip', bus: 'program', timelineObjId: 'a' }
-		expect(diffM2LXStates({ keys: keys(key) }, { keys: keys({ ...key, timelineObjId: 'b' }) })).toEqual([])
+	test('does not resend unchanged keyers', () => {
+		const key: M2LXKeyerState = { index: 2, visible: true, keyerType: 'pip', bus: 'program', timelineObjId: 'a' }
+		expect(diffM2LXStates({ keyers: keyers(key) }, { keyers: keyers({ ...key, timelineObjId: 'b' }) })).toEqual([])
 	})
 
 	test('orders pause/load/loop/seek/play before selecting a controlled player without native auto-play', () => {
@@ -231,9 +231,9 @@ describe('M2L-X state differ', () => {
 
 	test('defaults a newly selected asset to paused/loop off and unloads by loaded flag', () => {
 		const selected = diffM2LXStates(
-			{ keys: {} },
+			{ keyers: {} },
 			{
-				keys: {},
+				keyers: {},
 				players: { vtr3: { assetId: 'new.mp4', timelineObjId: 'clip' } },
 			}
 		)
@@ -241,10 +241,10 @@ describe('M2L-X state differ', () => {
 		expect(selected[2].command.args).toBe(false)
 		const unloaded = diffM2LXStates(
 			{
-				keys: {},
+				keyers: {},
 				players: { vtr3: { assetId: 'old.mp4', timelineObjId: 'old' } },
 			},
-			{ keys: {}, players: { vtr3: { assetId: null, timelineObjId: 'empty' } } }
+			{ keyers: {}, players: { vtr3: { assetId: null, timelineObjId: 'empty' } } }
 		)
 		expect(unloaded.map((c) => c.command)).toEqual([
 			{ command: 'pause', node: 'vtr3' },
@@ -253,16 +253,16 @@ describe('M2L-X state differ', () => {
 		expect(unloaded[1].isComplete(observed({ players: { vtr3: { loaded: false } } }))).toBe(true)
 		expect(() =>
 			diffM2LXStates(
-				{ keys: {} },
-				{ keys: {}, players: { vtr3: { assetId: null, playing: true, timelineObjId: 'invalid' } } }
+				{ keyers: {} },
+				{ keyers: {}, players: { vtr3: { assetId: null, playing: true, timelineObjId: 'invalid' } } }
 			)
 		).toThrow(/unloaded/)
 	})
 
 	test('an explicit pause is already complete for unloaded players, regardless of stale playback flags', () => {
 		const commands = diffM2LXStates(
-			{ keys: {} },
-			{ keys: {}, players: { vtr3: { playing: false, timelineObjId: 'stop' } } }
+			{ keyers: {} },
+			{ keyers: {}, players: { vtr3: { playing: false, timelineObjId: 'stop' } } }
 		)
 		expect(commands).toHaveLength(1)
 		for (const playing of [true, false, undefined]) {
@@ -275,16 +275,16 @@ describe('M2L-X state differ', () => {
 
 	test('resends an explicit seek on a new instance but does not chase playback time', () => {
 		const player = { seek: 10, playing: true, timelineObjId: 'clip', instanceStart: 1000 }
-		const old: M2LXState = { keys: {}, players: { vtr3: player } }
+		const old: M2LXState = { keyers: {}, players: { vtr3: player } }
 		expect(diffM2LXStates(old, old)).toEqual([])
-		const next = { keys: {}, players: { vtr3: { ...player, instanceStart: 2000 } } }
+		const next = { keyers: {}, players: { vtr3: { ...player, instanceStart: 2000 } } }
 		expect(diffM2LXStates(old, next).map((c) => c.command.command)).toEqual(['pause', 'seek', 'play'])
 	})
 
 	test('surfaces native load errors after a 200 reply without blocking replacement of an old failed asset', () => {
 		const commands = diffM2LXStates(
-			{ keys: {} },
-			{ keys: {}, players: { vtr3: { assetId: 'new.mp4', timelineObjId: 'clip' } } }
+			{ keyers: {} },
+			{ keyers: {}, players: { vtr3: { assetId: 'new.mp4', timelineObjId: 'clip' } } }
 		)
 		const load = commands.find((c) => c.command.command === 'load')!
 		const clean = observed({ players: { vtr3: { loaded: false } } })
@@ -297,10 +297,10 @@ describe('M2L-X state differ', () => {
 
 	test('hides before replacing/clearing sources, configures geometry before showing and distinguishes DSKs', () => {
 		const next: M2LXState = {
-			keys: {
+			keyers: {
 				'preview/dsk/0': {
 					index: 0,
-					keyType: 'dsk',
+					keyerType: 'dsk',
 					bus: 'preview',
 					visible: true,
 					source: { type: 'image', name: 'still/demo.png' },
@@ -309,7 +309,7 @@ describe('M2L-X state differ', () => {
 				},
 			},
 		}
-		const commands = diffM2LXStates({ keys: {} }, next)
+		const commands = diffM2LXStates({ keyers: {} }, next)
 		expect(
 			commands.map((c) => (c.command.command === 'set_key_property' ? c.command.args.property : undefined))
 		).toEqual([
@@ -325,7 +325,9 @@ describe('M2L-X state differ', () => {
 			commands.every((c) => c.command.command === 'set_key_property' && c.command.args.key_type === 'downstream')
 		).toBe(true)
 		const cleared: M2LXState = {
-			keys: { 'preview/dsk/0': { ...next.keys['preview/dsk/0'], visible: false, source: { type: 'image', name: '' } } },
+			keyers: {
+				'preview/dsk/0': { ...next.keyers['preview/dsk/0'], visible: false, source: { type: 'image', name: '' } },
+			},
 		}
 		expect(
 			diffM2LXStates(next, cleared)
@@ -338,7 +340,7 @@ describe('M2L-X state differ', () => {
 			{ name: 'image', value: '' },
 		])
 		const invalid = {
-			keys: { 'preview/dsk/0': { ...next.keys['preview/dsk/0'], source: { type: 'image' as const, name: '' } } },
+			keyers: { 'preview/dsk/0': { ...next.keyers['preview/dsk/0'], source: { type: 'image' as const, name: '' } } },
 		}
 		expect(() => diffM2LXStates(next, invalid)).toThrow(/empty source/)
 	})
@@ -362,14 +364,50 @@ describe('M2L-X state differ', () => {
 		).toBe(true)
 	})
 
+	test.each(['cut', 'crossfade', 'wipe_down', 'wipe_up', 'wipe_right', 'wipe_left', 'wipe_up_right', 'wipe_down_left'])(
+		'configures the supported native effect %s',
+		(name) => {
+			const next: M2LXState = { keyers: {}, mixer: { timelineObjId: 'effect', effect: { name } } }
+			const commands = diffM2LXStates({ keyers: {} }, next)
+			expect(commands.map((command) => command.command)).toEqual([
+				{ command: 'configure_effect', node: 'mixer', args: { name } },
+			])
+		}
+	)
+
+	test.each(['mix', 'unknown_effect', ''])('rejects the unsupported requested effect name %p', (name) => {
+		const next: M2LXState = { keyers: {}, mixer: { timelineObjId: 'effect', effect: { name } } }
+		expect(() => diffM2LXStates({ keyers: {} }, next)).toThrow('Unsupported M2L-X effect name')
+		expect(() => diffM2LXStates(next, next)).toThrow('Unsupported M2L-X effect name')
+	})
+
+	test('omitting the name preserves an unknown observed effect while changing its duration', () => {
+		const old: M2LXState = {
+			keyers: {},
+			mixer: { timelineObjId: 'effect', effect: { name: 'future_effect', duration: 1 } },
+		}
+		const next: M2LXState = { keyers: {}, mixer: { timelineObjId: 'effect', effect: { duration: 2 } } }
+		const commands = diffM2LXStates(old, next)
+		expect(commands.map((command) => command.command)).toEqual([
+			{ command: 'configure_effect', node: 'mixer', args: { duration: '2.0s' } },
+		])
+		expect(
+			commands[0].isComplete(
+				observed({
+					transition: { running: false, progress: 1, effect: { name: 'future_effect', duration: 2 } },
+				})
+			)
+		).toBe(true)
+	})
+
 	test('mutes before preparing media, unmutes after and never changes master or unmapped routes', () => {
 		const next: M2LXState = {
-			keys: {},
+			keyers: {},
 			audio: { input: { node: 'audio_mixer', input: 'vtr3.1', muted: false, volume: 0.5, timelineObjId: 'audio' } },
 			players: { vtr3: { assetId: 'new.mp4', timelineObjId: 'clip' } },
 			routers: { route: { node: 'router', input: 'ndi2', output: 'ch1', timelineObjId: 'router' } },
 		}
-		const commands = diffM2LXStates({ keys: {} }, next)
+		const commands = diffM2LXStates({ keyers: {} }, next)
 		expect(commands.map((c) => c.command.command)).toEqual([
 			'set_input_volume',
 			'pause',
@@ -382,8 +420,8 @@ describe('M2L-X state differ', () => {
 		expect(commands[0].command.args).toEqual([{ name: 'vtr3.1', volume: 0.5 }])
 		expect(commands[commands.length - 1].isComplete(observed({ routers: { router: { ch1: 'ndi2' } } }))).toBe(true)
 		const muted = { ...next, audio: { input: { ...next.audio!.input, muted: true } } }
-		expect(diffM2LXStates({ keys: {} }, muted)[0].command.command).toBe('set_input_muted')
-		expect(diffM2LXStates(next, { keys: {} })).toEqual([])
+		expect(diffM2LXStates({ keyers: {} }, muted)[0].command.command).toBe('set_input_muted')
+		expect(diffM2LXStates(next, { keyers: {} })).toEqual([])
 	})
 })
 
@@ -391,9 +429,9 @@ function observed(partial: Partial<M2LXObservedState>): M2LXObservedState {
 	return { ...createEmptyObservedState(), ...partial }
 }
 
-function keys(...list: M2LXKeyState[]): M2LXState['keys'] {
-	const result: M2LXState['keys'] = {}
-	for (const key of list) result[keyStateId(key.bus, key.index)] = key
+function keyers(...list: M2LXKeyerState[]): M2LXState['keyers'] {
+	const result: M2LXState['keyers'] = {}
+	for (const key of list) result[keyerStateId(key.bus, key.index)] = key
 	return result
 }
 
@@ -408,6 +446,6 @@ function state(program?: string, preview?: string, transition?: 'cut' | 'effect'
 						timelineObjId: 'mixer',
 				  }
 				: undefined,
-		keys: {},
+		keyers: {},
 	}
 }

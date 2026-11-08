@@ -4,7 +4,7 @@ import {
 	DeviceType,
 	MappingM2LX,
 	MappingM2LXType,
-	M2LXKeyType,
+	M2LXKeyerType,
 	M2LXMixerBus,
 	M2LXTransitionType,
 	TimelineObjM2LXAny,
@@ -13,7 +13,7 @@ import {
 import { MockTime } from '../../../__tests__/mockTime'
 import { StatusCode } from '../../../devices/device'
 import { IM2LXConnection, M2LXConnectionEvents, M2LXSendOptions } from '../connection'
-import { createEmptyObservedState, M2LXCommand, M2LXObservedState, M2LXObservedKey } from '../protocol'
+import { createEmptyObservedState, M2LXCommand, M2LXObservedState, M2LXObservedKeyer } from '../protocol'
 import { M2LXDevice } from '..'
 
 class MockConnection extends EventEmitter<M2LXConnectionEvents> implements IM2LXConnection {
@@ -30,7 +30,7 @@ class MockConnection extends EventEmitter<M2LXConnectionEvents> implements IM2LX
 		...createEmptyObservedState(),
 		program: 'cam1',
 		preview: 'cam2',
-		keys: {
+		keyers: {
 			program: { 0: { visible: false, source: 'cam1' }, 4: { visible: false, source: '' } },
 			preview: { 0: { visible: false, source: 'cam1' } },
 		},
@@ -54,9 +54,9 @@ class MockConnection extends EventEmitter<M2LXConnectionEvents> implements IM2LX
 			this.state = { ...this.state, program: this.state.preview }
 		} else if (command.command === 'set_key_property') {
 			const bus = command.args.target
-			const field = command.args.key_type === 'downstream' ? 'downstreamKeys' : 'keys'
+			const field = command.args.key_type === 'downstream' ? 'downstreamKeyers' : 'keyers'
 			const collection = this.state[field] ?? { program: {}, preview: {} }
-			const key: M2LXObservedKey = { ...collection[bus][command.args.key_index] }
+			const key: M2LXObservedKeyer = { ...collection[bus][command.args.key_index] }
 			const property = command.args.property
 			if (property.name === 'visible') {
 				key.visible = property.value
@@ -270,7 +270,7 @@ describe('M2LXDevice', () => {
 
 	test('prepares a mapped Preview DSK without touching Program or the other DSK', async () => {
 		const connection = new MockConnection()
-		connection.state.downstreamKeys = {
+		connection.state.downstreamKeyers = {
 			program: {
 				0: { visible: false, source: '', opacity: 1 },
 				1: { visible: true, source: 'watermark.png', opacity: 1 },
@@ -280,13 +280,13 @@ describe('M2LXDevice', () => {
 				1: { visible: true, source: 'watermark.png', opacity: 1 },
 			},
 		}
-		const before = JSON.parse(JSON.stringify(connection.state.downstreamKeys))
+		const before = JSON.parse(JSON.stringify(connection.state.downstreamKeyers))
 		const mapping: MappingM2LX = {
 			device: DeviceType.M2LX,
 			deviceId: 'm2lx0',
-			mappingType: MappingM2LXType.KEY,
+			mappingType: MappingM2LXType.KEYER,
 			bus: M2LXMixerBus.PREVIEW,
-			key: { index: 0, type: M2LXKeyType.DSK },
+			keyer: { index: 0, type: M2LXKeyerType.DSK },
 		}
 		const device = new M2LXDevice('m2lx0', { type: DeviceType.M2LX, connection }, mockTime.getCurrentTime2)
 		await device.init({ baseUrl: 'https://m2lx.test', password: 'password' })
@@ -297,8 +297,8 @@ describe('M2LXDevice', () => {
 				layers: {
 					dsk: controlObject('dsk', {
 						deviceType: DeviceType.M2LX,
-						type: TimelineContentTypeM2LX.KEY,
-						key: {
+						type: TimelineContentTypeM2LX.KEYER,
+						keyer: {
 							visible: true,
 							source: { type: 'image', name: 'still/demo.png' },
 							translation: { x: -800, y: -400 },
@@ -309,14 +309,14 @@ describe('M2LXDevice', () => {
 			{ dsk: mapping }
 		)
 		await mockTime.advanceTimeToTicks(11100)
-		expect(connection.state.downstreamKeys.preview[0]).toMatchObject({
+		expect(connection.state.downstreamKeyers.preview[0]).toMatchObject({
 			visible: true,
 			source: 'still/demo.png',
 			opacity: 1,
 			translation: { x: -800, y: -400 },
 		})
-		expect(connection.state.downstreamKeys.program).toEqual(before.program)
-		expect(connection.state.downstreamKeys.preview[1]).toEqual(before.preview[1])
+		expect(connection.state.downstreamKeyers.program).toEqual(before.program)
+		expect(connection.state.downstreamKeyers.preview[1]).toEqual(before.preview[1])
 		expect(connection.state.program).toBe('cam1')
 		await device.terminate()
 	})
@@ -758,12 +758,12 @@ describe('M2LXDevice', () => {
 				deviceId: 'm2lx0',
 				mappingType: MappingM2LXType.MIXER,
 			},
-			key: {
+			keyer: {
 				device: DeviceType.M2LX,
 				deviceId: 'm2lx0',
-				mappingType: MappingM2LXType.KEY,
+				mappingType: MappingM2LXType.KEYER,
 				bus: M2LXMixerBus.PROGRAM,
-				key: { index: 0, type: M2LXKeyType.PIP },
+				keyer: { index: 0, type: M2LXKeyerType.PIP },
 			},
 		}
 
@@ -782,14 +782,14 @@ describe('M2LXDevice', () => {
 						},
 						instance: { start: 0 },
 					} as any,
-					key: {
+					keyer: {
 						id: 'key0',
-						layer: 'key',
+						layer: 'keyer',
 						enable: { start: 0 },
 						content: {
 							deviceType: DeviceType.M2LX,
-							type: TimelineContentTypeM2LX.KEY,
-							key: { visible: true },
+							type: TimelineContentTypeM2LX.KEYER,
+							keyer: { visible: true },
 						},
 						instance: { start: 0 },
 					} as any,
@@ -950,7 +950,7 @@ describe('M2LXDevice', () => {
 		])
 	})
 
-	test('refuses to show a key that has no source configured', async () => {
+	test('refuses to show a keyer that has no source configured', async () => {
 		const connection = new MockConnection()
 		const device = new M2LXDevice('m2lx0', { type: DeviceType.M2LX, connection }, mockTime.getCurrentTime2)
 		await device.init({ baseUrl: 'https://m2lx.test', password: 'password' })
@@ -964,7 +964,7 @@ describe('M2LXDevice', () => {
 						id: 'still0',
 						layer: 'still',
 						enable: { start: 0 },
-						content: { deviceType: DeviceType.M2LX, type: TimelineContentTypeM2LX.KEY, key: { visible: true } },
+						content: { deviceType: DeviceType.M2LX, type: TimelineContentTypeM2LX.KEYER, keyer: { visible: true } },
 						instance: { start: 0 },
 					} as any,
 				},
@@ -974,21 +974,21 @@ describe('M2LXDevice', () => {
 				still: {
 					device: DeviceType.M2LX,
 					deviceId: 'm2lx0',
-					mappingType: MappingM2LXType.KEY,
+					mappingType: MappingM2LXType.KEYER,
 					bus: M2LXMixerBus.PROGRAM,
-					key: { index: 4, type: M2LXKeyType.STILL },
+					keyer: { index: 4, type: M2LXKeyerType.STILL },
 				} as MappingM2LX,
 			}
 		)
 		await mockTime.advanceTimeToTicks(11010)
 
-		await expect(commandError).resolves.toThrow('key 4 on program has no source configured')
+		await expect(commandError).resolves.toThrow('keyer 4 on program has no source configured')
 		expect(connection.commands).toEqual([])
 	})
 
 	test('seeds the initial state from the observed key visibility on the mapped bus', async () => {
 		const connection = new MockConnection()
-		connection.state.keys.preview[0] = { visible: true, source: 'cam1' }
+		connection.state.keyers.preview[0] = { visible: true, source: 'cam1' }
 		const device = new M2LXDevice('m2lx0', { type: DeviceType.M2LX, connection }, mockTime.getCurrentTime2)
 		await device.init({ baseUrl: 'https://m2lx.test', password: 'password' })
 
@@ -1000,7 +1000,7 @@ describe('M2LXDevice', () => {
 						id: 'pip0',
 						layer: 'pip',
 						enable: { start: 0 },
-						content: { deviceType: DeviceType.M2LX, type: TimelineContentTypeM2LX.KEY, key: { visible: true } },
+						content: { deviceType: DeviceType.M2LX, type: TimelineContentTypeM2LX.KEYER, keyer: { visible: true } },
 						instance: { start: 0 },
 					} as any,
 				},
@@ -1010,9 +1010,9 @@ describe('M2LXDevice', () => {
 				pip: {
 					device: DeviceType.M2LX,
 					deviceId: 'm2lx0',
-					mappingType: MappingM2LXType.KEY,
+					mappingType: MappingM2LXType.KEYER,
 					bus: M2LXMixerBus.PREVIEW,
-					key: { index: 0, type: M2LXKeyType.PIP },
+					keyer: { index: 0, type: M2LXKeyerType.PIP },
 				} as MappingM2LX,
 			}
 		)

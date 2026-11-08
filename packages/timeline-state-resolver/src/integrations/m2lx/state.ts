@@ -1,22 +1,28 @@
 import type { M2LXSendOptions } from './connection'
-import { M2LXAudio, M2LXEffect, M2LXKeyVisibility, M2LXMediaPlayer } from 'timeline-state-resolver-types'
+import {
+	isM2LXEffectName,
+	M2LXAudio,
+	M2LXEffect,
+	M2LXKeyerVisibility,
+	M2LXMediaPlayer,
+} from 'timeline-state-resolver-types'
 import {
 	assertFinite,
 	createSetInputCommand,
-	createSetKeyCommand,
-	createSetKeyPropertyCommand,
+	createSetKeyerCommand,
+	createSetKeyerPropertyCommand,
 	createTransitionCommand,
 	matchesM2LXValue,
 	M2LXCommand,
-	M2LXKeyProperty,
-	M2LXObservedKey,
+	M2LXKeyerProperty,
+	M2LXObservedKeyer,
 	M2LXObservedState,
 } from './protocol'
 
-export interface M2LXKeyState extends M2LXKeyVisibility {
+export interface M2LXKeyerState extends M2LXKeyerVisibility {
 	index: number
 	visible: boolean
-	keyType: 'pip' | 'still' | 'dsk'
+	keyerType: 'pip' | 'still' | 'dsk'
 	bus: 'program' | 'preview'
 	timelineObjId: string
 }
@@ -26,17 +32,18 @@ export interface M2LXState {
 		program?: string
 		preview?: string
 		transition?: 'cut' | 'effect'
-		effect?: M2LXEffect
+		/** Retain unknown observed names; requested names are validated before diffing effect configuration. */
+		effect?: Omit<M2LXEffect, 'name'> & { name?: string }
 		timelineObjId: string
 	}
-	/** Keyed by `${bus}/${index}`, see {@link keyStateId}. */
-	keys: Record<string, M2LXKeyState>
+	/** Keyed by `${bus}/${index}`, see {@link keyerStateId}. */
+	keyers: Record<string, M2LXKeyerState>
 	audio?: Record<string, M2LXAudio & { node: string; input: string; timelineObjId: string }>
 	players?: Record<string, M2LXMediaPlayer & { timelineObjId: string; instanceStart?: number }>
 	routers?: Record<string, { node: string; output: string; input: string; timelineObjId: string }>
 }
 
-export function keyStateId(bus: 'program' | 'preview', index: number, downstream = false): string {
+export function keyerStateId(bus: 'program' | 'preview', index: number, downstream = false): string {
 	return `${bus}/${downstream ? 'dsk/' : ''}${index}`
 }
 
@@ -44,8 +51,10 @@ export function resourceStateId(node: string, input: string): string {
 	return JSON.stringify([node, input])
 }
 
-export function observedKey(state: M2LXObservedState, key: M2LXKeyState): M2LXObservedKey | undefined {
-	return key.keyType === 'dsk' ? state.downstreamKeys?.[key.bus][key.index] : state.keys[key.bus][key.index]
+export function observedKeyer(state: M2LXObservedState, keyer: M2LXKeyerState): M2LXObservedKeyer | undefined {
+	return keyer.keyerType === 'dsk'
+		? state.downstreamKeyers?.[keyer.bus][keyer.index]
+		: state.keyers[keyer.bus][keyer.index]
 }
 
 export interface M2LXCommandWithContext extends M2LXSendOptions {
@@ -107,13 +116,16 @@ export function diffM2LXStates(oldState: M2LXState, newState: M2LXState): M2LXCo
 	const newMixer = newState.mixer
 
 	if (newMixer) {
+		const effectName = newMixer.effect?.name
+		if (effectName !== undefined && !isM2LXEffectName(effectName)) {
+			throw new Error(`Unsupported M2L-X effect name: ${effectName}`)
+		}
 		if (newMixer.effect && !matchesM2LXValue(oldMixer?.effect, newMixer.effect)) {
 			const effect = newMixer.effect
 			if (effect.duration !== undefined) {
 				assertFinite(effect.duration, 'effect duration')
 				if (effect.duration <= 0) throw new Error('M2L-X effect duration must be greater than zero')
 			}
-			if (effect.name !== undefined && !effect.name) throw new Error('M2L-X effect name must not be empty')
 			if (effect.args?.fade !== undefined) {
 				assertFinite(effect.args.fade, 'effect fade')
 				if (effect.args.fade < 0 || effect.args.fade > 1) throw new Error('M2L-X effect fade must be between 0 and 1')
@@ -123,7 +135,7 @@ export function diffM2LXStates(oldState: M2LXState, newState: M2LXState): M2LXCo
 					command: 'configure_effect',
 					node: 'mixer',
 					args: {
-						...(effect.name === undefined ? {} : { name: effect.name }),
+						...(effectName === undefined ? {} : { name: effectName }),
 						...(effect.duration === undefined
 							? {}
 							: { duration: `${effect.duration}${Number.isInteger(effect.duration) ? '.0' : ''}s` }),
@@ -174,32 +186,33 @@ export function diffM2LXStates(oldState: M2LXState, newState: M2LXState): M2LXCo
 		}
 	}
 
-	// On-air (program) keys first, then preview, each in index order
+	// On-air (program) keyers first, then preview, each in index order
 	const busOrder = { program: 0, preview: 1 }
-	const sortedKeys = Object.values(newState.keys).sort(
+	const sortedKeys = Object.values(newState.keyers).sort(
 		(a, b) =>
 			busOrder[a.bus] - busOrder[b.bus] ||
-			Number(a.keyType === 'dsk') - Number(b.keyType === 'dsk') ||
+			Number(a.keyerType === 'dsk') - Number(b.keyerType === 'dsk') ||
 			a.index - b.index
 	)
 	for (const newKey of sortedKeys) {
-		const oldKey = oldState.keys[keyStateId(newKey.bus, newKey.index, newKey.keyType === 'dsk')]
+		const oldKey = oldState.keyers[keyerStateId(newKey.bus, newKey.index, newKey.keyerType === 'dsk')]
 		const sourceChanged = newKey.source !== undefined && !matchesM2LXValue(oldKey?.source, newKey.source)
 		if (
 			newKey.source &&
-			((newKey.keyType === 'pip' && newKey.source.type !== 'video') ||
-				(newKey.keyType === 'still' && newKey.source.type !== 'image'))
+			((newKey.keyerType === 'pip' && newKey.source.type !== 'video') ||
+				(newKey.keyerType === 'still' && newKey.source.type !== 'image'))
 		) {
-			throw new Error('M2L-X PiP keys accept video sources; still keys accept image sources')
+			throw new Error('M2L-X PiP keyers accept video sources; still keyers accept image sources')
 		}
-		if (newKey.source?.name === '' && newKey.visible) throw new Error('A visible M2L-X key cannot have an empty source')
-		const keyCommand = (property: M2LXKeyProperty): M2LXCommandWithContext => ({
-			command: createSetKeyPropertyCommand(newKey.index, newKey.keyType, newKey.bus, property),
-			context: `set ${newKey.keyType} key ${newKey.index} ${property.name} on ${newKey.bus}`,
+		if (newKey.source?.name === '' && newKey.visible)
+			throw new Error('A visible M2L-X keyer cannot have an empty source')
+		const keyCommand = (property: M2LXKeyerProperty): M2LXCommandWithContext => ({
+			command: createSetKeyerPropertyCommand(newKey.index, newKey.keyerType, newKey.bus, property),
+			context: `set ${newKey.keyerType} keyer ${newKey.index} ${property.name} on ${newKey.bus}`,
 			timelineObjId: newKey.timelineObjId,
 			waitFor: noTransitionRunning,
 			isComplete: (state) => {
-				const key = observedKey(state, newKey)
+				const key = observedKeyer(state, newKey)
 				if (property.name === 'video' || property.name === 'image') {
 					return key?.source === property.value && (property.value === '' || key.sourceType === property.name)
 				}
@@ -208,19 +221,19 @@ export function diffM2LXStates(oldState: M2LXState, newState: M2LXState): M2LXCo
 		})
 		const resetDskOpacity = () => {
 			// GUI visibility toggles reset opacity: a completed fade-out can leave it at zero.
-			if (newKey.keyType === 'dsk') commands.push(keyCommand({ name: 'opacity', value: 1 }))
+			if (newKey.keyerType === 'dsk') commands.push(keyCommand({ name: 'opacity', value: 1 }))
 		}
 		if (sourceChanged) {
 			resetDskOpacity()
 			commands.push(keyCommand({ name: 'visible', value: false }))
 		}
 		if (sourceChanged && newKey.source) {
-			if (newKey.keyType === 'dsk') {
+			if (newKey.keyerType === 'dsk') {
 				const opposite = newKey.source.type === 'image' ? 'video' : 'image'
 				const clear = keyCommand({ name: opposite, value: '' })
 				clear.isRedundant = () => false
 				clear.isComplete = (state) => {
-					const key = observedKey(state, newKey)
+					const key = observedKeyer(state, newKey)
 					return key?.source === '' || (key?.sourceType !== undefined && key.sourceType !== opposite)
 				}
 				commands.push(clear)
@@ -242,15 +255,15 @@ export function diffM2LXStates(oldState: M2LXState, newState: M2LXState): M2LXCo
 				if (vector) commands.push(keyCommand({ name, value: vector }))
 			}
 		}
-		if (sourceChanged || !oldKey || oldKey.visible !== newKey.visible || oldKey.keyType !== newKey.keyType) {
+		if (sourceChanged || !oldKey || oldKey.visible !== newKey.visible || oldKey.keyerType !== newKey.keyerType) {
 			const index = newKey.index
 			resetDskOpacity()
 			commands.push({
-				command: createSetKeyCommand(index, newKey.keyType, newKey.visible, newKey.bus),
-				context: `set ${newKey.keyType} key ${index} visibility to ${newKey.visible} on ${newKey.bus}`,
+				command: createSetKeyerCommand(index, newKey.keyerType, newKey.visible, newKey.bus),
+				context: `set ${newKey.keyerType} keyer ${index} visibility to ${newKey.visible} on ${newKey.bus}`,
 				timelineObjId: newKey.timelineObjId,
 				waitFor: newKey.bus === 'preview' ? noTransitionRunning : undefined,
-				isComplete: (state) => observedKey(state, newKey)?.visible === newKey.visible,
+				isComplete: (state) => observedKeyer(state, newKey)?.visible === newKey.visible,
 			})
 		}
 	}

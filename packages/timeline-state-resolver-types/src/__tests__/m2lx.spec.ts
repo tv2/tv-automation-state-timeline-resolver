@@ -1,16 +1,20 @@
 import {
 	DeviceOptionsM2LX,
 	DeviceType,
-	M2LXKeyType,
+	M2LXKeyerType,
 	M2LXMixerBus,
 	M2LXOptions,
+	M2LXCrop,
+	M2LXEffect,
+	M2LXScale,
+	M2LXTranslation,
 	M2LXTransitionType,
 	MappingM2LX,
 	MappingM2LXType,
 	TimelineContentTypeM2LX,
 	TimelineObjM2LXAny,
 	isTimelineObjM2LX,
-	isTimelineObjM2LXKey,
+	isTimelineObjM2LXKeyer,
 	isTimelineObjM2LXMixer,
 	isTimelineObjM2LXAudio,
 	isTimelineObjM2LXMediaPlayer,
@@ -19,6 +23,9 @@ import {
 
 describe('M2L-X types', () => {
 	test('models verified audio/media/router and DSK contracts', () => {
+		const translation: M2LXTranslation = { x: -800, y: -400 }
+		const scale: M2LXScale = { x: 0.44, y: 0.44 }
+		const crop: M2LXCrop = { x: 0.01, y: 0, width: 0.99, height: 1 }
 		const mappings: MappingM2LX[] = [
 			{ device: DeviceType.M2LX, deviceId: 'sony', mappingType: MappingM2LXType.AUDIO, input: 'vtr3.1' },
 			{ device: DeviceType.M2LX, deviceId: 'sony', mappingType: MappingM2LXType.MEDIA_PLAYER, player: 'vtr3' },
@@ -26,9 +33,9 @@ describe('M2L-X types', () => {
 			{
 				device: DeviceType.M2LX,
 				deviceId: 'sony',
-				mappingType: MappingM2LXType.KEY,
+				mappingType: MappingM2LXType.KEYER,
 				bus: M2LXMixerBus.PREVIEW,
-				key: { type: M2LXKeyType.DSK, index: 0 },
+				keyer: { type: M2LXKeyerType.DSK, index: 0 },
 			},
 		]
 		const objects: TimelineObjM2LXAny[] = [
@@ -68,19 +75,20 @@ describe('M2L-X types', () => {
 				enable: { start: 0 },
 				content: {
 					deviceType: DeviceType.M2LX,
-					type: TimelineContentTypeM2LX.KEY,
-					key: { visible: true, source: { type: 'image', name: 'still/demo.png' }, translation: { x: -800, y: -400 } },
+					type: TimelineContentTypeM2LX.KEYER,
+					keyer: { visible: true, source: { type: 'image', name: 'still/demo.png' }, translation, scale, crop },
 				},
 			},
 		]
-		expect(mappings.map((m) => m.mappingType)).toEqual(['audio', 'media_player', 'router', 'key'])
+		expect(mappings.map((m) => m.mappingType)).toEqual(['audio', 'media_player', 'router', 'keyer'])
 		expect(isTimelineObjM2LXAudio(objects[0])).toBe(true)
 		expect(isTimelineObjM2LXMediaPlayer(objects[1])).toBe(true)
 		expect(isTimelineObjM2LXRouter(objects[2])).toBe(true)
-		expect(isTimelineObjM2LXKey(objects[3])).toBe(true)
+		expect(isTimelineObjM2LXKeyer(objects[3])).toBe(true)
 		expect(isTimelineObjM2LXMediaPlayer(objects[0])).toBe(false)
 	})
 	test('models the public first-phase contract', () => {
+		const effect: M2LXEffect = { name: 'wipe_up', duration: 1.5 }
 		const options: M2LXOptions = {
 			baseUrl: 'https://m2lx.example.test',
 			password: 'credential',
@@ -108,21 +116,21 @@ describe('M2L-X types', () => {
 			{
 				device: DeviceType.M2LX,
 				deviceId: 'm2lx0',
-				mappingType: MappingM2LXType.KEY,
+				mappingType: MappingM2LXType.KEYER,
 				bus: M2LXMixerBus.PROGRAM,
-				key: {
+				keyer: {
 					index: 0,
-					type: M2LXKeyType.PIP,
+					type: M2LXKeyerType.PIP,
 				},
 			},
 			{
 				device: DeviceType.M2LX,
 				deviceId: 'm2lx0',
-				mappingType: MappingM2LXType.KEY,
+				mappingType: MappingM2LXType.KEYER,
 				bus: M2LXMixerBus.PREVIEW,
-				key: {
+				keyer: {
 					index: 4,
-					type: M2LXKeyType.STILL,
+					type: M2LXKeyerType.STILL,
 				},
 			},
 		]
@@ -137,18 +145,18 @@ describe('M2L-X types', () => {
 					mixer: {
 						program: 'cam1',
 						preview: 'vtr1',
-						transition: { type: M2LXTransitionType.EFFECT },
+						transition: { type: M2LXTransitionType.EFFECT, effect },
 					},
 				},
 			},
 			{
-				id: 'key',
+				id: 'keyer',
 				enable: { start: 0 },
-				layer: 'key',
+				layer: 'keyer',
 				content: {
 					deviceType: DeviceType.M2LX,
-					type: TimelineContentTypeM2LX.KEY,
-					key: {
+					type: TimelineContentTypeM2LX.KEYER,
+					keyer: {
 						visible: true,
 					},
 				},
@@ -162,6 +170,6 @@ describe('M2L-X types', () => {
 		}).toMatchSnapshot()
 		expect(isTimelineObjM2LX(timelineObjects[0])).toBe(true)
 		expect(isTimelineObjM2LXMixer(timelineObjects[0])).toBe(true)
-		expect(isTimelineObjM2LXKey(timelineObjects[1])).toBe(true)
+		expect(isTimelineObjM2LXKeyer(timelineObjects[1])).toBe(true)
 	})
 })

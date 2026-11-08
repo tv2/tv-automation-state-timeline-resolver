@@ -39,27 +39,27 @@ export enum M2LXMixerBus {
 	PREVIEW = 'preview',
 }
 
-export enum M2LXKeyType {
+export enum M2LXKeyerType {
 	PIP = 'pip',
 	STILL = 'still',
 	DSK = 'dsk',
 }
 
-export type M2LXPiPKeyIndex = 0 | 1 | 2 | 3
-export type M2LXStillKeyIndex = 4 | 5 | 6 | 7
+export type M2LXPipKeyerIndex = 0 | 1 | 2 | 3
+export type M2LXStillKeyerIndex = 4 | 5 | 6 | 7
 
-export type M2LXKey =
+export type M2LXKeyer =
 	| {
-			index: M2LXPiPKeyIndex
-			type: M2LXKeyType.PIP
+			index: M2LXPipKeyerIndex
+			type: M2LXKeyerType.PIP
 	  }
 	| {
-			index: M2LXStillKeyIndex
-			type: M2LXKeyType.STILL
+			index: M2LXStillKeyerIndex
+			type: M2LXKeyerType.STILL
 	  }
 	| {
 			index: 0 | 1
-			type: M2LXKeyType.DSK
+			type: M2LXKeyerType.DSK
 	  }
 
 interface MappingM2LXBase extends Mapping {
@@ -71,10 +71,10 @@ export interface MappingM2LXMixer extends MappingM2LXBase {
 	mappingType: MappingM2LXType.MIXER
 }
 
-export interface MappingM2LXKey extends MappingM2LXBase {
-	mappingType: MappingM2LXType.KEY
+export interface MappingM2LXKeyer extends MappingM2LXBase {
+	mappingType: MappingM2LXType.KEYER
 	bus: M2LXMixerBus
-	key: M2LXKey
+	keyer: M2LXKeyer
 }
 
 export interface MappingM2LXAudio extends MappingM2LXBase {
@@ -100,7 +100,7 @@ export interface MappingM2LXRouter extends MappingM2LXBase {
 
 export enum MappingM2LXType {
 	MIXER = 'mixer',
-	KEY = 'key',
+	KEYER = 'keyer',
 	AUDIO = 'audio',
 	MEDIA_PLAYER = 'media_player',
 	ROUTER = 'router',
@@ -108,14 +108,14 @@ export enum MappingM2LXType {
 
 export type MappingM2LX =
 	| MappingM2LXMixer
-	| MappingM2LXKey
+	| MappingM2LXKeyer
 	| MappingM2LXAudio
 	| MappingM2LXMediaPlayer
 	| MappingM2LXRouter
 
 export enum TimelineContentTypeM2LX {
 	MIXER = 'mixer',
-	KEY = 'key',
+	KEYER = 'keyer',
 	AUDIO = 'audio',
 	MEDIA_PLAYER = 'media_player',
 	ROUTER = 'router',
@@ -136,8 +136,27 @@ export interface M2LXTransition {
 	effect?: M2LXEffect
 }
 
+const M2LX_EFFECT_NAMES = [
+	'cut',
+	'crossfade',
+	'wipe_down',
+	'wipe_up',
+	'wipe_right',
+	'wipe_left',
+	'wipe_up_right',
+	'wipe_down_left',
+] as const
+
+/** Native effect identifiers exposed by the M2L-X GUI; its MIX option uses crossfade. */
+export type M2LXEffectName = typeof M2LX_EFFECT_NAMES[number]
+
+export function isM2LXEffectName(value: unknown): value is M2LXEffectName {
+	return M2LX_EFFECT_NAMES.some((name) => name === value)
+}
+
 export interface M2LXEffect {
-	name?: string
+	/** Omitted leaves the configured native effect name unchanged. */
+	name?: M2LXEffectName
 	/** Seconds, greater than zero. */
 	duration?: number
 	args?: {
@@ -156,28 +175,40 @@ export interface M2LXMixer {
 	transition?: M2LXTransition
 }
 
-export interface M2LXKeyVisibility {
+export interface M2LXKeyerVisibility {
 	visible: boolean
 	/** PiP: video; still: image; DSK: either. Omitted leaves it unchanged; an empty name clears and requires visible:false. */
 	source?: { type: 'video' | 'image'; name: string }
-	/** Native pixel offsets; not format-independent normalized coordinates. */
-	translation?: M2LXVector
-	scale?: M2LXVector
+	translation?: M2LXTranslation
+	scale?: M2LXScale
 	/** Native M2L-X Z-plane rotation value. */
 	rotation?: number
-	/** Normalized crop rectangle. */
 	crop?: M2LXCrop
 	/** Complete native border configuration; omitted leaves the existing border untouched. */
 	border?: M2LXBorder
 }
 
-export interface M2LXVector {
+/** Native pixel offsets; not format-independent normalized coordinates. */
+export interface M2LXTranslation {
 	x: number
 	y: number
 }
 
-export interface M2LXCrop extends M2LXVector {
+/** Positive unitless scale multipliers; 1 represents 100% on the corresponding axis. */
+export interface M2LXScale {
+	x: number
+	y: number
+}
+
+/** Source-relative crop rectangle. All values are normalized fractions, not pixels or percentage numbers. */
+export interface M2LXCrop {
+	/** Left edge as a fraction of the source width, 0..1. */
+	x: number
+	/** Top edge as a fraction of the source height, 0..1. */
+	y: number
+	/** Retained fraction of the source width, greater than zero; x + width must not exceed 1. */
 	width: number
+	/** Retained fraction of the source height, greater than zero; y + height must not exceed 1. */
 	height: number
 }
 
@@ -227,11 +258,11 @@ export interface TimelineObjM2LXMixer extends TimelineObjM2LXBase {
 	} & TimelineDatastoreReferencesContent
 }
 
-export interface TimelineObjM2LXKey extends TimelineObjM2LXBase {
+export interface TimelineObjM2LXKeyer extends TimelineObjM2LXBase {
 	content: {
 		deviceType: DeviceType.M2LX
-		type: TimelineContentTypeM2LX.KEY
-		key: M2LXKeyVisibility
+		type: TimelineContentTypeM2LX.KEYER
+		keyer: M2LXKeyerVisibility
 	} & TimelineDatastoreReferencesContent
 }
 
@@ -261,7 +292,7 @@ export interface TimelineObjM2LXRouter extends TimelineObjM2LXBase {
 
 export type TimelineObjM2LXAny =
 	| TimelineObjM2LXMixer
-	| TimelineObjM2LXKey
+	| TimelineObjM2LXKeyer
 	| TimelineObjM2LXAudio
 	| TimelineObjM2LXMediaPlayer
 	| TimelineObjM2LXRouter
@@ -274,8 +305,8 @@ export function isTimelineObjM2LXMixer(timelineObject: TSRTimelineObjBase): time
 	return isTimelineObjM2LX(timelineObject) && timelineObject.content.type === TimelineContentTypeM2LX.MIXER
 }
 
-export function isTimelineObjM2LXKey(timelineObject: TSRTimelineObjBase): timelineObject is TimelineObjM2LXKey {
-	return isTimelineObjM2LX(timelineObject) && timelineObject.content.type === TimelineContentTypeM2LX.KEY
+export function isTimelineObjM2LXKeyer(timelineObject: TSRTimelineObjBase): timelineObject is TimelineObjM2LXKeyer {
+	return isTimelineObjM2LX(timelineObject) && timelineObject.content.type === TimelineContentTypeM2LX.KEYER
 }
 
 export function isTimelineObjM2LXAudio(timelineObject: TSRTimelineObjBase): timelineObject is TimelineObjM2LXAudio {

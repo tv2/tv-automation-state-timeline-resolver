@@ -9,7 +9,7 @@ Using the input, it resolves the expected state, diffs the state against current
 ## Supported devices
 * **[CasparCG](http://casparcg.com/)** - using the [casparcg-connection](https://github.com/SuperFlyTV/casparcg-connection) library
 * **Blackmagic Design ATEM** vision mixers - using the [atem-connection](https://github.com/nrkno/tv-automation-atem-connection) library
-* **Sony M2L-X** switchers - program/preview, configurable effects, upstream/downstream keys and geometry, basic input audio, native media players, and input routing
+* **Sony M2L-X** switchers - program/preview, configurable effects, upstream/downstream keyers and geometry, basic input audio, native media players, and input routing
 * **Blackmagic Design Hyperdeck** record/playback devices - using the [hyperdeck-connection](https://github.com/nrkno/tv-automation-hyperdeck-connection) library
 * **Lawo** audio mixers - using the [emberplus](https://github.com/nrkno/tv-automation-emberplus-connection) library
 * **Panasoniz PTZ** cameras
@@ -29,9 +29,13 @@ Using the input, it resolves the expected state, diffs the state against current
 
 EFFECT transitions use the effect configured on the device by default. Optional
 `mixer.transition.effect` settings (name, duration in seconds, and `args.fade`) are
-applied before preparing Preview and starting the effect. While an effect is running,
+applied before preparing Preview and starting the effect. `name` uses `M2LXEffectName`:
+`cut`, `crossfade`, `wipe_down`, `wipe_up`, `wipe_right`, `wipe_left`, `wipe_up_right`,
+or `wipe_down_left`, as exposed by the native GUI. Its `MIX` option is `crossfade`,
+not `mix`. Unsupported requested names are rejected; omitting the name leaves the
+configured effect name unchanged. While an effect is running,
 source changes on both buses (including cuts, lookahead updates and preparation for the
-next effect) and preview-key visibility changes wait for it to finish. A new Take does
+next effect) and preview-keyer visibility changes wait for it to finish. A new Take does
 not interrupt the active effect. Preview restoration additionally waits for program to
 reach the requested source. If the wait exceeds the configured effect duration plus
 the command timeout, the command fails without being sent.
@@ -44,30 +48,35 @@ All content uses `deviceType: DeviceType.M2LX`. Each mapping also needs
 | Mapping/content type | Mapping target | Content |
 |---|---|---|
 | `MIXER` | The single `mixer` node | `mixer: { program?, preview?, transition?: { type, effect?: { name?, duration?, args?: { fade? } } } }` |
-| `KEY` | `bus` and `key: { type, index }` | `key: { visible, source?, translation?, scale?, rotation?, crop?, border? }` |
+| `KEYER` | `bus` and `keyer: { type, index }` | `keyer: { visible, source?, translation?, scale?, rotation?, crop?, border? }` |
 | `AUDIO` | `node` (default `audio_mixer`) and full `input`, e.g. `vtr3.1` | `audio: { volume?, muted? }` |
 | `MEDIA_PLAYER` | Configured `player` node, e.g. `vtr3` | `mediaPlayer: { assetId?, playing?, loop?, seek? }` |
 | `ROUTER` | `node` (default `router`) and configured `output` | `input: 'ndi2'` |
 
 Mapping types come from `MappingM2LXType`; content types from `TimelineContentTypeM2LX`.
-Key mappings use `M2LXMixerBus.PROGRAM`/`PREVIEW` and `M2LXKeyType.PIP` (indices 0..3),
-`STILL` (4..7), or `DSK` (0..1). They are independent per bus and key family.
-Only explicitly mapped keys are managed; mapped keys default to hidden when their
+Keyer mappings use `M2LXMixerBus.PROGRAM`/`PREVIEW` and `M2LXKeyerType.PIP` (indices 0..3),
+`STILL` (4..7), or `DSK` (0..1). They are independent per bus and keyer family.
+The mapping/content enum value is `'keyer'`. Sony's native requests still use
+`set_key_property`, `key_index`, and `key_type`.
+Only explicitly mapped keyers are managed; mapped keyers default to hidden when their
 timeline content ends. Other controls leave the current hardware setting unchanged
 when their content ends. Stop/unload players explicitly where required.
 Lookahead prepares mixer Preview only; it does not preload players or change audio/routes.
 
-Key sources use `{ type: 'video', name: 'ndi1' }` for PiP and
-`{ type: 'image', name: 'still/demo.png' }` for still keys. DSKs accept either.
+Keyer sources use `{ type: 'video', name: 'ndi1' }` for PiP and
+`{ type: 'image', name: 'still/demo.png' }` for still keyers. DSKs accept either.
 Omit `source` to leave it unchanged; use an empty name with `visible:false` to clear
-it. Keys are hidden before replacing/clearing their source and configured before
+it. Keyers are hidden before replacing/clearing their source and configured before
 showing. DSK source changes clear the opposite source family, and DSK visibility
 resets native opacity to 1 as the GUI does, so a completed fade-out cannot leave a
-newly shown key transparent. Existing device fade bindings are used, not rewritten;
+newly shown keyer transparent. Existing device fade bindings are used, not rewritten;
 timeline configuration of fade animations is not provided.
 
-Translation uses native pixel offsets; scale is `{ x, y }`, crop is a normalized
-`{ x, y, width, height }` rectangle, and rotation is the native Z-plane value.
+Translation (`M2LXTranslation`) uses native pixel offsets. Scale (`M2LXScale`)
+uses positive unitless `{ x, y }` multipliers, where `1` means 100% on that axis.
+Crop (`M2LXCrop`) is an independent `{ x, y, width, height }` rectangle normalized
+to the source dimensions: `{ x: 0, y: 0, width: 1, height: 1 }` retains the full image.
+Rotation is the native Z-plane value.
 Border is the complete native `M2LXBorder` object, not a partial border patch.
 These controls do not establish separate fill/key, video alpha, chroma/luma keying,
 format-independent coordinate limits or multi-M/E support.
@@ -83,7 +92,7 @@ catalog values or the mixer format, determine seek bounds and completion toleran
 continuous clock synchronization or a frame-index API; it may be reasserted after
 reactivation/reconnection. Seeking pauses then restores explicitly requested playback;
 otherwise it preserves the observed playback state when the seek executes, including
-across gaps in timeline control. A player is shared across every bus/key/output using
+across gaps in timeline control. A player is shared across every bus/keyer/output using
 it: loading or seeking an on-air player intentionally affects all those uses.
 Lookahead never loads it.
 

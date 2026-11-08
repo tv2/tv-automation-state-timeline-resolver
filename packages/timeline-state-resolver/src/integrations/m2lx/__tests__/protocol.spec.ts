@@ -1,8 +1,8 @@
 import {
 	createEmptyObservedState,
 	createSetInputCommand,
-	createSetKeyCommand,
-	createSetKeyPropertyCommand,
+	createSetKeyerCommand,
+	createSetKeyerPropertyCommand,
 	createTransitionCommand,
 	extractAccessToken,
 	extractConfiguredVideoSources,
@@ -28,7 +28,7 @@ describe('M2L-X protocol', () => {
 			args: { effect_enabled: false },
 		})
 		expect(createTransitionCommand(true).args).toEqual({ effect_enabled: true })
-		expect(createSetKeyCommand(4, 'still', true, 'preview')).toEqual({
+		expect(createSetKeyerCommand(4, 'still', true, 'preview')).toEqual({
 			command: 'set_key_property',
 			node: 'mixer',
 			args: {
@@ -41,8 +41,8 @@ describe('M2L-X protocol', () => {
 	})
 
 	test('rejects invalid key kind/index combinations', () => {
-		expect(() => createSetKeyCommand(4, 'pip', true)).toThrow(/not valid/)
-		expect(() => createSetKeyCommand(3, 'still', true)).toThrow(/not valid/)
+		expect(() => createSetKeyerCommand(4, 'pip', true)).toThrow(/not valid/)
+		expect(() => createSetKeyerCommand(3, 'still', true)).toThrow(/not valid/)
 	})
 
 	test('validates authentication and configuration responses', () => {
@@ -119,7 +119,7 @@ describe('M2L-X protocol', () => {
 		expect(snapshot).toMatchObject({
 			program: 'vtr1',
 			preview: 'replay1',
-			keys: {
+			keyers: {
 				program: { 0: { visible: false, source: 'ndi1' }, 1: { visible: true, source: 'ndi2' } },
 				preview: { 0: { visible: true, source: 'ndi1' }, 1: { visible: true, source: '' } },
 			},
@@ -149,7 +149,7 @@ describe('M2L-X protocol', () => {
 		expect(delta).toMatchObject({
 			program: 'cam10',
 			preview: 'replay1',
-			keys: {
+			keyers: {
 				program: { 0: { visible: true, source: 'ndi1' }, 1: { visible: true, source: 'ndi2' } },
 				preview: { 0: { visible: true, source: 'ndi1' }, 1: { visible: true, source: '' } },
 			},
@@ -157,7 +157,7 @@ describe('M2L-X protocol', () => {
 		})
 		// The previous state must not be mutated
 		expect(snapshot.program).toBe('vtr1')
-		expect(snapshot.keys.program[0]).toEqual({ visible: false, source: 'ndi1' })
+		expect(snapshot.keyers.program[0]).toEqual({ visible: false, source: 'ndi1' })
 
 		// A scene recall changes the effect without touching the progress
 		const effectDelta = parseStatusMessage(
@@ -198,11 +198,11 @@ describe('M2L-X protocol', () => {
 			},
 			initial
 		)
-		expect(next.keys.preview[0].translation).toEqual({ x: -800, y: 10 })
-		expect(initial.keys.preview[0].translation).toEqual({ x: 0, y: 10 })
-		expect(next.downstreamKeys?.preview[0]).toMatchObject({ visible: true, source: 'still/demo.png' })
-		expect(createSetKeyCommand(0, 'dsk', false, 'preview').args.key_type).toBe('downstream')
-		expect(() => createSetKeyCommand(2, 'dsk', false)).toThrow(/invalid/)
+		expect(next.keyers.preview[0].translation).toEqual({ x: -800, y: 10 })
+		expect(initial.keyers.preview[0].translation).toEqual({ x: 0, y: 10 })
+		expect(next.downstreamKeyers?.preview[0]).toMatchObject({ visible: true, source: 'still/demo.png' })
+		expect(createSetKeyerCommand(0, 'dsk', false, 'preview').args.key_type).toBe('downstream')
+		expect(() => createSetKeyerCommand(2, 'dsk', false)).toThrow(/invalid/)
 		expect(matchesM2LXValue('#ffffffff', '#ffffff')).toBe(true)
 		expect(matchesM2LXValue(0.019999999552965164, 0.02)).toBe(true)
 		expect(matchesM2LXValue(0.03, 0.02)).toBe(false)
@@ -300,10 +300,13 @@ describe('M2L-X protocol', () => {
 			).toThrow(/Unsafe/)
 		}
 		expect(() =>
-			createSetKeyPropertyCommand(0, 'pip', 'preview', { name: 'translation', value: { x: NaN, y: 0 } })
+			createSetKeyerPropertyCommand(0, 'pip', 'preview', { name: 'translation', value: { x: NaN, y: 0 } })
 		).toThrow(/finite/)
 		expect(() =>
-			createSetKeyPropertyCommand(0, 'pip', 'preview', { name: 'crop', value: { x: 0.5, y: 0, width: 0.8, height: 1 } })
+			createSetKeyerPropertyCommand(0, 'pip', 'preview', {
+				name: 'crop',
+				value: { x: 0.5, y: 0, width: 0.8, height: 1 },
+			})
 		).toThrow(/rectangle/)
 	})
 })

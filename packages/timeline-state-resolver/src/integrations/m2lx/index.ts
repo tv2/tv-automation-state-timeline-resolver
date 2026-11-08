@@ -10,16 +10,16 @@ import {
 	ResolvedTimelineObjectInstanceExtended,
 	TimelineContentTypeM2LX,
 	TimelineObjM2LXAny,
-	M2LXKeyType,
+	M2LXKeyerType,
 } from 'timeline-state-resolver-types'
 import { DeviceStatus, DeviceWithState, StatusCode } from '../../devices/device'
 import { DoOnTime, SendMode } from '../../devices/doOnTime'
 import { IM2LXConnection, M2LXConnection, M2LX_AUTH_RENEWAL_MARGIN } from './connection'
-import { M2LXCommand, M2LXSetKeyCommand } from './protocol'
+import { M2LXCommand, M2LXSetKeyerCommand } from './protocol'
 import {
 	assertNativeTransitionAutoPlayDisabled,
 	diffM2LXStates,
-	keyStateId,
+	keyerStateId,
 	M2LXCommandWithContext,
 	M2LXState,
 	resourceStateId,
@@ -288,20 +288,20 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 							timelineObjId: '',
 					  }
 					: undefined,
-			keys: {},
+			keyers: {},
 		}
 		for (const mapping of Object.values(mappings)) {
-			if (mapping.mappingType === MappingM2LXType.KEY) {
+			if (mapping.mappingType === MappingM2LXType.KEYER) {
 				const key =
-					mapping.key.type === M2LXKeyType.DSK
-						? observed?.downstreamKeys?.[mapping.bus][mapping.key.index]
-						: observed?.keys[mapping.bus][mapping.key.index]
+					mapping.keyer.type === M2LXKeyerType.DSK
+						? observed?.downstreamKeyers?.[mapping.bus][mapping.keyer.index]
+						: observed?.keyers[mapping.bus][mapping.keyer.index]
 				const { source, sourceType, ...properties } = key ?? { visible: false }
-				state.keys[keyStateId(mapping.bus, mapping.key.index, mapping.key.type === M2LXKeyType.DSK)] = {
+				state.keyers[keyerStateId(mapping.bus, mapping.keyer.index, mapping.keyer.type === M2LXKeyerType.DSK)] = {
 					...properties,
-					index: mapping.key.index,
+					index: mapping.keyer.index,
 					...(source !== undefined && sourceType ? { source: { name: source, type: sourceType } } : {}),
-					keyType: mapping.key.type,
+					keyerType: mapping.keyer.type,
 					bus: mapping.bus,
 					timelineObjId: '',
 				}
@@ -342,16 +342,16 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 	}
 
 	private _convertTimelineState(state: TimelineState, mappings: Record<string, MappingM2LX>): M2LXState {
-		const result: M2LXState = { keys: {} }
+		const result: M2LXState = { keyers: {} }
 		// The program of a lookahead mixer object is what comes next, so it is parked on preview.
 		let lookaheadPreview: string | undefined
 
 		for (const mapping of Object.values(mappings)) {
-			if (mapping.mappingType === MappingM2LXType.KEY) {
-				result.keys[keyStateId(mapping.bus, mapping.key.index, mapping.key.type === M2LXKeyType.DSK)] = {
-					index: mapping.key.index,
+			if (mapping.mappingType === MappingM2LXType.KEYER) {
+				result.keyers[keyerStateId(mapping.bus, mapping.keyer.index, mapping.keyer.type === M2LXKeyerType.DSK)] = {
+					index: mapping.keyer.index,
 					visible: false,
-					keyType: mapping.key.type,
+					keyerType: mapping.keyer.type,
 					bus: mapping.bus,
 					timelineObjId: '',
 				}
@@ -382,14 +382,14 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 					timelineObjId: timelineObject.id,
 				}
 			} else if (
-				mapping.mappingType === MappingM2LXType.KEY &&
-				content.type === TimelineContentTypeM2LX.KEY &&
+				mapping.mappingType === MappingM2LXType.KEYER &&
+				content.type === TimelineContentTypeM2LX.KEYER &&
 				!isLookahead
 			) {
-				result.keys[keyStateId(mapping.bus, mapping.key.index, mapping.key.type === M2LXKeyType.DSK)] = {
-					...content.key,
-					index: mapping.key.index,
-					keyType: mapping.key.type,
+				result.keyers[keyerStateId(mapping.bus, mapping.keyer.index, mapping.keyer.type === M2LXKeyerType.DSK)] = {
+					...content.keyer,
+					index: mapping.keyer.index,
+					keyerType: mapping.keyer.type,
 					bus: mapping.bus,
 					timelineObjId: timelineObject.id,
 				}
@@ -479,7 +479,7 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 				if (command.args.property.name === 'video' && command.args.property.value) {
 					this._assertKnownSource(command.args.property.value)
 				}
-				if (checkReadiness) this._assertKeyHasSource(command)
+				if (checkReadiness) this._assertKeyerHasSource(command)
 				break
 			case 'set_input_volume':
 			case 'set_input_muted': {
@@ -520,17 +520,17 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 		}
 	}
 
-	/** The device answers 200 OK but silently ignores visibility changes on keys without a source. */
-	private _assertKeyHasSource(command: M2LXSetKeyCommand): void {
+	/** The device answers 200 OK but silently ignores visibility changes on keyers without a source. */
+	private _assertKeyerHasSource(command: M2LXSetKeyerCommand): void {
 		if (command.args.property.name !== 'visible' || command.args.property.value !== true) return
 		const state = this._connection?.state
-		const key =
+		const keyer =
 			command.args.key_type === 'downstream'
-				? state?.downstreamKeys?.[command.args.target][command.args.key_index]
-				: state?.keys[command.args.target][command.args.key_index]
-		if (!key || key.source === '') {
+				? state?.downstreamKeyers?.[command.args.target][command.args.key_index]
+				: state?.keyers[command.args.target][command.args.key_index]
+		if (!keyer || keyer.source === '') {
 			throw new Error(
-				`M2L-X ${command.args.key_type} key ${command.args.key_index} on ${command.args.target} has no source configured`
+				`M2L-X ${command.args.key_type} keyer ${command.args.key_index} on ${command.args.target} has no source configured`
 			)
 		}
 	}

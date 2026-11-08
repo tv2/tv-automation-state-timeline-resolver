@@ -3,15 +3,17 @@ import {
 	M2LXBorder,
 	M2LXCrop,
 	M2LXEffect,
-	M2LXKeyVisibility,
-	M2LXVector,
+	M2LXEffectName,
+	M2LXKeyerVisibility,
+	M2LXScale,
+	M2LXTranslation,
 } from 'timeline-state-resolver-types'
 
 export type M2LXBus = 'program' | 'preview'
 
-export interface M2LXObservedKey extends Omit<M2LXKeyVisibility, 'source'> {
+export interface M2LXObservedKeyer extends Omit<M2LXKeyerVisibility, 'source'> {
 	visible: boolean
-	/** Fill source of the key. An empty string means the key is unconfigured and the device ignores visibility changes. */
+	/** Fill source of the keyer. An empty string means it is unconfigured and the device ignores visibility changes. */
 	source?: string
 	sourceType?: 'video' | 'image'
 	opacity?: number
@@ -34,9 +36,9 @@ export interface M2LXObservedTransition {
 export interface M2LXObservedState {
 	program?: string
 	preview?: string
-	keys: Record<M2LXBus, Record<number, M2LXObservedKey>>
+	keyers: Record<M2LXBus, Record<number, M2LXObservedKeyer>>
 	transition?: M2LXObservedTransition
-	downstreamKeys?: Record<M2LXBus, Record<number, M2LXObservedKey>>
+	downstreamKeyers?: Record<M2LXBus, Record<number, M2LXObservedKeyer>>
 	audio?: Record<string, Record<string, M2LXAudio>>
 	players?: Record<string, M2LXObservedPlayer>
 	routers?: Record<string, Record<string, string>>
@@ -63,7 +65,7 @@ export interface M2LXCapabilities {
 }
 
 export function createEmptyObservedState(): M2LXObservedState {
-	return { keys: { program: {}, preview: {} } }
+	return { keyers: { program: {}, preview: {} } }
 }
 
 export interface M2LXSetInputCommand {
@@ -88,22 +90,23 @@ export interface M2LXTransitionCommand {
 	}
 }
 
-export type M2LXKeyProperty =
+export type M2LXKeyerProperty =
 	| { name: 'visible'; value: boolean }
 	| { name: 'video' | 'image'; value: string }
-	| { name: 'translation' | 'scale'; value: M2LXVector }
+	| { name: 'translation'; value: M2LXTranslation }
+	| { name: 'scale'; value: M2LXScale }
 	| { name: 'rotation' | 'opacity'; value: number }
 	| { name: 'crop'; value: M2LXCrop }
 	| { name: 'border'; value: M2LXBorder }
 
-export interface M2LXSetKeyCommand {
+export interface M2LXSetKeyerCommand {
 	command: 'set_key_property'
 	node: 'mixer'
 	args: {
 		key_index: number
 		key_type: 'upstream' | 'downstream'
 		target: M2LXBus
-		property: M2LXKeyProperty
+		property: M2LXKeyerProperty
 	}
 }
 
@@ -120,7 +123,7 @@ export type M2LXAudioCommand =
 export interface M2LXConfigureEffectCommand {
 	command: 'configure_effect'
 	node: 'mixer'
-	args: { name?: string; duration?: string; args?: M2LXEffect['args'] }
+	args: { name?: M2LXEffectName; duration?: string; args?: M2LXEffect['args'] }
 }
 
 export interface M2LXRouterCommand {
@@ -132,7 +135,7 @@ export interface M2LXRouterCommand {
 export type M2LXCommand =
 	| M2LXSetInputCommand
 	| M2LXTransitionCommand
-	| M2LXSetKeyCommand
+	| M2LXSetKeyerCommand
 	| M2LXMediaCommand
 	| M2LXAudioCommand
 	| M2LXConfigureEffectCommand
@@ -163,41 +166,41 @@ export function createTransitionCommand(effectEnabled: boolean): M2LXTransitionC
 	}
 }
 
-export function createSetKeyCommand(
+export function createSetKeyerCommand(
 	index: number,
-	keyType: 'pip' | 'still' | 'dsk',
+	keyerType: 'pip' | 'still' | 'dsk',
 	visible: boolean,
 	bus: M2LXBus = 'program'
-): M2LXSetKeyCommand {
-	return createSetKeyPropertyCommand(index, keyType, bus, { name: 'visible', value: visible })
+): M2LXSetKeyerCommand {
+	return createSetKeyerPropertyCommand(index, keyerType, bus, { name: 'visible', value: visible })
 }
 
-export function createSetKeyPropertyCommand(
+export function createSetKeyerPropertyCommand(
 	index: number,
-	keyType: 'pip' | 'still' | 'dsk',
+	keyerType: 'pip' | 'still' | 'dsk',
 	bus: M2LXBus,
-	property: M2LXKeyProperty
-): M2LXSetKeyCommand {
-	if (!Number.isInteger(index) || index < 0 || index > (keyType === 'dsk' ? 1 : 7)) {
-		throw new Error(`M2L-X key index is invalid for ${keyType}: ${index}`)
+	property: M2LXKeyerProperty
+): M2LXSetKeyerCommand {
+	if (!Number.isInteger(index) || index < 0 || index > (keyerType === 'dsk' ? 1 : 7)) {
+		throw new Error(`M2L-X keyer index is invalid for ${keyerType}: ${index}`)
 	}
-	if ((keyType === 'pip' && index > 3) || (keyType === 'still' && index < 4)) {
-		throw new Error(`M2L-X key index ${index} is not valid for key type ${keyType}`)
+	if ((keyerType === 'pip' && index > 3) || (keyerType === 'still' && index < 4)) {
+		throw new Error(`M2L-X keyer index ${index} is not valid for keyer type ${keyerType}`)
 	}
-	validateKeyProperty(property)
+	validateKeyerProperty(property)
 	return {
 		command: 'set_key_property',
 		node: 'mixer',
 		args: {
 			key_index: index,
-			key_type: keyType === 'dsk' ? 'downstream' : 'upstream',
+			key_type: keyerType === 'dsk' ? 'downstream' : 'upstream',
 			target: bus,
 			property,
 		},
 	}
 }
 
-function validateKeyProperty(property: M2LXKeyProperty): void {
+function validateKeyerProperty(property: M2LXKeyerProperty): void {
 	const value = property.value
 	if (property.name === 'border') {
 		if (!/^#[\da-f]{6}([\da-f]{2})?$/i.test(property.value.color)) throw new Error('Invalid M2L-X border color')
@@ -375,9 +378,9 @@ export function parseStatusMessage(
 ): M2LXObservedState {
 	const next: M2LXObservedState = {
 		...previous,
-		keys: {
-			program: { ...previous.keys.program },
-			preview: { ...previous.keys.preview },
+		keyers: {
+			program: { ...previous.keyers.program },
+			preview: { ...previous.keyers.preview },
 		},
 	}
 	if (!isRecord(message) || !Array.isArray(message.status)) return next
@@ -522,14 +525,14 @@ function parsePlayer(raw: Record<string, unknown>): M2LXObservedPlayer | undefin
 	}
 }
 
-function vector(value: unknown): M2LXVector | undefined {
+function vector(value: unknown): { x: number; y: number } | undefined {
 	return isRecord(value) && typeof value.x === 'number' && typeof value.y === 'number'
 		? { x: value.x, y: value.y }
 		: undefined
 }
 
-function keyProperties(key: Record<string, unknown>): Partial<M2LXObservedKey> {
-	const result: Partial<M2LXObservedKey> = {}
+function keyerProperties(key: Record<string, unknown>): Partial<M2LXObservedKeyer> {
+	const result: Partial<M2LXObservedKeyer> = {}
 	for (const name of ['translation', 'scale'] as const) {
 		const value = vector(key[name])
 		if (value) result[name] = value
@@ -582,30 +585,35 @@ function visitMixerState(mixer: unknown, state: M2LXObservedState): void {
 		const source = isRecord(busState.background) ? busState.background.source : undefined
 		if (typeof source === 'string') state[bus] = source
 
-		for (const keyType of ['upstream', 'downstream'] as const) {
-			const collection = busState[`${keyType}_keys`]
+		for (const keyerType of ['upstream', 'downstream'] as const) {
+			const collection = busState[`${keyerType}_keys`]
 			if (!Array.isArray(collection) && !isRecord(collection)) continue
-			const keys: Record<number, M2LXObservedKey> = {}
+			const keyers: Record<number, M2LXObservedKeyer> = {}
 			for (const [indexKey, keyEntry] of Object.entries(collection)) {
 				const index = Number(indexKey)
-				if (!Number.isInteger(index) || index < 0 || index > (keyType === 'downstream' ? 1 : 7) || !isRecord(keyEntry))
+				if (
+					!Number.isInteger(index) ||
+					index < 0 ||
+					index > (keyerType === 'downstream' ? 1 : 7) ||
+					!isRecord(keyEntry)
+				)
 					continue
 				const key = isRecord(keyEntry.key) ? keyEntry.key : keyEntry
-				const previous = keyType === 'upstream' ? state.keys[bus][index] : state.downstreamKeys?.[bus][index]
+				const previous = keyerType === 'upstream' ? state.keyers[bus][index] : state.downstreamKeyers?.[bus][index]
 				const visible = typeof key.visible === 'boolean' ? key.visible : previous?.visible
 				if (visible === undefined) continue
 				const keySource = typeof key.source === 'string' ? key.source : previous?.source
-				keys[index] = {
+				keyers[index] = {
 					visible,
 					...(keySource === undefined ? {} : { source: keySource }),
 					...(key.source_type === 'video' || key.source_type === 'image' ? { sourceType: key.source_type } : {}),
-					...keyProperties(key),
+					...keyerProperties(key),
 				}
 			}
-			if (keyType === 'upstream') state.keys[bus] = keys
+			if (keyerType === 'upstream') state.keyers[bus] = keyers
 			else {
-				state.downstreamKeys = state.downstreamKeys ?? { program: {}, preview: {} }
-				state.downstreamKeys = { ...state.downstreamKeys, [bus]: keys }
+				state.downstreamKeyers = state.downstreamKeyers ?? { program: {}, preview: {} }
+				state.downstreamKeyers = { ...state.downstreamKeyers, [bus]: keyers }
 			}
 		}
 	}

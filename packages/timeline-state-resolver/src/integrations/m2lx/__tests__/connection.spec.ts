@@ -4,7 +4,7 @@ import WebSocket = require('ws')
 import { DeviceType } from 'timeline-state-resolver-types'
 import { M2LXDevice } from '..'
 import { M2LXConnection, M2LX_AUTH_RENEWAL_MARGIN } from '../connection'
-import { createSetInputCommand, createSetKeyCommand, createTransitionCommand, M2LXCommand } from '../protocol'
+import { createSetInputCommand, createSetKeyerCommand, createTransitionCommand, M2LXCommand } from '../protocol'
 import { diffM2LXStates, M2LXState } from '../state'
 
 // Talk to a real local server instead of the repo-wide got/ws manual mocks
@@ -67,7 +67,7 @@ class FakeM2LX {
 	stuckTransition = false
 	running = false
 	/** Keys with an empty source accept the command but never change state. */
-	keys: Record<'program' | 'preview', Array<{ visible: boolean; source: string; [property: string]: unknown }>> = {
+	keyers: Record<'program' | 'preview', Array<{ visible: boolean; source: string; [property: string]: unknown }>> = {
 		program: [{ visible: false, source: 'ndi1' }],
 		preview: [
 			{ visible: false, source: 'ndi1' },
@@ -347,7 +347,7 @@ class FakeM2LX {
 			case 'set_key_property': {
 				reply(200, 'OK')
 				const bus = command.args.target as 'program' | 'preview'
-				const key = this.keys[bus][command.args.key_index]
+				const key = this.keyers[bus][command.args.key_index]
 				if (!key || (key.source === '' && command.args.property.name === 'visible')) return
 				const property = command.args.property
 				if (property.name === 'visible') key.visible = property.value
@@ -373,7 +373,7 @@ class FakeM2LX {
 	private _mixerState() {
 		const bus = (name: 'program' | 'preview') => ({
 			background: { source: this[name], source_type: 'video' },
-			upstream_keys: this.keys[name].map((key) => ({ chroma_key: {}, key })),
+			upstream_keys: this.keyers[name].map((key) => ({ chroma_key: {}, key })),
 		})
 		return {
 			program: bus('program'),
@@ -706,11 +706,11 @@ describe('M2LXConnection', () => {
 		connection = new M2LXConnection({ baseUrl, password: 'secret' })
 		await connection.connect()
 		const old: M2LXState = {
-			keys: {},
+			keyers: {},
 			players: { vtr3: { assetId: 'original.mp4', loop: false, playing: false, timelineObjId: '' } },
 		}
 		const next: M2LXState = {
-			keys: {},
+			keyers: {},
 			players: { vtr3: { assetId: 'alternate.mp4', loop: false, seek: 10, playing: true, timelineObjId: 'clip' } },
 			audio: { input: { node: 'audio_mixer', input: 'vtr3.1', muted: true, volume: 0.5, timelineObjId: 'audio' } },
 			routers: { output: { node: 'router', input: 'ndi2', output: 'ch1', timelineObjId: 'router' } },
@@ -728,7 +728,7 @@ describe('M2LXConnection', () => {
 		expect(connection.state.routers?.router.ch1).toBe('ndi2')
 		expect(device.received.find((c) => c.command === 'set_loop_enabled').args).toBe(false)
 		expect(device.received.find((c) => c.command === 'play')).not.toHaveProperty('args')
-		const unloaded = diffM2LXStates(next, { keys: {}, players: { vtr3: { assetId: null, timelineObjId: 'empty' } } })
+		const unloaded = diffM2LXStates(next, { keyers: {}, players: { vtr3: { assetId: null, timelineObjId: 'empty' } } })
 		for (const command of unloaded) await connection.sendCommand(command.command, command)
 		expect(device.player.clip.asset_id).toBe('alternate.mp4')
 		expect(connection.state.players?.vtr3.loaded).toBe(false)
@@ -742,8 +742,8 @@ describe('M2LXConnection', () => {
 		connection = new M2LXConnection({ baseUrl, password: 'secret' })
 		await connection.connect()
 		const commands = diffM2LXStates(
-			{ keys: {} },
-			{ keys: {}, players: { vtr3: { playing: false, timelineObjId: 'stop' } } }
+			{ keyers: {} },
+			{ keyers: {}, players: { vtr3: { playing: false, timelineObjId: 'stop' } } }
 		)
 		expect(commands.map((command) => command.command.command)).toEqual(['pause'])
 		for (const command of commands) await connection.sendCommand(command.command, command)
@@ -757,8 +757,8 @@ describe('M2LXConnection', () => {
 		await connection.connect()
 		device.failNextLoad = true
 		const load = diffM2LXStates(
-			{ keys: {} },
-			{ keys: {}, players: { vtr3: { assetId: 'missing.mp4', timelineObjId: 'clip' } } }
+			{ keyers: {} },
+			{ keyers: {}, players: { vtr3: { assetId: 'missing.mp4', timelineObjId: 'clip' } } }
 		).find((c) => c.command.command === 'load')!
 		await expect(connection.sendCommand(load.command, load)).rejects.toThrow(/Asset missing/)
 	})
@@ -819,10 +819,10 @@ describe('M2LXConnection', () => {
 		await connection.connect()
 		const next: M2LXState = {
 			mixer: { effect: { name: 'wipe_up', duration: 2, args: { fade: 0.02 } }, timelineObjId: 'effect' },
-			keys: {
+			keyers: {
 				'preview/0': {
 					index: 0,
-					keyType: 'pip',
+					keyerType: 'pip',
 					bus: 'preview',
 					visible: true,
 					source: { type: 'video', name: 'ndi2' },
@@ -834,9 +834,9 @@ describe('M2LXConnection', () => {
 				},
 			},
 		}
-		for (const command of diffM2LXStates({ keys: {} }, next)) await connection.sendCommand(command.command, command)
+		for (const command of diffM2LXStates({ keyers: {} }, next)) await connection.sendCommand(command.command, command)
 		expect(connection.state.transition?.effect).toMatchObject({ name: 'wipe_up', duration: 2 })
-		expect(connection.state.keys.preview[0]).toMatchObject({
+		expect(connection.state.keyers.preview[0]).toMatchObject({
 			visible: true,
 			source: 'ndi2',
 			sourceType: 'video',
@@ -886,14 +886,14 @@ describe('M2LXConnection', () => {
 		device.program = 'ndi2'
 		device.preview = 'vtr1'
 		device.configuredSources = ['ndi2', 'vtr1']
-		device.keys.preview[0] = { visible: true, source: 'ndi2' }
+		device.keyers.preview[0] = { visible: true, source: 'ndi2' }
 		await connection.ensureFreshAuthentication(true)
 		expect(device.signIns).toBe(2)
 		expect(device.configurationRequests).toBe(2)
 		expect(connection.connected).toBe(true)
 		expect(connection.sources).toEqual(new Set(['ndi2', 'vtr1']))
 		expect(connection.state).toMatchObject({ program: 'ndi2', preview: 'vtr1' })
-		expect(connection.state.keys.preview[0]).toEqual({ visible: true, source: 'ndi2' })
+		expect(connection.state.keyers.preview[0]).toEqual({ visible: true, source: 'ndi2' })
 		expect(connection.tokenExpiresAt).toBe(Date.now() + 86399000)
 	})
 
@@ -973,7 +973,7 @@ describe('M2LXConnection', () => {
 		connection = new M2LXConnection({ baseUrl, password: 'secret' })
 		await connection.connect()
 		clock.mockReturnValue(connection.tokenExpiresAt! - M2LX_AUTH_RENEWAL_MARGIN)
-		const pending = connection.sendCommand(createSetKeyCommand(1, 'pip', true, 'preview'), {
+		const pending = connection.sendCommand(createSetKeyerCommand(1, 'pip', true, 'preview'), {
 			isComplete: () => false,
 		})
 		const aborted = pending.catch((error: Error) => error)
@@ -1064,7 +1064,7 @@ describe('M2LXConnection', () => {
 		expect(connection.state).toMatchObject({
 			program: 'vtr1',
 			preview: 'replay1',
-			keys: {
+			keyers: {
 				program: { 0: { visible: false, source: 'ndi1' } },
 				preview: { 0: { visible: false, source: 'ndi1' }, 1: { visible: false, source: '' } },
 			},
@@ -1099,11 +1099,11 @@ describe('M2LXConnection', () => {
 		await connection.sendCommand(createTransitionCommand(false), { isComplete: (state) => state.program === 'ndi2' })
 		expect(connection.state.program).toBe('ndi2')
 
-		await connection.sendCommand(createSetKeyCommand(0, 'pip', true, 'preview'), {
-			isComplete: (state) => state.keys.preview[0]?.visible === true,
+		await connection.sendCommand(createSetKeyerCommand(0, 'pip', true, 'preview'), {
+			isComplete: (state) => state.keyers.preview[0]?.visible === true,
 		})
-		expect(connection.state.keys.preview[0]).toEqual({ visible: true, source: 'ndi1' })
-		expect(connection.state.keys.program[0]).toEqual({ visible: false, source: 'ndi1' })
+		expect(connection.state.keyers.preview[0]).toEqual({ visible: true, source: 'ndi1' })
+		expect(connection.state.keyers.program[0]).toEqual({ visible: false, source: 'ndi1' })
 	})
 
 	test('does not send a command that is already satisfied', async () => {
@@ -1199,17 +1199,17 @@ describe('M2LXConnection', () => {
 	])('protects the running effect from $name', async ({ mixer, expectedProgram }) => {
 		connection = new M2LXConnection({ baseUrl, password: 'secret' })
 		await connection.connect()
-		const before: M2LXState = { mixer: { program: 'vtr1', timelineObjId: 'before' }, keys: {} }
+		const before: M2LXState = { mixer: { program: 'vtr1', timelineObjId: 'before' }, keyers: {} }
 		const effect: M2LXState = {
 			mixer: { program: 'replay1', transition: 'effect', timelineObjId: 'effect' },
-			keys: {},
+			keyers: {},
 		}
 		for (const command of diffM2LXStates(before, effect)) {
 			await connection.sendCommand(command.command, command)
 		}
 		expect(connection.state.transition?.running).toBe(true)
 
-		for (const command of diffM2LXStates(effect, { mixer, keys: {} })) {
+		for (const command of diffM2LXStates(effect, { mixer, keyers: {} })) {
 			await connection.sendCommand(command.command, command)
 		}
 
@@ -1227,12 +1227,12 @@ describe('M2LXConnection', () => {
 			isComplete: (state) => state.transition?.running === true,
 		})
 		const [command] = diffM2LXStates(
-			{ keys: {} },
-			{ keys: { 'preview/0': { index: 0, visible: true, keyType: 'pip', bus: 'preview', timelineObjId: 'key' } } }
+			{ keyers: {} },
+			{ keyers: { 'preview/0': { index: 0, visible: true, keyerType: 'pip', bus: 'preview', timelineObjId: 'key' } } }
 		)
 		await connection.sendCommand(command.command, command)
 		expect(device.changesDuringTransition).toEqual([])
-		expect(connection.state.keys.preview[0]?.visible).toBe(true)
+		expect(connection.state.keyers.preview[0]?.visible).toBe(true)
 	})
 
 	test('aborts a held-back source change on disconnect without sending it', async () => {
@@ -1247,8 +1247,8 @@ describe('M2LXConnection', () => {
 			isComplete: (state) => state.transition?.running === true,
 		})
 		const [command] = diffM2LXStates(
-			{ mixer: { program: 'vtr1', timelineObjId: 'before' }, keys: {} },
-			{ mixer: { program: 'ndi2', timelineObjId: 'cut' }, keys: {} }
+			{ mixer: { program: 'vtr1', timelineObjId: 'before' }, keyers: {} },
+			{ mixer: { program: 'ndi2', timelineObjId: 'cut' }, keyers: {} }
 		)
 		const pending = connection.sendCommand(command.command, command)
 		for (const socket of device.controllers) socket.terminate()
@@ -1332,8 +1332,8 @@ describe('M2LXConnection', () => {
 		await connection.connect()
 
 		await expect(
-			connection.sendCommand(createSetKeyCommand(1, 'pip', true, 'preview'), {
-				isComplete: (state) => state.keys.preview[1]?.visible === true,
+			connection.sendCommand(createSetKeyerCommand(1, 'pip', true, 'preview'), {
+				isComplete: (state) => state.keyers.preview[1]?.visible === true,
 			})
 		).rejects.toThrow('M2L-X command timed out after 200 ms')
 		expect(connection.connected).toBe(true)
@@ -1351,7 +1351,9 @@ describe('M2LXConnection', () => {
 		const disconnected = new Promise<string>((resolve) => connection.once('disconnected', resolve))
 
 		// Never confirmed by the fake device, so it stays pending until the socket drops
-		const pending = connection.sendCommand(createSetKeyCommand(1, 'pip', true, 'preview'), { isComplete: () => false })
+		const pending = connection.sendCommand(createSetKeyerCommand(1, 'pip', true, 'preview'), {
+			isComplete: () => false,
+		})
 		await new Promise((resolve) => setTimeout(resolve, 20))
 		for (const socket of device.controllers) socket.terminate()
 
