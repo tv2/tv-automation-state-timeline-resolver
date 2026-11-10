@@ -3,6 +3,18 @@ name: Publish prerelease
 on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Publishing mode (automatic preserves nightly/experimental selection)'
+        type: choice
+        default: automatic
+        options:
+          - automatic
+          - m2lx
+      version:
+        description: 'PoC version, used only for the m2lx channel'
+        type: string
+        default: '3.8.0-m2lx.0'
 
 jobs:
   test:
@@ -43,6 +55,9 @@ jobs:
     needs:
       - test
 
+    env:
+      POC_VERSION: ${{ github.event.inputs.version }}
+
     steps:
       - uses: actions/checkout@v2
         with:
@@ -53,17 +68,29 @@ jobs:
           node-version-file: '.node-version'
       - name: Check release is desired
         id: do-publish
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          CHANNEL: ${{ github.event.inputs.channel }}
         run: |
-          if [ -z "${{ secrets.NPM_TOKEN }}" ]; then
-            echo "No Token"
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::NPM_TOKEN is required to publish packages"
+            exit 1
+          elif [ "$CHANNEL" = "m2lx" ]; then
+            node - <<'NODE'
+          if (!/^[0-9]+\.[0-9]+\.[0-9]+-m2lx\.[0-9]+$/.test(process.env.POC_VERSION)) {
+            throw new Error('The m2lx channel requires a version such as 3.8.0-m2lx.0')
+          }
+          NODE
+            echo "publish=m2lx" >> "$GITHUB_OUTPUT"
           elif [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
             echo "Publish nightly"
-            echo ::set-output name=publish::"nightly"
+            echo "publish=nightly" >> "$GITHUB_OUTPUT"
           else
             echo "Publish experimental"
-            echo ::set-output name=publish::"experimental"
+            echo "publish=experimental" >> "$GITHUB_OUTPUT"
           fi
       - name: Get the Prerelease tag
+        if: steps.do-publish.outputs.publish != 'm2lx'
         id: prerelease-tag
         uses: yuya-takeyama/docker-tag-from-github-ref-action@2b0614b1338c8f19dd9d3ea433ca9bc0cc7057ba
         with:
@@ -76,7 +103,7 @@ jobs:
         env:
           CI: true
       - name: Bump version and build
-        if: ${{ steps.do-publish.outputs.publish }}
+        if: steps.do-publish.outputs.publish && steps.do-publish.outputs.publish != 'm2lx'
         run: |
           git config --global user.email "jlem@tv2.dk"
           git config --global user.name "leerberg"
@@ -88,8 +115,51 @@ jobs:
           yarn release:bump-prerelease --no-changelog --no-commit-hooks --preid "$PRERELEASE_TAG-$COMMIT_DATE-$GIT_HASH" prerelease --yes
         env:
           CI: true
+      - name: Prepare M2L-X PoC packages
+        if: steps.do-publish.outputs.publish == 'm2lx'
+        run: |
+          yarn release:set-version "$POC_VERSION" --force-publish='*'
+          yarn lerna run tv2-rename
+        env:
+          CI: true
+      - name: Validate M2L-X PoC packages
+        if: steps.do-publish.outputs.publish == 'm2lx'
+        run: |
+          node - <<'NODE'
+          const assert = require('assert')
+          const fs = require('fs')
+          const types = require('./packages/timeline-state-resolver-types/package.json')
+          const runtime = require('./packages/timeline-state-resolver/package.json')
+          assert.strictEqual(types.name, '@tv2media/timeline-state-resolver-types')
+          assert.strictEqual(runtime.name, '@tv2media/timeline-state-resolver')
+          assert.strictEqual(types.version, process.env.POC_VERSION)
+          assert.strictEqual(runtime.version, process.env.POC_VERSION)
+          assert.strictEqual(
+            runtime.dependencies['timeline-state-resolver-types'],
+            `npm:@tv2media/timeline-state-resolver-types@${process.env.POC_VERSION}`
+          )
+          for (const file of [
+            'packages/timeline-state-resolver-types/dist/m2lx.js',
+            'packages/timeline-state-resolver-types/dist/m2lx.d.ts',
+            'packages/timeline-state-resolver/dist/integrations/m2lx/index.js'
+          ]) {
+            assert.ok(fs.existsSync(file), `Missing M2L-X build output: ${file}`)
+          }
+          NODE
+          npm pack ./packages/timeline-state-resolver-types --dry-run
+          npm pack ./packages/timeline-state-resolver --dry-run
+      - name: Publish M2L-X PoC to NPM
+        if: steps.do-publish.outputs.publish == 'm2lx'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/m2lx.npmrc
+        run: |
+          trap 'rm -f "$NPM_CONFIG_USERCONFIG"' EXIT
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$NPM_CONFIG_USERCONFIG"
+          npm publish ./packages/timeline-state-resolver-types --access public --tag m2lx --registry=https://registry.npmjs.org/
+          npm publish ./packages/timeline-state-resolver --access public --tag m2lx --registry=https://registry.npmjs.org/
       - name: Publish to NPM
-        if: ${{ steps.do-publish.outputs.publish }}
+        if: steps.do-publish.outputs.publish && steps.do-publish.outputs.publish != 'm2lx'
         run: |
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" >> ~/.npmrc
           yarn lerna publish from-package --tag-version-prefix='' --dist-tag ${{ steps.do-publish.outputs.publish }} --yes --no-verify-access
