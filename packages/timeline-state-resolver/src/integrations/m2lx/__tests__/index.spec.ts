@@ -51,7 +51,11 @@ class MockConnection extends EventEmitter<M2LXConnectionEvents> implements IM2LX
 		if (command.command === 'set_input_property') {
 			this.state = { ...this.state, [command.args.input_type]: command.args.property.value }
 		} else if (command.command === 'transition') {
-			this.state = { ...this.state, program: this.state.preview }
+			this.state = {
+				...this.state,
+				program: this.state.preview,
+				keyers: { ...this.state.keyers, program: { ...this.state.keyers.preview } },
+			}
 		} else if (command.command === 'set_key_property') {
 			const bus = command.args.target
 			const field = command.args.key_type === 'downstream' ? 'downstreamKeyers' : 'keyers'
@@ -172,6 +176,121 @@ describe('M2LXDevice', () => {
 	const mockTime = new MockTime()
 
 	beforeEach(() => mockTime.init())
+
+	test('converts and queues composition Takes, same-background layout changes and explicit cleanup', async () => {
+		const connection = new MockConnection()
+		connection.state.nodes = {
+			mixer: {
+				program: { upstream_keys: [{ key: { visible: false } }], downstream_keys: [] },
+				preview: { upstream_keys: [{ key: { visible: false } }], downstream_keys: [] },
+			},
+		}
+		const device = new M2LXDevice('m2lx0', { type: DeviceType.M2LX, connection }, mockTime.getCurrentTime2)
+		const errors: unknown[] = []
+		device.on('commandError', (...args) => errors.push(...args))
+		device.on('error', (...args) => errors.push(...args))
+		await device.init({ baseUrl: 'https://m2lx.test', password: 'password' })
+		const layout = (x: number) => ({
+			pip: {
+				0: {
+					visible: true,
+					source: { type: 'video', name: 'cam3' },
+					translation: { x, y: 308 },
+					scale: { x: 0.43, y: 0.43 },
+					crop: { x: 0, y: 0, width: 1, height: 1 },
+				},
+			},
+		})
+		const apply = (time: number, composition: unknown) =>
+			device.handleState(
+				{
+					time,
+					nextEvents: [],
+					layers: {
+						mixer: mixerObject('composition', { program: 'cam1', preview: 'cam2', composition }),
+						lookahead: mixerObject(
+							'future',
+							{ program: 'cam2', composition: layout(999) },
+							{
+								isLookahead: true,
+								lookaheadForLayer: 'mixer',
+							}
+						),
+					},
+				},
+				{ mixer: mixerMapping }
+			)
+		apply(11000, layout(108))
+		expect(() => serialize(device.queue)).not.toThrow()
+		await mockTime.advanceTimeToTicks(11100)
+		expect(connection.state.keyers.program[0]).toMatchObject({
+			visible: true,
+			source: 'cam3',
+			translation: { x: 108, y: 308 },
+		})
+		apply(12000, layout(200))
+		await mockTime.advanceTimeToTicks(12100)
+		expect(connection.state.keyers.program[0].translation).toEqual({ x: 200, y: 308 })
+		device.handleState(
+			{
+				time: 12500,
+				nextEvents: [],
+				layers: {
+					lookahead: mixerObject(
+						'preview-only',
+						{ program: 'cam3', composition: layout(999) },
+						{
+							isLookahead: true,
+							lookaheadForLayer: 'mixer',
+						}
+					),
+				},
+			},
+			{ mixer: mixerMapping }
+		)
+		await mockTime.advanceTimeToTicks(12600)
+		expect(connection.state.preview).toBe('cam3')
+		expect(connection.state.keyers.program[0].translation).toEqual({ x: 200, y: 308 })
+		expect(connection.commands.filter((command) => command.command === 'transition')).toHaveLength(2)
+		expect(() =>
+			device.handleState(
+				{
+					time: 12700,
+					nextEvents: [],
+					layers: { mixer: mixerObject('no-cleanup', { program: 'cam2' }) },
+				},
+				{ mixer: mixerMapping }
+			)
+		).toThrow('Keep all owned')
+		apply(13000, { pip: { 0: { visible: false } } })
+		await mockTime.advanceTimeToTicks(13100)
+		expect(connection.state.keyers.program[0].visible).toBe(false)
+		expect(connection.commands.filter((command) => command.command === 'transition')).toHaveLength(3)
+		expect(connection.state.preview).toBe('cam2')
+		expect(errors).toEqual([])
+		await device.terminate()
+	})
+
+	test('refuses competing ordinary mixer objects instead of discarding composition intent', async () => {
+		const connection = new MockConnection()
+		const device = new M2LXDevice('m2lx0', { type: DeviceType.M2LX, connection }, mockTime.getCurrentTime2)
+		await device.init({ baseUrl: 'https://m2lx.test', password: 'password' })
+		expect(() =>
+			device.handleState(
+				{
+					time: 11000,
+					nextEvents: [],
+					layers: {
+						mixer: mixerObject('program', { program: 'cam3', composition: { pip: {} } }),
+						second: mixerObject('preview', { preview: 'cam2' }),
+					},
+				},
+				{ mixer: mixerMapping, second: mixerMapping }
+			)
+		).toThrow('Multiple M2L-X mixer objects')
+		expect(connection.commands).toEqual([])
+		await device.terminate()
+	})
 
 	test('configured-event control requires successful activation even when initialization or recovery connects', async () => {
 		const connection = new MockConnection()

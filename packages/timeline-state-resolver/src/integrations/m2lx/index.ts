@@ -106,6 +106,15 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 		const previousStateTime = Math.max(this.getCurrentTime(), newState.time)
 		const oldState = this.getStateBefore(previousStateTime)?.state ?? this._stateFromObserved(mappings)
 		const nextState = this._convertTimelineState(newState, mappings)
+		if (oldState.mixer?.composition && nextState.mixer?.program === undefined && !nextState.mixer?.composition) {
+			// Ending content/Preview-only lookahead must neither release ownership nor retake an on-air layout.
+			nextState.mixer = {
+				...nextState.mixer,
+				program: oldState.mixer.program,
+				composition: oldState.mixer.composition,
+				timelineObjId: nextState.mixer?.timelineObjId ?? oldState.mixer.timelineObjId,
+			}
+		}
 		const target = nextState.mixer?.program
 		if (
 			target &&
@@ -374,9 +383,11 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 					lookaheadPreview = content.mixer.program ?? lookaheadPreview
 					continue
 				}
+				if (result.mixer) throw new Error('Multiple M2L-X mixer objects cannot control the same physical mixer')
 				result.mixer = {
 					program: content.mixer.program,
 					preview: content.mixer.preview,
+					composition: content.mixer.composition,
 					transition: content.mixer.transition?.type === M2LXTransitionType.EFFECT ? 'effect' : 'cut',
 					effect: content.mixer.transition?.effect,
 					timelineObjId: timelineObject.id,

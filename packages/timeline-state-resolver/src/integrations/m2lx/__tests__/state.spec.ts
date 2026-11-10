@@ -1,7 +1,191 @@
 import { createEmptyObservedState, M2LXObservedState } from '../protocol'
 import { diffM2LXStates, keyerStateId, M2LXKeyerState, M2LXState } from '../state'
+import { M2LXComposition } from 'timeline-state-resolver-types'
 
 describe('M2L-X state differ', () => {
+	describe('explicit composition Takes', () => {
+		const pip: M2LXComposition['pip'][0] = {
+			visible: true,
+			source: { type: 'video', name: 'cam2' },
+			translation: { x: 108, y: 308 },
+			scale: { x: 0.43, y: 0.43 },
+			crop: { x: 0, y: 0, width: 1, height: 1 },
+		}
+		const compositionState = (visible = true): M2LXState => ({
+			mixer: {
+				program: 'cam1',
+				preview: 'cam3',
+				composition: { pip: { 0: visible ? pip : { visible: false } } },
+				timelineObjId: 'layout',
+			},
+			keyers: {},
+		})
+		const prepared = (): M2LXObservedState => {
+			const key = {
+				...pip,
+				source: pip.source.name,
+				sourceType: pip.source.type,
+			}
+			return observed({
+				program: 'cam1',
+				preview: 'cam1',
+				keyers: { program: { 0: { visible: false } }, preview: { 0: key } },
+				nodes: {
+					mixer: {
+						program: {
+							upstream_keys: [{ key: { visible: false, opacity: 1 }, chroma_key: {} }],
+							downstream_keys: [{ key: { visible: true, source: 'still/logo.png' } }],
+						},
+						preview: {
+							upstream_keys: [
+								{
+									key: { ...pip, source: pip.source.name, source_type: 'video', opacity: 1 },
+									chroma_key: {},
+								},
+							],
+							downstream_keys: [{ key: { visible: true, source: 'still/logo.png' } }],
+						},
+					},
+				},
+			})
+		}
+
+		test.each(['cut', 'effect'] as const)('stages all PiP properties before same-background %s Take', (transition) => {
+			const next = compositionState()
+			if (next.mixer) next.mixer.transition = transition
+			const commands = diffM2LXStates(state('cam1', 'cam3'), next)
+			const takeIndex = commands.findIndex((entry) => entry.command.command === 'transition')
+			expect(takeIndex).toBe(7)
+			expect(commands.slice(0, takeIndex).map((entry) => entry.command.args)).toEqual([
+				{ key_index: 0, key_type: 'upstream', target: 'preview', property: { name: 'visible', value: false } },
+				{ key_index: 0, key_type: 'upstream', target: 'preview', property: { name: 'video', value: 'cam2' } },
+				{
+					key_index: 0,
+					key_type: 'upstream',
+					target: 'preview',
+					property: { name: 'translation', value: pip.translation },
+				},
+				{ key_index: 0, key_type: 'upstream', target: 'preview', property: { name: 'scale', value: pip.scale } },
+				{ key_index: 0, key_type: 'upstream', target: 'preview', property: { name: 'crop', value: pip.crop } },
+				{ key_index: 0, key_type: 'upstream', target: 'preview', property: { name: 'visible', value: true } },
+				{ input_type: 'preview', property: { name: 'video', value: 'cam1' } },
+			])
+			expect(commands[takeIndex].command.args).toEqual({ effect_enabled: transition === 'effect' })
+			const initial = prepared()
+			const take = commands[takeIndex]
+			expect(() => take.checkState?.(initial, initial)).not.toThrow()
+			expect(take.isRedundant?.(initial)).toBe(false)
+			expect(take.isComplete(initial)).toBe(false)
+			const running = { ...initial, transition: { running: true, progress: 0.5 } }
+			expect(take.isComplete(running)).toBe(false)
+			const done = { ...initial, keyers: { ...initial.keyers, program: initial.keyers.preview } }
+			expect(take.isComplete(done)).toBe(true)
+			expect(take.isRedundant?.(done)).toBe(true)
+			expect(commands[takeIndex + 1].command.args).toEqual({
+				input_type: 'preview',
+				property: { name: 'video', value: 'cam3' },
+			})
+		})
+
+		test('takes changed layout and hidden cleanup, but does not replay unchanged layout', () => {
+			const old = compositionState()
+			expect(diffM2LXStates(old, compositionState())).toEqual([])
+			const changed = compositionState()
+			if (changed.mixer?.composition) {
+				changed.mixer.composition.pip[0] = { ...pip, scale: { x: 0.35, y: 0.35 } }
+			}
+			expect(diffM2LXStates(old, changed).some((entry) => entry.command.command === 'transition')).toBe(true)
+			const cleanup = diffM2LXStates(old, compositionState(false))
+			expect(cleanup.map((entry) => entry.command.command)).toEqual([
+				'set_key_property',
+				'set_input_property',
+				'transition',
+				'set_input_property',
+			])
+			const cleared = observed({ program: 'cam1', keyers: { program: { 0: { visible: false } }, preview: {} } })
+			expect(cleanup[2].isComplete(cleared)).toBe(true)
+			expect(() => diffM2LXStates(old, state('cam2'))).toThrow('Keep all owned')
+			expect(diffM2LXStates(old, { keyers: {} })).toEqual([])
+		})
+
+		test('refuses competing keyer control and missing Program', () => {
+			const next = compositionState()
+			next.keyers['preview/0'] = { index: 0, keyerType: 'pip', bus: 'preview', visible: false, timelineObjId: '' }
+			expect(() => diffM2LXStates(state('cam1'), next)).toThrow('KEYER mapping')
+			next.keyers = {}
+			if (next.mixer) next.mixer.program = undefined
+			expect(() => diffM2LXStates(state('cam1'), next)).toThrow('explicit Program')
+		})
+
+		test.each([
+			{ values: { 4: pip }, error: 'Invalid M2L-X composition PiP' },
+			{ values: { 0: { visible: true } }, error: 'require a video source' },
+			{ values: { 0: { ...pip, translation: { x: 1 } } }, error: 'translation.y must be finite' },
+			{ values: { 0: { ...pip, scale: { x: 0, y: 1 } } }, error: 'scale must be greater than zero' },
+			{ values: { 0: { ...pip, rotation: 1 } }, error: 'Unsupported M2L-X composition PiP' },
+		])('rejects invalid native composition input: $error', ({ values, error }) => {
+			const next = compositionState()
+			if (next.mixer?.composition) Object.assign(next.mixer.composition.pip, values)
+			expect(() => diffM2LXStates(state('cam1'), next)).toThrow(error)
+		})
+
+		test('refuses incomplete preparation, unowned DSK changes and unspecified PiP property changes', () => {
+			const take = diffM2LXStates(state('cam1'), compositionState()).find(
+				(entry) => entry.command.command === 'transition'
+			)
+			const check = (current: M2LXObservedState) => take?.checkState?.(current, current)
+			const incomplete = prepared()
+			incomplete.keyers.preview[0].scale = { x: 1, y: 1 }
+			expect(() => check(incomplete)).toThrow('Preview composition is not ready')
+			const missing = prepared()
+			missing.nodes = undefined
+			expect(() => check(missing)).toThrow('complete native mixer/keyer status')
+			const stateWithRaw = (programKey: Record<string, unknown>, previewKey: Record<string, unknown>) => ({
+				...prepared(),
+				nodes: {
+					mixer: {
+						program: { upstream_keys: [{ key: programKey }], downstream_keys: [] },
+						preview: { upstream_keys: [{ key: previewKey }], downstream_keys: [] },
+					},
+				},
+			})
+			expect(() => check(stateWithRaw({ opacity: 1 }, { opacity: 0 }))).toThrow('unowned keyers')
+			expect(() => check(stateWithRaw({ rotation: 0 }, { rotation: 1 }))).toThrow('unowned keyers')
+			const deltaRepresentation = {
+				...prepared(),
+				nodes: {
+					mixer: {
+						program: { upstream_keys: [{ key: { opacity: 1 } }], downstream_keys: [{ key: { visible: false } }] },
+						preview: {
+							upstream_keys: { 0: { key: { opacity: 1 } } },
+							downstream_keys: { 0: { key: { visible: false } } },
+						},
+					},
+				},
+			}
+			expect(() => check(deltaRepresentation)).not.toThrow()
+			const unowned = prepared()
+			const mixer = unowned.nodes?.mixer as { preview: { downstream_keys: unknown[] } }
+			mixer.preview.downstream_keys = []
+			expect(() => check(unowned)).toThrow('unowned keyers')
+		})
+
+		test.each(['cut', 'effect'] as const)('checks native auto-play for controlled PiP players on %s', (transition) => {
+			const next = compositionState()
+			if (next.mixer) next.mixer.transition = transition
+			next.players = { cam2: { timelineObjId: 'controlled-player' } }
+			const take = diffM2LXStates(state('cam1'), next).find((entry) => entry.command.command === 'transition')
+			const current = prepared()
+			expect(() => take?.checkState?.(current, current)).toThrow('Disable native')
+			current.transition = {
+				running: false,
+				progress: 1,
+				effect: { name: 'crossfade', duration: 1, autoPlayEnabled: false },
+			}
+			expect(() => take?.checkState?.(current, current)).not.toThrow()
+		})
+	})
+
 	test('cuts directly to a new program source', () => {
 		const commands = diffM2LXStates(state('cam1', 'cam2'), state('cam3', 'cam2', 'cut'))
 

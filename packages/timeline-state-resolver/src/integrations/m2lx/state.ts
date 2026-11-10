@@ -1,7 +1,9 @@
 import type { M2LXSendOptions } from './connection'
+import { isDeepStrictEqual } from 'util'
 import {
 	isM2LXEffectName,
 	M2LXAudio,
+	M2LXComposition,
 	M2LXEffect,
 	M2LXKeyerVisibility,
 	M2LXMediaPlayer,
@@ -34,6 +36,7 @@ export interface M2LXState {
 		transition?: 'cut' | 'effect'
 		/** Retain unknown observed names; requested names are validated before diffing effect configuration. */
 		effect?: Omit<M2LXEffect, 'name'> & { name?: string }
+		composition?: M2LXComposition
 		timelineObjId: string
 	}
 	/** Keyed by `${bus}/${index}`, see {@link keyerStateId}. */
@@ -68,7 +71,7 @@ const noTransitionRunning = (state: M2LXObservedState): boolean => state.transit
 export function assertNativeTransitionAutoPlayDisabled(state: M2LXObservedState): void {
 	if (state.transition?.effect?.autoPlayEnabled !== false) {
 		throw new Error(
-			'Disable native M2L-X transition auto-play before using effects with timeline-controlled media players'
+			'Disable native M2L-X transition auto-play before using native Takes with timeline-controlled media players'
 		)
 	}
 }
@@ -114,8 +117,52 @@ export function diffM2LXStates(oldState: M2LXState, newState: M2LXState): M2LXCo
 	}
 	const oldMixer = oldState.mixer
 	const newMixer = newState.mixer
+	const composition = newMixer?.composition
+	if (composition && (!composition.pip || typeof composition.pip !== 'object' || Array.isArray(composition.pip))) {
+		throw new Error('M2L-X composition requires a PiP index table')
+	}
+	if (newMixer?.program !== undefined && oldMixer?.composition) {
+		const previousIndices = Object.keys(oldMixer.composition.pip).sort()
+		if (!composition || !isDeepStrictEqual(previousIndices, Object.keys(composition.pip).sort())) {
+			throw new Error('Keep all owned M2L-X composition PiP indices explicit until standDown; hide them to clear')
+		}
+	}
+	const compositionTake =
+		composition !== undefined &&
+		(newMixer?.program !== oldMixer?.program || !isDeepStrictEqual(composition, oldMixer?.composition))
 
 	if (newMixer) {
+		if (composition) {
+			if (!newMixer.program) throw new Error('M2L-X composition requires an explicit Program source')
+			for (const [index, pip] of Object.entries(composition.pip)) {
+				if (!/^[0-3]$/.test(index) || !pip || typeof pip.visible !== 'boolean') {
+					throw new Error(`Invalid M2L-X composition PiP ${index}`)
+				}
+				const fields = pip.visible ? ['visible', 'source', 'translation', 'scale', 'crop'] : ['visible']
+				if (Object.keys(pip).some((name) => !fields.includes(name))) {
+					throw new Error(`Unsupported M2L-X composition PiP ${index} property`)
+				}
+				if (
+					pip.visible &&
+					(!pip.source?.name || pip.source.type !== 'video' || !pip.translation || !pip.scale || !pip.crop)
+				) {
+					throw new Error('Visible M2L-X composition PiPs require a video source, translation, scale and crop')
+				}
+				if (pip.visible) {
+					for (const name of ['translation', 'scale', 'crop'] as const) {
+						assertFinite(pip[name].x, `${name}.x`)
+						assertFinite(pip[name].y, `${name}.y`)
+					}
+					assertFinite(pip.crop.width, 'crop.width')
+					assertFinite(pip.crop.height, 'crop.height')
+				}
+				for (const bus of ['program', 'preview'] as const) {
+					if (newState.keyers[keyerStateId(bus, Number(index))]) {
+						throw new Error(`M2L-X composition PiP ${index} cannot also be controlled by a KEYER mapping`)
+					}
+				}
+			}
+		}
 		const effectName = newMixer.effect?.name
 		if (effectName !== undefined && !isM2LXEffectName(effectName)) {
 			throw new Error(`Unsupported M2L-X effect name: ${effectName}`)
@@ -150,8 +197,48 @@ export function diffM2LXStates(oldState: M2LXState, newState: M2LXState): M2LXCo
 		}
 		const target = newMixer.program
 		const programChanged = target !== undefined && target !== oldMixer?.program
-		const useEffect = programChanged && newMixer.transition === 'effect' && oldMixer?.program !== undefined
-		if (target !== undefined && target !== oldMixer?.program) {
+		const useEffect =
+			newMixer.transition === 'effect' && (compositionTake || (programChanged && oldMixer?.program !== undefined))
+		if (composition && compositionTake && target !== undefined) {
+			const staged: M2LXState['keyers'] = {}
+			for (const [index, pip] of Object.entries(composition.pip)) {
+				if (!pip) continue
+				staged[keyerStateId('preview', Number(index))] = {
+					...pip,
+					index: Number(index),
+					keyerType: 'pip',
+					bus: 'preview',
+					timelineObjId: newMixer.timelineObjId,
+				}
+			}
+			const preparation = diffKeyers({}, staged)
+			preparation.push(setInput('preview', target, newMixer.timelineObjId, !!newState.players?.[target]))
+			const controlsPlayer =
+				!!newState.players?.[target] ||
+				Object.values(composition.pip).some((pip) => pip?.visible && newState.players?.[pip.source.name])
+			if (controlsPlayer) preparation[0].checkState = assertNativeTransitionAutoPlayDisabled
+			commands.push(...preparation)
+			const programMatches = (state: M2LXObservedState) =>
+				noTransitionRunning(state) &&
+				state.program === target &&
+				Object.values(staged).every((key) => keyerMatches(state, { ...key, bus: 'program' }))
+			commands.push({
+				command: createTransitionCommand(useEffect),
+				context: `take prepared PiP composition to ${target}`,
+				timelineObjId: newMixer.timelineObjId,
+				waitFor: noTransitionRunning,
+				isRedundant: programMatches,
+				isComplete: programMatches,
+				checkState: (state, initial) => {
+					if (state !== initial) return
+					assertCompositionPreservesUnownedState(state, composition)
+					if (state.preview !== target || !Object.values(staged).every((key) => keyerMatches(state, key))) {
+						throw new Error('M2L-X Preview composition is not ready for Take')
+					}
+					if (controlsPlayer) assertNativeTransitionAutoPlayDisabled(state)
+				},
+			})
+		} else if (target !== undefined && programChanged) {
 			if (useEffect) {
 				commands.push(setInput('preview', target, newMixer.timelineObjId, !!newState.players?.[target]))
 				commands.push({
@@ -171,8 +258,8 @@ export function diffM2LXStates(oldState: M2LXState, newState: M2LXState): M2LXCo
 
 		if (
 			newMixer.preview !== undefined &&
-			(newMixer.preview !== oldMixer?.preview || useEffect) &&
-			!(useEffect && newMixer.preview === newMixer.program)
+			(newMixer.preview !== oldMixer?.preview || useEffect || compositionTake) &&
+			!(useEffect && !composition && newMixer.preview === newMixer.program)
 		) {
 			const restore = setInput(
 				'preview',
@@ -186,16 +273,83 @@ export function diffM2LXStates(oldState: M2LXState, newState: M2LXState): M2LXCo
 		}
 	}
 
-	// On-air (program) keyers first, then preview, each in index order
+	commands.push(...diffKeyers(oldState.keyers, newState.keyers))
+	return commands
+}
+
+function keyerMatches(state: M2LXObservedState, keyer: M2LXKeyerState): boolean {
+	const { source, visible, translation, scale, crop } = keyer
+	const actual = observedKeyer(state, keyer)
+	return (
+		actual?.visible === visible &&
+		(!visible ||
+			(source !== undefined &&
+				actual.source === source.name &&
+				actual.sourceType === source.type &&
+				matchesM2LXValue(actual.translation, translation) &&
+				matchesM2LXValue(actual.scale, scale) &&
+				matchesM2LXValue(actual.crop, crop)))
+	)
+}
+
+function assertCompositionPreservesUnownedState(state: M2LXObservedState, composition: M2LXComposition): void {
+	const record = (value: unknown): Record<string, unknown> => {
+		if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+			throw new Error('M2L-X composition Take requires complete native mixer/keyer status')
+		}
+		return value as Record<string, unknown>
+	}
+	const mixer = record(state.nodes?.mixer)
+	const controlled = new Set(['source', 'source_type', 'source_properties', 'visible', 'translation', 'scale', 'crop'])
+	const protectedBus = (bus: 'program' | 'preview') => {
+		const nativeBus = record(mixer[bus])
+		const upstream = nativeBus.upstream_keys
+		if (typeof upstream !== 'object' || upstream === null) {
+			throw new Error('M2L-X composition Take requires native upstream-keyer status')
+		}
+		const keys = Object.fromEntries(
+			Object.entries(upstream).map(([index, value]) => {
+				if (!Object.prototype.hasOwnProperty.call(composition.pip, index)) return [index, value]
+				const entry = record(value)
+				const key = record(entry.key)
+				return [
+					index,
+					{ ...entry, key: Object.fromEntries(Object.entries(key).filter(([name]) => !controlled.has(name))) },
+				]
+			})
+		)
+		for (const index of Object.keys(composition.pip)) {
+			if (!state.keyers[bus][Number(index)] || !Object.prototype.hasOwnProperty.call(keys, index)) {
+				throw new Error(`Missing M2L-X ${bus} composition PiP ${index} status`)
+			}
+		}
+		if (nativeBus.downstream_keys === undefined) {
+			throw new Error('M2L-X composition Take requires native downstream-keyer status')
+		}
+		return { upstream: keys, downstream: nativeBus.downstream_keys }
+	}
+	// Leaf deltas convert native arrays to index-keyed objects; compare their contents, not representation.
+	const normalize = (value: unknown): unknown =>
+		value !== null && typeof value === 'object'
+			? Object.fromEntries(Object.entries(value).map(([name, child]) => [name, normalize(child)]))
+			: value
+	if (!isDeepStrictEqual(normalize(protectedBus('program')), normalize(protectedBus('preview')))) {
+		throw new Error('M2L-X composition Take would change unowned keyers or unspecified native PiP properties')
+	}
+}
+
+function diffKeyers(oldKeys: M2LXState['keyers'], newKeys: M2LXState['keyers']): M2LXCommandWithContext[] {
+	const commands: M2LXCommandWithContext[] = []
+	// On-air (program) keyers first, then preview, each in index order.
 	const busOrder = { program: 0, preview: 1 }
-	const sortedKeys = Object.values(newState.keyers).sort(
+	const sortedKeys = Object.values(newKeys).sort(
 		(a, b) =>
 			busOrder[a.bus] - busOrder[b.bus] ||
 			Number(a.keyerType === 'dsk') - Number(b.keyerType === 'dsk') ||
 			a.index - b.index
 	)
 	for (const newKey of sortedKeys) {
-		const oldKey = oldState.keyers[keyerStateId(newKey.bus, newKey.index, newKey.keyerType === 'dsk')]
+		const oldKey = oldKeys[keyerStateId(newKey.bus, newKey.index, newKey.keyerType === 'dsk')]
 		const sourceChanged = newKey.source !== undefined && !matchesM2LXValue(oldKey?.source, newKey.source)
 		if (
 			newKey.source &&

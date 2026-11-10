@@ -122,7 +122,7 @@ export enum TimelineContentTypeM2LX {
 }
 
 export enum M2LXTransitionType {
-	/** Switch program directly. Preview is left untouched. */
+	/** Switch Program directly, or perform a native instant Take when mixer.composition is supplied. */
 	CUT = 'cut',
 	/**
 	 * Run the transition effect currently configured on the device. The new program source is prepared on preview first.
@@ -168,12 +168,35 @@ export interface M2LXMixer {
 	program?: M2LXSourceName
 	preview?: M2LXSourceName
 	/**
-	 * How a change of `program` is performed. Defaults to a cut.
+	 * Explicit Program PiP composition, staged on Preview before a native CUT/EFFECT Take.
+	 * Requires program. Include every owned index on every shot (visible:false to clear);
+	 * do not also map these PiPs with KEYER mappings on either bus.
+	 * Unowned keyers and unspecified native properties must match between buses before Take.
+	 */
+	composition?: M2LXComposition
+	/**
+	 * How a change of `program` or its explicit `composition` is performed. Defaults to a cut.
 	 * Source changes (including cuts and preview/lookahead updates) wait for an active effect to finish.
 	 * Manual transition progress is intentionally not part of the timeline contract.
 	 */
 	transition?: M2LXTransition
 }
+
+export interface M2LXComposition {
+	/** Native PiPs owned on both buses. Keep the same indices until standDown/reconnection. */
+	pip: Partial<Record<M2LXPipKeyerIndex, M2LXCompositionPip>>
+}
+
+/** Visible PiPs require complete tested geometry; hidden PiPs do not control their source/geometry. */
+export type M2LXCompositionPip =
+	| { visible: false }
+	| {
+			visible: true
+			source: { type: 'video'; name: M2LXSourceName }
+			translation: M2LXTranslation
+			scale: M2LXScale
+			crop: M2LXCrop
+	  }
 
 export interface M2LXKeyerVisibility {
 	visible: boolean

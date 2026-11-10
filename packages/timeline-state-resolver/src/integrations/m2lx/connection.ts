@@ -253,7 +253,11 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 		options.checkState?.(initial, initial)
 		if (isRedundant(this._state)) return
 
-		const timeout = this._options.commandTimeout ?? DEFAULT_COMMAND_TIMEOUT
+		const timeout =
+			(this._options.commandTimeout ?? DEFAULT_COMMAND_TIMEOUT) +
+			(command.command === 'transition' && command.args.effect_enabled
+				? Math.ceil((this._state.transition?.effect?.duration ?? 0) * 1000)
+				: 0)
 		await new Promise<void>((resolve, reject) => {
 			let acknowledged = false
 			const onStateChanged = (state: M2LXObservedState) => {

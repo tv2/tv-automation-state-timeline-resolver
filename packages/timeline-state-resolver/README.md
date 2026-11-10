@@ -47,7 +47,7 @@ All content uses `deviceType: DeviceType.M2LX`. Each mapping also needs
 
 | Mapping/content type | Mapping target | Content |
 |---|---|---|
-| `MIXER` | The single `mixer` node | `mixer: { program?, preview?, transition?: { type, effect?: { name?, duration?, args?: { fade? } } } }` |
+| `MIXER` | The single `mixer` node | `mixer: { program?, preview?, composition?: { pip }, transition?: { type, effect?: { name?, duration?, args?: { fade? } } } }` |
 | `KEYER` | `bus` and `keyer: { type, index }` | `keyer: { visible, source?, translation?, scale?, rotation?, crop?, border? }` |
 | `AUDIO` | `node` (default `audio_mixer`) and full `input`, e.g. `vtr3.1` | `audio: { volume?, muted? }` |
 | `MEDIA_PLAYER` | Configured `player` node, e.g. `vtr3` | `mediaPlayer: { assetId?, playing?, loop?, seek? }` |
@@ -62,6 +62,62 @@ Only explicitly mapped keyers are managed; mapped keyers default to hidden when 
 timeline content ends. Other controls leave the current hardware setting unchanged
 when their content ends. Stop/unload players explicitly where required.
 Lookahead prepares mixer Preview only; it does not preload players or change audio/routes.
+
+#### Coordinated PiP composition Takes
+
+Source-only CUT remains a direct Program source setter, **not** a composition Take.
+For native split-screen playout, use one mixer object carrying an explicit Program
+source and `M2LXComposition`. For example, inside its `mixer`:
+
+```ts
+{
+  program: 'ndi3',
+  preview: 'ndi4',
+  transition: { type: M2LXTransitionType.CUT },
+  composition: {
+    pip: {
+      0: {
+        visible: true,
+        source: { type: 'video', name: 'ndi1' },
+        translation: { x: 108, y: 308 },
+        scale: { x: 0.43, y: 0.43 },
+        crop: { x: 0, y: 0, width: 1, height: 1 },
+      },
+      1: { visible: false },
+    },
+  },
+}
+```
+
+TSR stages all requested PiP source/geometry/visibility on Preview before issuing
+native `transition {effect_enabled:false}` (CUT) or `true` (EFFECT). Layout changes
+trigger a Take even when the background source is unchanged. The command completes
+only once the effect is idle and Program reports the requested source and complete
+visible PiP state. EFFECT completion allows the configured duration in addition to
+the command timeout. An explicit Preview background is restored afterward; owned
+Preview PiPs remain staged. An already matching Program composition needs no Take.
+
+The composition owns each listed PiP on **both** buses. Keep the same indices on
+every shot, including ordinary full-screen shots: use `{visible:false}` for each
+owned PiP to clear the split screen with a native Take. Do not remove ownership or
+combine these indices with KEYER mappings. Ending mixer content leaves hardware
+unchanged; it is not an implicit cleanup. Multiple ordinary mixer objects are
+rejected rather than merged; lookahead never stages or takes a composition.
+
+Because native Take transfers more than the explicitly controlled PiP fields,
+TSR requires complete native mixer status and refuses a Take unless all unowned
+keyers (including stills/DSKs) and unspecified native PiP properties match between
+Program and Preview. It does not silently copy or rewrite those resources. Prepare
+their matching configuration at an appropriate installation/operational boundary.
+Composition controls currently cover video PiP visibility, source, pixel translation,
+unitless scale and normalized crop. Rotation, border, opacity, chroma and other
+native properties are not composition controls and must already match between buses.
+Controlled native media players used in the background or visible PiPs require
+transition auto-play disabled for both CUT and EFFECT composition Takes.
+
+Native CUT/EFFECT transfer of two PiPs was verified from device status, with original
+state restored after testing. This is not rendered-picture, alpha, clean-feed or
+end-to-end deployed Sofie acceptance.
 
 Keyer sources use `{ type: 'video', name: 'ndi1' }` for PiP and
 `{ type: 'image', name: 'still/demo.png' }` for still keyers. DSKs accept either.

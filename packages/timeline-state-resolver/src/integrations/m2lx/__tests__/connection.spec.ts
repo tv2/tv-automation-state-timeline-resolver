@@ -366,14 +366,16 @@ class FakeM2LX {
 	/** Like the real device: program takes whatever is on preview at the end of the transition. */
 	private _finishTransition(): void {
 		this.program = this.preview
+		this.keyers.program = JSON.parse(JSON.stringify(this.keyers.preview))
 		this.completedPrograms.push(this.program)
-		this._broadcast('/program/background', { source: this.program, source_type: 'video' })
+		this.broadcastSnapshot()
 	}
 
 	private _mixerState() {
 		const bus = (name: 'program' | 'preview') => ({
 			background: { source: this[name], source_type: 'video' },
 			upstream_keys: this.keyers[name].map((key) => ({ chroma_key: {}, key })),
+			downstream_keys: [],
 		})
 		return {
 			program: bus('program'),
@@ -410,6 +412,64 @@ describe('M2LXConnection', () => {
 		await device.close()
 		jest.restoreAllMocks()
 	})
+
+	test.each(['cut', 'effect'] as const)(
+		'takes and clears native PiPs on the same background using %s',
+		async (transition) => {
+			device.effectDuration = 150
+			device.keyers.preview = JSON.parse(JSON.stringify(device.keyers.program))
+			connection = new M2LXConnection({ baseUrl, password: 'secret', commandTimeout: 100 })
+			await connection.connect()
+			const before: M2LXState = {
+				mixer: { program: 'vtr1', preview: 'replay1', timelineObjId: 'before' },
+				keyers: {},
+			}
+			const next: M2LXState = {
+				mixer: {
+					program: 'vtr1',
+					preview: 'replay1',
+					transition,
+					composition: {
+						pip: {
+							0: {
+								visible: true,
+								source: { type: 'video', name: 'ndi2' },
+								translation: { x: 108, y: 308 },
+								scale: { x: 0.43, y: 0.43 },
+								crop: { x: 0, y: 0, width: 1, height: 1 },
+							},
+						},
+					},
+					timelineObjId: 'layout',
+				},
+				keyers: {},
+			}
+			for (const command of diffM2LXStates(before, next)) await connection.sendCommand(command.command, command)
+			expect(connection.state).toMatchObject({
+				program: 'vtr1',
+				preview: 'replay1',
+				keyers: {
+					program: {
+						0: { visible: true, source: 'ndi2', translation: { x: 108, y: 308 }, scale: { x: 0.43, y: 0.43 } },
+					},
+				},
+			})
+			expect(device.running).toBe(false)
+			expect(device.changesDuringTransition).toEqual([])
+			expect(diffM2LXStates(next, next)).toEqual([])
+			const cleanup: M2LXState = {
+				...next,
+				mixer: { ...next.mixer, timelineObjId: 'clear', composition: { pip: { 0: { visible: false } } } },
+			}
+			for (const command of diffM2LXStates(next, cleanup)) await connection.sendCommand(command.command, command)
+			expect(connection.state.keyers.program[0].visible).toBe(false)
+			expect(connection.state.preview).toBe('replay1')
+			expect(device.received.filter((command) => command.command === 'transition')).toHaveLength(2)
+			expect(
+				device.received.filter((command) => command.command === 'set_key_property' && command.args.target === 'program')
+			).toEqual([])
+		}
+	)
 
 	describe('configured event lifecycle', () => {
 		const selectedId = 'selected/event ?'
