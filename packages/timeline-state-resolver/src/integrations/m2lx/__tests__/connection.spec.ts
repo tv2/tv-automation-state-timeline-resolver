@@ -999,20 +999,34 @@ describe('M2LXConnection', () => {
 		expect(device.signIns).toBe(2)
 	})
 
-	test('publishes expiry status without renewing the connection', async () => {
+	test.each([false, true])('publishes expiry status once despite early timers (manual renewal: %s)', async (renew) => {
+		const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.now())
+		const timers = jest.spyOn(global, 'setTimeout')
 		device.tokenLifetime = 0.5
 		connection = new M2LXConnection({ baseUrl, password: 'secret' })
 		const notice = jest.fn()
 		connection.on('authenticationChanged', notice)
-		const expired = new Promise<void>((resolve) => {
-			connection.on('authenticationChanged', () => {
-				if (connection.tokenExpiresAt! <= Date.now()) resolve()
-			})
-		})
+		const fireStatusTimer = (remaining: number) => {
+			const index = timers.mock.calls.length - 1
+			const [callback] = timers.mock.calls[index]
+			clearTimeout(timers.mock.results[index].value)
+			clock.mockReturnValue(connection.tokenExpiresAt! - remaining)
+			callback()
+		}
 		await connection.connect()
-		await expired
-		expect(notice).toHaveBeenCalledTimes(2)
-		expect(device.signIns).toBe(1)
+		expect(notice).toHaveBeenCalledTimes(1)
+		expect(timers).toHaveBeenLastCalledWith(expect.any(Function), 500)
+		fireStatusTimer(1)
+		expect(notice).toHaveBeenCalledTimes(1)
+		if (renew) {
+			await connection.ensureFreshAuthentication(true)
+		}
+		expect(notice).toHaveBeenCalledTimes(renew ? 2 : 1)
+		fireStatusTimer(1)
+		expect(notice).toHaveBeenCalledTimes(renew ? 2 : 1)
+		fireStatusTimer(0)
+		expect(notice).toHaveBeenCalledTimes(renew ? 3 : 2)
+		expect(device.signIns).toBe(renew ? 2 : 1)
 		expect(connection.connected).toBe(true)
 	})
 

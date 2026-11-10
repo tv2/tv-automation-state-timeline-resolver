@@ -113,6 +113,7 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 	private _tokenExpiresAt?: number
 	private _connectionGeneration = 0
 	private _authenticationStatusTimer?: NodeJS.Timeout
+	private _authenticationStatus?: 'expiring' | 'expired'
 	/** Controller replies carry no request id, so they are matched to sent commands in order. */
 	private _pendingReplies: Array<(reply: M2LXControllerReply) => void> = []
 	/** Commands and connection readiness waits; aborted when the sockets go away. */
@@ -609,7 +610,11 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 	private _scheduleAuthenticationStatus(): void {
 		if (!this._connected || this._tokenExpiresAt === undefined) return
 		const remaining = this._tokenExpiresAt - Date.now()
-		if (remaining <= M2LX_AUTH_RENEWAL_MARGIN) this.emit('authenticationChanged')
+		const status = remaining <= 0 ? 'expired' : remaining <= M2LX_AUTH_RENEWAL_MARGIN ? 'expiring' : undefined
+		if (status !== this._authenticationStatus) {
+			this._authenticationStatus = status
+			if (status !== undefined) this.emit('authenticationChanged')
+		}
 		if (remaining <= 0) return
 		const delay = remaining > M2LX_AUTH_RENEWAL_MARGIN ? remaining - M2LX_AUTH_RENEWAL_MARGIN : remaining
 		// These timers only publish status; they must never recycle a production connection.
@@ -791,6 +796,7 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 		this._connectionGeneration++
 		if (this._authenticationStatusTimer) clearTimeout(this._authenticationStatusTimer)
 		this._authenticationStatusTimer = undefined
+		this._authenticationStatus = undefined
 		const sockets = [this._controller, this._status]
 		this._controller = undefined
 		this._status = undefined
