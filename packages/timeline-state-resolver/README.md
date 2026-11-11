@@ -9,6 +9,7 @@ Using the input, it resolves the expected state, diffs the state against current
 ## Supported devices
 * **[CasparCG](http://casparcg.com/)** - using the [casparcg-connection](https://github.com/SuperFlyTV/casparcg-connection) library
 * **Blackmagic Design ATEM** vision mixers - using the [atem-connection](https://github.com/nrkno/tv-automation-atem-connection) library
+* **Sony M2L-X** switchers - program/preview, configurable effects, upstream/downstream keyers and geometry, basic input audio, native media players, and input routing
 * **Blackmagic Design Hyperdeck** record/playback devices - using the [hyperdeck-connection](https://github.com/nrkno/tv-automation-hyperdeck-connection) library
 * **Lawo** audio mixers - using the [emberplus](https://github.com/nrkno/tv-automation-emberplus-connection) library
 * **Panasoniz PTZ** cameras
@@ -23,6 +24,286 @@ Using the input, it resolves the expected state, diffs the state against current
 
 
 ## Development
+
+### Sony M2L-X transition safety
+
+EFFECT transitions use the effect configured on the device by default. Optional
+`mixer.transition.effect` settings (name, duration in seconds, and `args.fade`) are
+applied before preparing Preview and starting the effect. `name` uses `M2LXEffectName`:
+`cut`, `crossfade`, `wipe_down`, `wipe_up`, `wipe_right`, `wipe_left`, `wipe_up_right`,
+or `wipe_down_left`, as exposed by the native GUI. Its `MIX` option is `crossfade`,
+not `mix`. Unsupported requested names are rejected; omitting the name leaves the
+configured effect name unchanged. While an effect is running,
+source changes on both buses (including cuts, lookahead updates and preparation for the
+next effect) and preview-keyer visibility changes wait for it to finish. A new Take does
+not interrupt the active effect. Preview restoration additionally waits for program to
+reach the requested source. If the wait exceeds the configured effect duration plus
+the command timeout, the command fails without being sent.
+
+### Sony M2L-X timeline controls
+
+All content uses `deviceType: DeviceType.M2LX`. Each mapping also needs
+`device: DeviceType.M2LX` and the device's `deviceId`.
+
+| Mapping/content type | Mapping target | Content |
+|---|---|---|
+| `MIXER` | The single `mixer` node | `mixer: { program?, preview?, composition?: { pip, dsk? }, transition?: { type, effect?: { name?, duration?, args?: { fade? } } } }` |
+| `KEYER` | `bus` and `keyer: { type, index }` | `keyer: { visible, source?, translation?, scale?, rotation?, crop?, border? }` |
+| `AUDIO` | `node` (default `audio_mixer`) and full `input`, e.g. `vtr3.1` | `audio: { volume?, muted? }` |
+| `MEDIA_PLAYER` | Configured `player` node, e.g. `vtr3` | `mediaPlayer: { assetId?, playing?, loop?, seek? }` |
+| `ROUTER` | `node` (default `router`) and configured `output` | `input: 'ndi2'` |
+
+Mapping types come from `MappingM2LXType`; content types from `TimelineContentTypeM2LX`.
+Keyer mappings use `M2LXMixerBus.PROGRAM`/`PREVIEW` and `M2LXKeyerType.PIP` (indices 0..3),
+`STILL` (4..7), or `DSK` (0..1). They are independent per bus and keyer family.
+The mapping/content enum value is `'keyer'`. Sony's native requests still use
+`set_key_property`, `key_index`, and `key_type`.
+Only explicitly mapped keyers are managed; mapped keyers default to hidden when their
+timeline content ends. Other controls leave the current hardware setting unchanged
+when their content ends. Stop/unload players explicitly where required.
+Lookahead prepares mixer Preview only; it does not preload players or change audio/routes.
+
+#### Coordinated PiP/DSK composition Takes
+
+Source-only CUT remains a direct Program source setter, **not** a composition Take.
+For native split-screen playout, use one mixer object carrying an explicit Program
+source and `M2LXComposition`. For example, inside its `mixer`:
+
+```ts
+{
+  program: 'ndi3',
+  preview: 'ndi4',
+  transition: { type: M2LXTransitionType.CUT },
+  composition: {
+    pip: {
+      0: {
+        visible: true,
+        source: { type: 'video', name: 'ndi1' },
+        translation: { x: 108, y: 308 },
+        scale: { x: 0.43, y: 0.43 },
+        crop: { x: 0, y: 0, width: 1, height: 1 },
+      },
+      1: { visible: false },
+    },
+  },
+}
+```
+
+TSR stages all requested PiP source/geometry/visibility on Preview before issuing
+native `transition {effect_enabled:false}` (CUT) or `true` (EFFECT). PiP layout changes
+trigger a Take even when the background source is unchanged. The video command completes
+only once the effect is idle and Program reports the requested source and complete
+visible PiP state. Program DSK source/geometry/on/off changes are separate keyer commands,
+issued after successful video completion and before preparing the following Next.
+DSK-only changes do not trigger a main transition. EFFECT completion allows the
+configured duration in addition to the command timeout. An explicit Preview background is restored afterward; owned
+Preview PiPs remain staged unless Next supplies another composition. An already
+matching Program composition needs no Take.
+
+The composition owns each listed PiP and optional DSK on **both** buses. Keep the same indices on
+every shot, including ordinary full-screen shots: use `{visible:false}` for each
+owned PiP/DSK to clear it: PiPs through native Take, DSKs through explicit commands. Ownership is stable until
+standDown/reconnection, including after a command failure. Do not remove ownership or
+combine these indices with independent KEYER timeline intents. A DSK allocation-only
+KEYER mapping is allowed; its implicit hidden default does not compete with composition.
+PiP KEYER mappings remain disallowed for owned PiPs. Ending mixer content leaves hardware
+unchanged; it is not an implicit cleanup. Multiple ordinary mixer objects are
+rejected rather than merged. Lookahead prepares the complete selected Next
+composition on Preview using the same owned PiP and DSK indices, without changing Program.
+Take reuses already prepared Preview PiPs instead of hiding/rebuilding them.
+The following Next is prepared only after both video and Program DSK commands have
+completed. A video or DSK failure blocks subsequent commands, with no fallback
+Program patch. An explicit
+Preview background takes precedence over lookahead. Switching to a source-only Next
+explicitly hides both owned resource sets on Preview.
+
+Because native Take transfers more upstream state than the explicitly controlled PiP fields,
+TSR requires complete native mixer status and refuses a Take unless all unowned
+upstream keyers (including stills) and unspecified native PiP properties match between
+Program and Preview. It does not silently copy or rewrite those resources. Prepare
+their matching configuration at an appropriate installation/operational boundary.
+Composition controls cover video PiP/DSK visibility, source, top-left pixel translation,
+unitless scale and normalized crop. Optional `dsk: Partial<Record<0 | 1, M2LXCompositionPip>>`
+uses the same complete visible geometry/source shape as `pip`, or `{visible:false}`.
+DSK visibility staging resets opacity to 1; arbitrary opacity is not supported.
+Rotation, border, shape, chroma and other unspecified native properties remain protected.
+Upstream properties must already match between buses; independent DSK differences
+neither block a video Take nor get copied by it. PiP opacity remains protected too.
+Controlled native media players used in the background or visible PiPs/DSKs require
+transition auto-play disabled for both CUT and EFFECT composition Takes.
+
+The public types export `M2LX_COMPOSITION_DSK_SUPPORTED = true` for capability
+checking before emitting `dsk`; packages without that flag must fail safely instead
+of silently ignoring graphics. Omitting `dsk` preserves existing PiP-only behavior.
+Preview-only DSK video selection (`target:'preview'`, `key_type:'downstream'`) has
+been captured on hardware; [Sony documents external NDI DSK graphics](https://helpguide.sony.net/pro/m2l-x/v1/en/contents/dsk_settings.html).
+DSKs are independently controlled with per-bus `set_key_property` source/visibility
+commands, not a special DSK Take. On 2026-11-11, a native CUT did not copy an isolated
+Preview DSK into Program. A subsequent controlled test verified DSK 1 video
+selection and separate Preview/Program show/hide in CUT mode, without a main video
+transition. Only that DSK's visibility-animation bindings were temporarily removed;
+its original state/bindings and all protected resources were restored and independently
+verified. No other DSK was written. Scheduling explicit DSK commands alongside a
+Sofie Take does not establish frame-atomic DSK/video switching.
+
+On 2026-11-11, a separately authorized local acceptance used the corrected frozen
+runtime's state-diff commands and completion predicates against hardware. DSK 1
+independent CUT and configured MIX show/hide, selected-Next staging, and
+video CUT -> Program DSK completion -> following Preview ordering passed from
+reported native state. Native fade progress was observed; DSK-only changes sent
+no main transition. Original backgrounds, DSK state/bindings and protected resources
+were restored and verified through a fresh connection, with no writes to the other DSK.
+This exercised runtime command execution, not Core playlist activation or end-to-end
+CasparCG playout. Rendered timing and live NDI alpha remain unverified; the capability
+flag alone proves neither hardware compatibility nor running-gateway adoption.
+
+With MIX bindings enabled, DSK visibility can start an independent native animation:
+an immediate visibility
+reversal was rejected with code 412 while that animation was in progress.
+Reported progress is under `mixer.animations.keys`, bound by key type/index/bus,
+not the main transition's running flag. Animation definitions/bindings must remain
+protected. DSK commands wait for their own bound key animations to be idle before
+sending and before reporting completion. Shown DSKs must also reach opacity 1.
+Unrelated DSK/bus animations and the main video-transition flag do not gate
+standalone DSK control. Missing key/animation status fails explicitly. Following-Next
+Preview preparation still waits for video completion. The fake mixer never copies
+DSKs during main Take and covers independent commands, failure blocking and animations.
+
+Native CUT/EFFECT transfer of two PiPs was verified from device status, with original
+state restored after testing. This is not rendered-picture, alpha, clean-feed or
+end-to-end deployed Sofie acceptance.
+
+Keyer sources use `{ type: 'video', name: 'ndi1' }` for PiP and
+`{ type: 'image', name: 'still/demo.png' }` for still keyers. DSKs accept either.
+Omit `source` to leave it unchanged; use an empty name with `visible:false` to clear
+it. Keyers are hidden before replacing/clearing their source and configured before
+showing. DSK source changes clear the opposite source family, and DSK visibility
+resets native opacity to 1 as the GUI does, so a completed fade-out cannot leave a
+newly shown keyer transparent. Existing device fade bindings are used, not rewritten;
+timeline configuration of fade animations is not provided.
+
+Translation (`M2LXTranslation`) uses native whole-pixel offsets; fractional
+positions are rejected rather than rounded. Scale (`M2LXScale`)
+uses positive unitless `{ x, y }` multipliers, where `1` means 100% on that axis.
+Crop (`M2LXCrop`) is an independent `{ x, y, width, height }` rectangle normalized
+to the source dimensions: `{ x: 0, y: 0, width: 1, height: 1 }` retains the full image.
+Rotation is the native Z-plane value.
+Border is the complete native `M2LXBorder` object, not a partial border patch.
+These controls do not establish separate fill/key, video alpha, chroma/luma keying,
+format-independent coordinate limits or multi-M/E support.
+
+For media, `assetId` selects an **existing** catalog ID; `null` unloads, while
+omitting it leaves the asset unchanged. Explicit asset selection defaults to paused
+and loop off. Loading can enable native looping, so the requested loop state is
+always reapplied after a load. Pausing an unloaded player is already satisfied;
+no native pause command is sent. Completion checks `clip.loaded` as well as identity:
+unloaded players may retain a stale asset ID. Loaded duration/frame rate, not rounded
+catalog values or the mixer format, determine seek bounds and completion tolerance.
+`seek` is a one-shot time in seconds on a changed value/new timeline instance, not
+continuous clock synchronization or a frame-index API; it may be reasserted after
+reactivation/reconnection. Seeking pauses then restores explicitly requested playback;
+otherwise it preserves the observed playback state when the seek executes, including
+across gaps in timeline control. A player is shared across every bus/keyer/output using
+it: loading or seeking an on-air player intentionally affects all those uses.
+Lookahead never loads it.
+
+Source selection disables native selection auto-play for timeline-controlled players.
+EFFECT takes into such a player require native transition auto-play to be disabled
+on the device first; TSR checks this when scheduling and again before the Take.
+Otherwise TSR rejects the operation rather than silently allowing
+native playback rules to override the timeline. Core source-only timelines retain
+their existing native auto-play behavior.
+
+Basic audio volume is the native **0..1 value, not dB**; full input names include
+stream suffixes. No master controls, audio-follow, advanced gain/pan, output-bus
+reassignment or media-library upload/delete commands are exposed here. Router
+inputs/outputs and audio/player targets are validated against configuration.
+Only basic audio-mixer nodes are supported, not similarly named advanced factories.
+Signal attenuation and audible PGM output require separate installation verification.
+
+Commands are serialized and require both a code-200 controller reply and matching
+observed state. Queue diagnostics remain serializable across device-worker boundaries;
+runtime completion predicates stay inside the device. Native player errors are
+reported even after a successful reply.
+Static targets are checked before a batch starts; a failure invalidates its remaining
+commands and already-derived future batches so a failed load cannot take the wrong
+clip on air. Unacknowledged timeouts reconnect to restore reply alignment; an accepted
+command that never reaches its requested state fails without recycling a healthy
+production session.
+
+### Sony M2L-X authentication lifecycle
+
+TSR reads `expires_in` from sign-in and renews authentication on every inactive-to-active
+`makeReady` (Sofie activation), regardless of the existing token's remaining lifetime.
+It signs in again, reopens both WebSockets and reloads configuration so production
+starts with the full token lifetime rather than the remainder of a standby session.
+Readiness requires fresh full snapshots of the mixer and configured media-player,
+basic-audio and router nodes, not cached state or status deltas.
+If the server omits the lifetime, TSR reports unknown expiry and signs in again at
+the next inactive activation instead of assuming a 24-hour lifetime.
+
+Production is protected after `makeReady` or the first sent command, and remains
+protected until `standDown`, even when the timeline or command queue is empty.
+`standDown` clears scheduled commands; it does not change mixer outputs or renew
+authentication. Subsequent activation can renew only when no command or transition
+is in flight. Commands queued during activation wait for its readiness check.
+
+There is no periodic connection renewal during production. Status notifications
+warn before expiry and report expired authentication as an error; commands using a
+known expired token fail without being sent. This does not guarantee uninterrupted
+operation for productions extending past token expiry: stand down and activate
+again at a safe boundary. Recovery from an actual socket loss remains automatic,
+using new authentication and a fresh snapshot, and rejects outstanding commands.
+Sofie must supply the lifecycle signals; a quiet mixer is not evidence that it is
+off air.
+
+### Sony M2L-X event selection
+
+Set the optional device-level `eventId` to the event's stable ID, **not its name**:
+
+```ts
+{
+  baseUrl: 'https://m2lx.example.test',
+  password: '<installation credential>',
+  eventId: '<event_id from the event overview>',
+  eventTimeout: 180000, // Optional, milliseconds for stop/start completion
+}
+```
+
+Obtain IDs and display names (`event_id` / `event_name`) with
+`GET /api/events/overview`, using `Authorization: Bearer <access_token>` after
+the usual administrator sign-in. Event management uses Bearer authentication,
+unlike the switcher APIs' access-token query parameter. A future Sofie studio
+blueprint setting can display the name and supply the ID as this device option;
+that Sofie configuration/UI is not implemented here.
+
+Initialization authenticates and checks that the configured event exists, without
+starting it. A stopped event can therefore initialize successfully while reporting
+that its mixer is not ready. On explicit inactive-to-active `makeReady`, TSR stops
+one different Running/Starting event, waits until it is Stopped, starts the selected
+Stopped event, waits for Running, then loads fresh configuration and mixer snapshots.
+An already Running selected event is not restarted; an existing Starting/Stopping
+operation is awaited rather than duplicated. The default stop/start deadline is
+180 seconds for the whole stop/start sequence, and management POSTs are never retried.
+Configured-event timeline control requires successful activation, even when
+initialization or a read-only reconnect connects to a Running mixer.
+Failures or timeout reject activation and prevent controller commands.
+
+**Switching is a full stop/start with downtime, not a seamless on-air change.**
+Reserve the event manager for this installation: multiple other active events,
+Initializing/Resetting states, failed selected events, unknown IDs and mismatched
+event detail are rejected. The event's `switcher` host/port must match the configured
+`baseUrl` origin; cross-origin endpoint discovery is deliberately unsupported.
+TSR checks both the selected event and any event to be stopped before mutating them.
+
+Repeated active `makeReady` and automatic socket recovery never switch/start/stop
+events. Recovery only reconnects if the selected event is Running; if another
+event is running, explicit inactive activation is required. `standDown` and
+`terminate` do **not** stop events. Standing down or terminating during activation
+cancels outstanding work and prevents subsequent start/controller requests, but
+cannot undo a stop/start already accepted by the manager or restore the old event.
+The interrupted activation rejects explicitly; accepted operations can continue
+on the mixer. With `eventId` unset, the existing switcher-only behavior is unchanged.
 
 TSR is primarily developed to be used in the [Playout Gateway](https://github.com/nrkno/tv-automation-playout-gateway) of the [Sofie project](https://github.com/nrkno/Sofie-TV-automation).
 
@@ -367,4 +648,3 @@ Send a POST Request to a URL
 	}
 }
 ```
-

@@ -5,5 +5,6 @@ export { CasparCGDevice } from './integrations/casparCG'
 export { HyperdeckDevice } from './integrations/hyperdeck'
 export { QuantelDevice } from './integrations/quantel'
 export { VizMSEDevice } from './integrations/vizMSE'
+export { M2LXDevice } from './integrations/m2lx'
 
 export * from 'timeline-state-resolver-types'

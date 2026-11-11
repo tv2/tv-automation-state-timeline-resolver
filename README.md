@@ -13,6 +13,7 @@ Using the input, it resolves the expected state, diffs the state against current
 ## Supported devices
 * **[CasparCG](http://casparcg.com/)** - using the [casparcg-connection](https://github.com/SuperFlyTV/casparcg-connection) library
 * **Blackmagic Design ATEM** vision mixers - using the [atem-connection](https://github.com/nrkno/tv-automation-atem-connection) library
+* **Sony M2L-X** switchers - program/preview, configurable effects, upstream/downstream keys and geometry, basic input audio, native media players, and input routing
 * **Blackmagic Design Hyperdeck** record/playback devices - using the [hyperdeck-connection](https://github.com/nrkno/tv-automation-hyperdeck-connection) library
 * **Lawo** audio mixers - using the [emberplus](https://github.com/nrkno/tv-automation-emberplus-connection) library
 * **[OBS Studio](https://obsproject.com/)** live video production software

@@ -10,6 +10,18 @@ describe('DoOnTime', () => {
 		mockTime.init()
 	})
 
+	test('maintains one scheduler timer and disposes it after repeated submissions', async () => {
+		const d = new DoOnTime(() => mockTime.now)
+		const baseline = jest.getTimerCount()
+		for (let index = 0; index < 10; index++) d.queue(10100, undefined, () => undefined)
+		expect(jest.getTimerCount()).toBe(baseline + 1)
+		await mockTime.advanceTimeToTicks(10500)
+		expect(jest.getTimerCount()).toBe(baseline + 1)
+		d.dispose()
+		expect(jest.getTimerCount()).toBe(baseline)
+		expect(() => d.queue(11000, undefined, () => undefined)).toThrow('disposed')
+	})
+
 	test('Burst', async () => {
 		const d = new DoOnTime(() => {
 			return mockTime.now
