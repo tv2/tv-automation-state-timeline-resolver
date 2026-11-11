@@ -630,13 +630,22 @@ describe('M2LXConnection', () => {
 			}
 		)
 
-		test('bounds lifecycle polling without resending accepted start', async () => {
-			device.holdEventTransitions = true
-			await connection.connect()
-			await expect(connection.ensureFreshAuthentication(true)).rejects.toThrow('timed out')
-			expect(mutations()).toHaveLength(1)
-			expect(connection.connected).toBe(false)
-		})
+		test.each([false, true])(
+			'bounds lifecycle polling without resending accepted start (stalled read: %s)',
+			async (stalledRead) => {
+				device.holdEventTransitions = true
+				await connection.connect()
+				device.eventRequestObserver = (path) => {
+					if (stalledRead && path === '/api/events/overview' && mutations().length === 1) {
+						device.holdEventOverview = true
+					}
+				}
+				await expect(connection.ensureFreshAuthentication(true)).rejects.toThrow('timed out')
+				expect(mutations()).toHaveLength(1)
+				expect(connection.connected).toBe(false)
+				expect(device.configurationRequests).toBe(0)
+			}
+		)
 
 		test.each(['stand-down', 'terminate'])(
 			'cancels %s during stop polling without starting the selected event',

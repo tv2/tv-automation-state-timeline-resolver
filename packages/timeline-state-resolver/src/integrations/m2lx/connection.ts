@@ -432,6 +432,9 @@ export class M2LXConnection extends EventEmitter<M2LXConnectionEvents> implement
 		} catch (error) {
 			this._assertConnectionCurrent(generation)
 			// Management errors can contain Bearer credentials; do not forward request details.
+			if (error instanceof got.TimeoutError) {
+				throw new Error(`M2L-X event ${method} ${path} timed out`)
+			}
 			const status = error instanceof got.HTTPError ? error.response.statusCode : 'network, timeout or invalid response'
 			throw new Error(`M2L-X event ${method} ${path} failed (${status})`)
 		} finally {
