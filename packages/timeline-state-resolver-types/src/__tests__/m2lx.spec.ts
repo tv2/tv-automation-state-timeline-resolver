@@ -9,6 +9,8 @@ import {
 	M2LXScale,
 	M2LXTranslation,
 	M2LXTransitionType,
+	M2LXComposition,
+	M2LX_COMPOSITION_DSK_SUPPORTED,
 	MappingM2LX,
 	MappingM2LXType,
 	TimelineContentTypeM2LX,
@@ -22,6 +24,41 @@ import {
 } from '../'
 
 describe('M2L-X types', () => {
+	test('models optional coordinated video DSKs with complete geometry and explicit cleanup', () => {
+		const composition: M2LXComposition = {
+			pip: { 0: { visible: false } },
+			dsk: {
+				0: { visible: false },
+				1: {
+					visible: true,
+					source: { type: 'video', name: 'ndi2' },
+					translation: { x: 0, y: 0 },
+					scale: { x: 1, y: 1 },
+					crop: { x: 0, y: 0, width: 1, height: 1 },
+				},
+			},
+		}
+		const supported: true = M2LX_COMPOSITION_DSK_SUPPORTED
+		const object: TimelineObjM2LXAny = {
+			id: 'graphics',
+			layer: 'mixer',
+			enable: { start: 0 },
+			content: {
+				deviceType: DeviceType.M2LX,
+				type: TimelineContentTypeM2LX.MIXER,
+				mixer: { program: 'cam1', ...(supported ? { composition } : {}) },
+			},
+		}
+		expect(isTimelineObjM2LXMixer(object)).toBe(true)
+		// @ts-expect-error DSK indices stop at 1.
+		const invalidIndex: M2LXComposition = { pip: {}, dsk: { 2: { visible: false } } }
+		// @ts-expect-error Visible DSKs require complete source/geometry.
+		const incomplete: M2LXComposition = { pip: {}, dsk: { 0: { visible: true } } }
+		// @ts-expect-error Hidden DSKs cannot set arbitrary keyer properties.
+		const opacity: M2LXComposition = { pip: {}, dsk: { 0: { visible: false, opacity: 1 } } }
+		expect([invalidIndex, incomplete, opacity]).toHaveLength(3)
+	})
+
 	test('models verified audio/media/router and DSK contracts', () => {
 		const translation: M2LXTranslation = { x: -800, y: -400 }
 		const scale: M2LXScale = { x: 0.44, y: 0.44 }

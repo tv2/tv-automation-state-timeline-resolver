@@ -49,6 +49,235 @@ describe('M2L-X state differ', () => {
 				},
 			})
 		}
+		const dskState = (visible = true): M2LXState => {
+			const next = compositionState(visible)
+			if (next.mixer?.composition) next.mixer.composition.dsk = { 0: visible ? pip : { visible: false } }
+			return next
+		}
+		const dskPrepared = (): M2LXObservedState => {
+			const current = prepared()
+			current.downstreamKeyers = {
+				program: { 0: { visible: false, opacity: 0 }, 1: { visible: true, source: 'watermark.png' } },
+				preview: {
+					0: { ...current.keyers.preview[0], opacity: 1 },
+					1: { visible: true, source: 'watermark.png' },
+				},
+			}
+			const mixer = current.nodes?.mixer as { program: Record<string, unknown>; preview: Record<string, unknown> }
+			mixer.program.downstream_keys = [
+				{ key: { visible: false, opacity: 0, rotation: 0 }, chroma_key: {} },
+				{ key: { visible: true, source: 'watermark.png' } },
+			]
+			mixer.preview.downstream_keys = [
+				{ key: { ...pip, source: 'cam2', source_type: 'video', opacity: 1, rotation: 0 }, chroma_key: {} },
+				{ key: { visible: true, source: 'watermark.png' } },
+			]
+			Object.assign(mixer, { animations: { keys: {} } })
+			return current
+		}
+
+		test.each(['cut', 'effect'] as const)('updates DSKs independently after the video %s succeeds', (transition) => {
+			const next = dskState()
+			if (!next.mixer) throw new Error('Missing fixture mixer')
+			next.mixer.transition = transition
+			next.mixer.previewComposition = { pip: { 0: { visible: false } }, dsk: { 0: { visible: false } } }
+			const commands = diffM2LXStates(state('cam1'), next)
+			const takeIndex = commands.findIndex((entry) => entry.command.command === 'transition')
+			const take = commands[takeIndex]
+			const current = dskPrepared()
+			expect(() => take.checkState?.(current, current)).not.toThrow()
+			expect(commands.slice(0, takeIndex).every((entry) => entry.isRedundant?.(current))).toBe(true)
+			const noDskTransfer = { ...current, keyers: { ...current.keyers, program: current.keyers.preview } }
+			expect(take.isComplete(noDskTransfer)).toBe(true)
+			expect(take.isComplete({ ...noDskTransfer, transition: { running: true, progress: 0.9 } })).toBe(false)
+			const dskCommands = commands.filter(
+				(entry) => entry.command.command === 'set_key_property' && entry.command.args.key_type === 'downstream'
+			)
+			expect(dskCommands.length).toBeGreaterThan(0)
+			const programDsk = dskCommands.filter(
+				(entry) => entry.command.command === 'set_key_property' && entry.command.args.target === 'program'
+			)
+			expect(programDsk.length).toBeGreaterThan(0)
+			expect(programDsk.every((entry) => commands.indexOf(entry) > takeIndex)).toBe(true)
+			expect(dskCommands.indexOf(programDsk[programDsk.length - 1])).toBeLessThan(
+				dskCommands.findIndex(
+					(entry) => entry.command.command === 'set_key_property' && entry.command.args.target === 'preview'
+				)
+			)
+			current.downstreamKeyers!.preview[0].opacity = 0
+			expect(() => take.checkState?.(current, current)).not.toThrow()
+		})
+
+		test('DSK-only changes send no main transition or video/box commands', () => {
+			const first = dskState()
+			first.mixer!.composition!.pip = {}
+			expect(
+				diffM2LXStates(state('cam1', 'cam3'), first).every(
+					(entry) =>
+						entry.command.command === 'set_key_property' &&
+						entry.command.args.key_type === 'downstream' &&
+						entry.command.args.target === 'program'
+				)
+			).toBe(true)
+			const old = dskState(false)
+			const next = dskState(false)
+			next.mixer!.composition!.dsk = { 0: pip }
+			const commands = diffM2LXStates(old, next)
+			expect(commands.length).toBeGreaterThan(0)
+			expect(
+				commands.every(
+					(entry) =>
+						entry.command.command === 'set_key_property' &&
+						entry.command.args.key_type === 'downstream' &&
+						entry.command.args.target === 'program' &&
+						entry.command.args.key_index === 0
+				)
+			).toBe(true)
+			const cleanup = diffM2LXStates(next, old)
+			expect(
+				cleanup.every(
+					(entry) =>
+						entry.command.command === 'set_key_property' &&
+						entry.command.args.key_type === 'downstream' &&
+						entry.command.args.target === 'program' &&
+						entry.command.args.key_index === 0
+				)
+			).toBe(true)
+			expect(
+				cleanup.some(
+					(entry) =>
+						entry.command.command === 'set_key_property' &&
+						entry.command.args.property.name === 'visible' &&
+						entry.command.args.property.value === false
+				)
+			).toBe(true)
+			const moved = dskState(false)
+			moved.mixer!.composition!.dsk = { 0: { ...pip, translation: { x: 200, y: 308 } } }
+			expect(diffM2LXStates(next, moved).map((entry) => entry.command)).toEqual([
+				{
+					command: 'set_key_property',
+					node: 'mixer',
+					args: {
+						key_index: 0,
+						key_type: 'downstream',
+						target: 'program',
+						property: { name: 'translation', value: { x: 200, y: 308 } },
+					},
+				},
+			])
+		})
+
+		test('cleans source-only Next and full-screen Program with both owned keyer sets', () => {
+			const old = dskState()
+			if (!old.mixer?.composition) throw new Error('Missing fixture composition')
+			old.mixer.previewComposition = old.mixer.composition
+			const next = dskState()
+			const commands = diffM2LXStates(old, next)
+			expect(commands.some((entry) => entry.command.command === 'transition')).toBe(false)
+			expect(
+				commands.filter((entry) => entry.command.command === 'set_key_property').map((entry) => entry.command.args)
+			).toEqual([
+				{ key_index: 0, key_type: 'upstream', target: 'preview', property: { name: 'visible', value: false } },
+				{ key_index: 0, key_type: 'downstream', target: 'preview', property: { name: 'opacity', value: 1 } },
+				{ key_index: 0, key_type: 'downstream', target: 'preview', property: { name: 'visible', value: false } },
+			])
+			const cleanup = diffM2LXStates(old, dskState(false))
+			const take = cleanup.find((entry) => entry.command.command === 'transition')!
+			const current = dskPrepared()
+			current.keyers.program[0].visible = false
+			expect(take.isComplete(current)).toBe(true)
+			current.downstreamKeyers!.program = {}
+			expect(take.isComplete(current)).toBe(true)
+		})
+
+		test.each(['program', 'preview'] as const)('rejects independent owned DSK intents on %s', (bus) => {
+			const next = dskState()
+			next.keyers[keyerStateId(bus, 0, true)] = {
+				index: 0,
+				keyerType: 'dsk',
+				bus,
+				visible: false,
+				timelineObjId: 'independent',
+			}
+			expect(() => diffM2LXStates(state('cam1'), next)).toThrow('DSK 0 cannot also')
+		})
+
+		test.each([
+			{ dsk: { 2: pip }, error: 'Invalid M2L-X composition DSK' },
+			{ dsk: { '01': pip }, error: 'Invalid M2L-X composition DSK' },
+			{ dsk: [], error: 'DSK index table' },
+			{ dsk: { 0: { visible: true } }, error: 'require a video source' },
+			{ dsk: { 0: { ...pip, source: { type: 'image', name: 'logo' } } }, error: 'require a video source' },
+			{ dsk: { 0: { ...pip, opacity: 0.5 } }, error: 'Unsupported M2L-X composition DSK' },
+			{ dsk: { 0: { ...pip, rotation: 2 } }, error: 'Unsupported M2L-X composition DSK' },
+			{ dsk: { 0: { ...pip, scale: { x: 1, y: 1, opacity: 0 } } }, error: 'Unsupported M2L-X composition DSK' },
+			{ dsk: { 0: { ...pip, crop: { x: 0, y: 0, width: 2, height: 1 } } }, error: 'crop' },
+			{ dsk: { 0: { visible: false, source: pip.source } }, error: 'Unsupported M2L-X composition DSK' },
+		])('rejects malformed DSK composition: $error', ({ dsk, error }) => {
+			const next = compositionState()
+			Object.assign(next.mixer!.composition!, { dsk })
+			expect(() => diffM2LXStates(state('cam1'), next)).toThrow(error)
+		})
+
+		test('rejects changed ownership, mismatched Next ownership and unsupported composition fields', () => {
+			expect(() => diffM2LXStates(dskState(), compositionState())).toThrow('Keep all owned')
+			expect(() => diffM2LXStates(compositionState(), dskState())).toThrow('Keep all owned')
+			const next = dskState()
+			next.mixer!.previewComposition = { pip: { 0: pip }, dsk: { 1: pip } }
+			expect(() => diffM2LXStates(state('cam1'), next)).toThrow('same explicitly owned')
+			delete next.mixer!.previewComposition
+			Object.assign(next.mixer!.composition!, { watermark: {} })
+			expect(() => diffM2LXStates(state('cam1'), next)).toThrow('composition fields')
+		})
+
+		test.each(['rotation', 'border', 'shape', 'chroma_key', 'watermark'])(
+			'does not copy or rewrite independent DSK %s during a native video Take',
+			(property) => {
+				const take = diffM2LXStates(state('cam1'), dskState()).find((entry) => entry.command.command === 'transition')!
+				const current = dskPrepared()
+				const mixer = current.nodes!.mixer as { preview: { downstream_keys: { key: Record<string, unknown> }[] } }
+				mixer.preview.downstream_keys[0].key[property] = { changed: true }
+				expect(() => take.checkState?.(current, current)).not.toThrow()
+				delete mixer.preview.downstream_keys[0].key[property]
+				mixer.preview.downstream_keys[0].key.rotation = 0
+				mixer.preview.downstream_keys[1].key.visible = false
+				expect(() => take.checkState?.(current, current)).not.toThrow()
+			}
+		)
+
+		test.each(['program', 'preview'] as const)(
+			'requires parsed DSK and animation status before commanding %s',
+			(bus) => {
+				const next = dskState(false)
+				next.mixer!.previewComposition = next.mixer!.composition
+				const command = diffM2LXStates(state('cam1'), next).find(
+					(entry) =>
+						entry.command.command === 'set_key_property' &&
+						entry.command.args.key_type === 'downstream' &&
+						entry.command.args.target === bus
+				)!
+				const current = dskPrepared()
+				current.keyers.preview[0].visible = false
+				current.downstreamKeyers![bus][0].visible = false
+				delete current.downstreamKeyers![bus][0]
+				expect(() => command.waitFor?.(current)).toThrow('native DSK')
+				current.downstreamKeyers![bus][0] = { visible: false }
+				current.nodes = undefined
+				expect(() => command.waitFor?.(current)).toThrow('key-animation status')
+			}
+		)
+
+		test('checks native auto-play for controlled DSK video players', () => {
+			const next = dskState()
+			next.mixer!.composition!.pip[0] = { visible: false }
+			next.players = { cam2: { timelineObjId: 'graphics-player' } }
+			const commands = diffM2LXStates(state('cam1'), next)
+			const current = dskPrepared()
+			expect(() => commands[0].checkState?.(current, current)).toThrow('Disable native')
+			current.keyers.preview[0].visible = false
+			const take = commands.find((entry) => entry.command.command === 'transition')!
+			expect(() => take.checkState?.(current, current)).toThrow('Disable native')
+		})
 
 		test.each(['cut', 'effect'] as const)('stages all PiP properties before same-background %s Take', (transition) => {
 			const next = compositionState()
@@ -108,6 +337,42 @@ describe('M2L-X state differ', () => {
 			expect(diffM2LXStates(old, { keyers: {} })).toEqual([])
 		})
 
+		test('prepares only Preview when Next changes and rejects unowned Preview boxes', () => {
+			const old = compositionState(false)
+			const next = compositionState(false)
+			if (!next.mixer) throw new Error('Missing fixture mixer')
+			next.mixer.previewComposition = { pip: { 0: pip } }
+			const commands = diffM2LXStates(old, next)
+			expect(commands.length).toBeGreaterThan(0)
+			expect(
+				commands.every((entry) => {
+					const command = entry.command
+					return command.command === 'set_key_property'
+						? command.args.target === 'preview'
+						: command.command === 'set_input_property' && command.args.input_type === 'preview'
+				})
+			).toBe(true)
+			next.mixer.previewComposition = { pip: { 1: pip } }
+			expect(() => diffM2LXStates(old, next)).toThrow('same explicitly owned Program PiPs')
+			next.mixer.previewComposition = { pip: { 0: pip } }
+			next.mixer.composition = undefined
+			expect(() => diffM2LXStates(state('cam1'), next)).toThrow('same explicitly owned Program PiPs')
+		})
+
+		test.each(['cut', 'effect'] as const)('does not prepare a new Next during a running %s Take', (transition) => {
+			const next = compositionState()
+			if (!next.mixer) throw new Error('Missing fixture mixer')
+			next.mixer.transition = transition
+			next.mixer.previewComposition = { pip: { 0: { visible: false } } }
+			const commands = diffM2LXStates(state('cam1'), next)
+			const takeIndex = commands.findIndex((entry) => entry.command.command === 'transition')
+			const running = { ...prepared(), transition: { running: true, progress: 0.5 } }
+			expect(commands[takeIndex].isComplete(running)).toBe(false)
+			const nextPreparation = commands.slice(takeIndex + 1)
+			expect(nextPreparation.length).toBeGreaterThan(0)
+			expect(nextPreparation.every((entry) => entry.waitFor?.(running) === false)).toBe(true)
+		})
+
 		test('refuses competing keyer control and missing Program', () => {
 			const next = compositionState()
 			next.keyers['preview/0'] = { index: 0, keyerType: 'pip', bus: 'preview', visible: false, timelineObjId: '' }
@@ -129,7 +394,7 @@ describe('M2L-X state differ', () => {
 			expect(() => diffM2LXStates(state('cam1'), next)).toThrow(error)
 		})
 
-		test('refuses incomplete preparation, unowned DSK changes and unspecified PiP property changes', () => {
+		test('refuses incomplete preparation and unspecified PiP changes without coupling independent DSKs', () => {
 			const take = diffM2LXStates(state('cam1'), compositionState()).find(
 				(entry) => entry.command.command === 'transition'
 			)
@@ -167,7 +432,7 @@ describe('M2L-X state differ', () => {
 			const unowned = prepared()
 			const mixer = unowned.nodes?.mixer as { preview: { downstream_keys: unknown[] } }
 			mixer.preview.downstream_keys = []
-			expect(() => check(unowned)).toThrow('unowned keyers')
+			expect(() => check(unowned)).not.toThrow()
 		})
 
 		test.each(['cut', 'effect'] as const)('checks native auto-play for controlled PiP players on %s', (transition) => {
@@ -477,6 +742,58 @@ describe('M2L-X state differ', () => {
 		})
 		expect(() => load.checkState?.(failed, clean)).toThrow(/Asset missing/)
 		expect(() => load.checkState?.(failed, failed)).not.toThrow()
+	})
+
+	test('waits for the bound DSK animation, not another key or the main video transition', () => {
+		const key: M2LXKeyerState = { index: 0, keyerType: 'dsk', bus: 'preview', visible: true, timelineObjId: 'dsk' }
+		const commands = diffM2LXStates({ keyers: {} }, { keyers: { 'preview/dsk/0': key } })
+		const progress = { running: false, value: 1 }
+		const animation = (index: number, target: string, running: boolean) => ({
+			key_type: 'downstream',
+			key_index: index,
+			target,
+			animations: { fade: { progress: { running, value: 0.5 } } },
+		})
+		const bound = animation(0, 'preview', false)
+		bound.animations.fade.progress = progress
+		const current = observed({
+			downstreamKeyers: { program: {}, preview: { 0: { visible: true, opacity: 1 } } },
+			transition: { running: true, progress: 0.5 },
+			nodes: {
+				mixer: {
+					animations: {
+						keys: {
+							19: bound,
+							0: animation(1, 'preview', true),
+							7: animation(0, 'program', true),
+						},
+					},
+				},
+			},
+		})
+		for (const command of commands) {
+			expect(command.waitFor?.(current)).toBe(true)
+			expect(command.isComplete(current)).toBe(true)
+			progress.running = true
+			expect(command.waitFor?.(current)).toBe(false)
+			expect(command.isComplete(current)).toBe(false)
+			progress.running = false
+		}
+		current.nodes = undefined
+		expect(() => commands[0].waitFor?.(current)).toThrow('key-animation status')
+		current.nodes = {
+			mixer: {
+				animations: {
+					keys: {
+						19: {
+							...bound,
+							animations: { fade: { progress: { value: 1 } } },
+						},
+					},
+				},
+			},
+		}
+		expect(() => commands[0].waitFor?.(current)).toThrow('key-animation running status')
 	})
 
 	test('hides before replacing/clearing sources, configures geometry before showing and distinguishes DSKs', () => {

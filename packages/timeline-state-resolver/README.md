@@ -47,7 +47,7 @@ All content uses `deviceType: DeviceType.M2LX`. Each mapping also needs
 
 | Mapping/content type | Mapping target | Content |
 |---|---|---|
-| `MIXER` | The single `mixer` node | `mixer: { program?, preview?, composition?: { pip }, transition?: { type, effect?: { name?, duration?, args?: { fade? } } } }` |
+| `MIXER` | The single `mixer` node | `mixer: { program?, preview?, composition?: { pip, dsk? }, transition?: { type, effect?: { name?, duration?, args?: { fade? } } } }` |
 | `KEYER` | `bus` and `keyer: { type, index }` | `keyer: { visible, source?, translation?, scale?, rotation?, crop?, border? }` |
 | `AUDIO` | `node` (default `audio_mixer`) and full `input`, e.g. `vtr3.1` | `audio: { volume?, muted? }` |
 | `MEDIA_PLAYER` | Configured `player` node, e.g. `vtr3` | `mediaPlayer: { assetId?, playing?, loop?, seek? }` |
@@ -63,7 +63,7 @@ timeline content ends. Other controls leave the current hardware setting unchang
 when their content ends. Stop/unload players explicitly where required.
 Lookahead prepares mixer Preview only; it does not preload players or change audio/routes.
 
-#### Coordinated PiP composition Takes
+#### Coordinated PiP/DSK composition Takes
 
 Source-only CUT remains a direct Program source setter, **not** a composition Take.
 For native split-screen playout, use one mixer object carrying an explicit Program
@@ -90,30 +90,84 @@ source and `M2LXComposition`. For example, inside its `mixer`:
 ```
 
 TSR stages all requested PiP source/geometry/visibility on Preview before issuing
-native `transition {effect_enabled:false}` (CUT) or `true` (EFFECT). Layout changes
-trigger a Take even when the background source is unchanged. The command completes
+native `transition {effect_enabled:false}` (CUT) or `true` (EFFECT). PiP layout changes
+trigger a Take even when the background source is unchanged. The video command completes
 only once the effect is idle and Program reports the requested source and complete
-visible PiP state. EFFECT completion allows the configured duration in addition to
-the command timeout. An explicit Preview background is restored afterward; owned
-Preview PiPs remain staged. An already matching Program composition needs no Take.
+visible PiP state. Program DSK source/geometry/on/off changes are separate keyer commands,
+issued after successful video completion and before preparing the following Next.
+DSK-only changes do not trigger a main transition. EFFECT completion allows the
+configured duration in addition to the command timeout. An explicit Preview background is restored afterward; owned
+Preview PiPs remain staged unless Next supplies another composition. An already
+matching Program composition needs no Take.
 
-The composition owns each listed PiP on **both** buses. Keep the same indices on
+The composition owns each listed PiP and optional DSK on **both** buses. Keep the same indices on
 every shot, including ordinary full-screen shots: use `{visible:false}` for each
-owned PiP to clear the split screen with a native Take. Do not remove ownership or
-combine these indices with KEYER mappings. Ending mixer content leaves hardware
+owned PiP/DSK to clear it: PiPs through native Take, DSKs through explicit commands. Ownership is stable until
+standDown/reconnection, including after a command failure. Do not remove ownership or
+combine these indices with independent KEYER timeline intents. A DSK allocation-only
+KEYER mapping is allowed; its implicit hidden default does not compete with composition.
+PiP KEYER mappings remain disallowed for owned PiPs. Ending mixer content leaves hardware
 unchanged; it is not an implicit cleanup. Multiple ordinary mixer objects are
-rejected rather than merged; lookahead never stages or takes a composition.
+rejected rather than merged. Lookahead prepares the complete selected Next
+composition on Preview using the same owned PiP and DSK indices, without changing Program.
+Take reuses already prepared Preview PiPs instead of hiding/rebuilding them.
+The following Next is prepared only after both video and Program DSK commands have
+completed. A video or DSK failure blocks subsequent commands, with no fallback
+Program patch. An explicit
+Preview background takes precedence over lookahead. Switching to a source-only Next
+explicitly hides both owned resource sets on Preview.
 
-Because native Take transfers more than the explicitly controlled PiP fields,
+Because native Take transfers more upstream state than the explicitly controlled PiP fields,
 TSR requires complete native mixer status and refuses a Take unless all unowned
-keyers (including stills/DSKs) and unspecified native PiP properties match between
+upstream keyers (including stills) and unspecified native PiP properties match between
 Program and Preview. It does not silently copy or rewrite those resources. Prepare
 their matching configuration at an appropriate installation/operational boundary.
-Composition controls currently cover video PiP visibility, source, pixel translation,
-unitless scale and normalized crop. Rotation, border, opacity, chroma and other
-native properties are not composition controls and must already match between buses.
-Controlled native media players used in the background or visible PiPs require
+Composition controls cover video PiP/DSK visibility, source, top-left pixel translation,
+unitless scale and normalized crop. Optional `dsk: Partial<Record<0 | 1, M2LXCompositionPip>>`
+uses the same complete visible geometry/source shape as `pip`, or `{visible:false}`.
+DSK visibility staging resets opacity to 1; arbitrary opacity is not supported.
+Rotation, border, shape, chroma and other unspecified native properties remain protected.
+Upstream properties must already match between buses; independent DSK differences
+neither block a video Take nor get copied by it. PiP opacity remains protected too.
+Controlled native media players used in the background or visible PiPs/DSKs require
 transition auto-play disabled for both CUT and EFFECT composition Takes.
+
+The public types export `M2LX_COMPOSITION_DSK_SUPPORTED = true` for capability
+checking before emitting `dsk`; packages without that flag must fail safely instead
+of silently ignoring graphics. Omitting `dsk` preserves existing PiP-only behavior.
+Preview-only DSK video selection (`target:'preview'`, `key_type:'downstream'`) has
+been captured on hardware; [Sony documents external NDI DSK graphics](https://helpguide.sony.net/pro/m2l-x/v1/en/contents/dsk_settings.html).
+DSKs are independently controlled with per-bus `set_key_property` source/visibility
+commands, not a special DSK Take. On 2026-11-11, a native CUT did not copy an isolated
+Preview DSK into Program. A subsequent controlled test verified DSK 1 video
+selection and separate Preview/Program show/hide in CUT mode, without a main video
+transition. Only that DSK's visibility-animation bindings were temporarily removed;
+its original state/bindings and all protected resources were restored and independently
+verified. No other DSK was written. Scheduling explicit DSK commands alongside a
+Sofie Take does not establish frame-atomic DSK/video switching.
+
+On 2026-11-11, a separately authorized local acceptance used the corrected frozen
+runtime's state-diff commands and completion predicates against hardware. DSK 1
+independent CUT and configured MIX show/hide, selected-Next staging, and
+video CUT -> Program DSK completion -> following Preview ordering passed from
+reported native state. Native fade progress was observed; DSK-only changes sent
+no main transition. Original backgrounds, DSK state/bindings and protected resources
+were restored and verified through a fresh connection, with no writes to the other DSK.
+This exercised runtime command execution, not Core playlist activation or end-to-end
+CasparCG playout. Rendered timing and live NDI alpha remain unverified; the capability
+flag alone proves neither hardware compatibility nor running-gateway adoption.
+
+With MIX bindings enabled, DSK visibility can start an independent native animation:
+an immediate visibility
+reversal was rejected with code 412 while that animation was in progress.
+Reported progress is under `mixer.animations.keys`, bound by key type/index/bus,
+not the main transition's running flag. Animation definitions/bindings must remain
+protected. DSK commands wait for their own bound key animations to be idle before
+sending and before reporting completion. Shown DSKs must also reach opacity 1.
+Unrelated DSK/bus animations and the main video-transition flag do not gate
+standalone DSK control. Missing key/animation status fails explicitly. Following-Next
+Preview preparation still waits for video completion. The fake mixer never copies
+DSKs during main Take and covers independent commands, failure blocking and animations.
 
 Native CUT/EFFECT transfer of two PiPs was verified from device status, with original
 state restored after testing. This is not rendered-picture, alpha, clean-feed or
@@ -128,7 +182,8 @@ resets native opacity to 1 as the GUI does, so a completed fade-out cannot leave
 newly shown keyer transparent. Existing device fade bindings are used, not rewritten;
 timeline configuration of fade animations is not provided.
 
-Translation (`M2LXTranslation`) uses native pixel offsets. Scale (`M2LXScale`)
+Translation (`M2LXTranslation`) uses native whole-pixel offsets; fractional
+positions are rejected rather than rounded. Scale (`M2LXScale`)
 uses positive unitless `{ x, y }` multipliers, where `1` means 100% on that axis.
 Crop (`M2LXCrop`) is an independent `{ x, y, width, height }` rectangle normalized
 to the source dimensions: `{ x: 0, y: 0, width: 1, height: 1 }` retains the full image.

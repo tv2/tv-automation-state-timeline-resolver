@@ -168,26 +168,38 @@ export interface M2LXMixer {
 	program?: M2LXSourceName
 	preview?: M2LXSourceName
 	/**
-	 * Explicit Program PiP composition, staged on Preview before a native CUT/EFFECT Take.
+	 * Explicit Program PiP composition and independent DSK state. Selected Next is staged on Preview.
 	 * Requires program. Include every owned index on every shot (visible:false to clear);
-	 * do not also map these PiPs with KEYER mappings on either bus.
-	 * Unowned keyers and unspecified native properties must match between buses before Take.
+	 * do not independently control these keys with KEYER timeline intents on either bus.
+	 * Native CUT/EFFECT transfers video/PiPs, then explicit Program DSK commands run before preparing Next.
+	 * Unowned upstream keyers and unspecified PiP properties must match between buses before Take.
 	 */
 	composition?: M2LXComposition
 	/**
-	 * How a change of `program` or its explicit `composition` is performed. Defaults to a cut.
+	 * How a change of `program` or its PiP composition is performed. Defaults to a cut.
+	 * DSK-only changes use independent keyer commands, not a main video transition.
 	 * Source changes (including cuts and preview/lookahead updates) wait for an active effect to finish.
 	 * Manual transition progress is intentionally not part of the timeline contract.
 	 */
 	transition?: M2LXTransition
 }
 
+/** Runtime/types capability for independent DSK control through declarative composition state. */
+export const M2LX_COMPOSITION_DSK_SUPPORTED = true
+
 export interface M2LXComposition {
 	/** Native PiPs owned on both buses. Keep the same indices until standDown/reconnection. */
 	pip: Partial<Record<M2LXPipKeyerIndex, M2LXCompositionPip>>
+	/**
+	 * Native DSKs owned on both buses, with the same stable ownership as PiPs.
+	 * Source/geometry/on/off use explicit per-bus keyer commands, not native main-Take transfer.
+	 * Existing native fade bindings are preserved and their animation completion is awaited.
+	 * Separate DSK/video commands are not frame-atomic. Still/independent resources remain protected.
+	 */
+	dsk?: Partial<Record<0 | 1, M2LXCompositionPip>>
 }
 
-/** Visible PiPs require complete tested geometry; hidden PiPs do not control their source/geometry. */
+/** Visible composition PiPs/DSKs require complete geometry; hidden keys do not control their source/geometry. */
 export type M2LXCompositionPip =
 	| { visible: false }
 	| {
@@ -211,7 +223,7 @@ export interface M2LXKeyerVisibility {
 	border?: M2LXBorder
 }
 
-/** Native pixel offsets; not format-independent normalized coordinates. */
+/** Native whole-pixel offsets; fractional values are rejected, not rounded. */
 export interface M2LXTranslation {
 	x: number
 	y: number

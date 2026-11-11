@@ -23,6 +23,7 @@ Array [
   "M2LXKeyerType",
   "M2LXMixerBus",
   "M2LXTransitionType",
+  "M2LX_COMPOSITION_DSK_SUPPORTED",
   "MINTIMEUNIT",
   "MINTRIGGERTIME",
   "MappingAtemType",

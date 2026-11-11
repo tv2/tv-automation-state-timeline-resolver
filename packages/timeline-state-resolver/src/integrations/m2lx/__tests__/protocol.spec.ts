@@ -290,6 +290,29 @@ describe('M2L-X protocol', () => {
 		expect(state.players?.player_custom).toEqual({ loaded: false })
 	})
 
+	test('rejects fractional pixel translations without restricting fractional scale or crop', () => {
+		for (const value of [
+			{ x: 0.5, y: 0 },
+			{ x: 0, y: -0.25 },
+		]) {
+			expect(() => createSetKeyerPropertyCommand(0, 'pip', 'preview', { name: 'translation', value })).toThrow(
+				/whole pixels/
+			)
+		}
+		expect(
+			createSetKeyerPropertyCommand(0, 'pip', 'preview', { name: 'translation', value: { x: -7, y: 91 } }).args.property
+		).toEqual({ name: 'translation', value: { x: -7, y: 91 } })
+		expect(() =>
+			createSetKeyerPropertyCommand(0, 'pip', 'preview', { name: 'scale', value: { x: 0.32, y: 0.72 } })
+		).not.toThrow()
+		expect(() =>
+			createSetKeyerPropertyCommand(0, 'pip', 'preview', {
+				name: 'crop',
+				value: { x: 0.136875, y: 0, width: 0.7328125, height: 1 },
+			})
+		).not.toThrow()
+	})
+
 	test('rejects unsafe paths and invalid numeric geometry', () => {
 		for (const key of ['__proto__', 'constructor', 'prototype']) {
 			expect(() =>

@@ -23,6 +23,7 @@ import {
 	M2LXCommandWithContext,
 	M2LXState,
 	resourceStateId,
+	sameCompositionOwnership,
 } from './state'
 
 export interface DeviceOptionsM2LXInternal extends DeviceOptionsM2LX {
@@ -39,6 +40,7 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 	private _commandGeneration = 0
 	private _activationGeneration = 0
 	private _eventId?: string
+	private _compositionOwnership?: NonNullable<M2LXState['mixer']>['composition']
 
 	constructor(deviceId: string, deviceOptions: DeviceOptionsM2LXInternal, getCurrentTime: () => Promise<number>) {
 		super(deviceId, deviceOptions, getCurrentTime)
@@ -58,6 +60,7 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 			this._commandGeneration++
 			this._doOnTime.clearQueueNowAndAfter(0)
 			this.clearStates()
+			this._compositionOwnership = undefined
 			this.emit('connectionChanged', this.getStatus())
 			this.emit('resetResolver')
 		})
@@ -115,6 +118,15 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 				timelineObjId: nextState.mixer?.timelineObjId ?? oldState.mixer.timelineObjId,
 			}
 		}
+		// A DSK allocation mapping is allowed; only independent timeline intent competes with composition ownership.
+		for (const candidate of [nextState.mixer?.composition, nextState.mixer?.previewComposition]) {
+			for (const index of Object.keys(candidate?.dsk ?? {})) {
+				for (const bus of ['program', 'preview'] as const) {
+					const id = keyerStateId(bus, Number(index), true)
+					if (nextState.keyers[id]?.timelineObjId === '') delete nextState.keyers[id]
+				}
+			}
+		}
 		const target = nextState.mixer?.program
 		if (
 			target &&
@@ -127,6 +139,18 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 			assertNativeTransitionAutoPlayDisabled(this._connection.state)
 		}
 		const commands = diffM2LXStates(oldState, nextState)
+		const composition = nextState.mixer?.composition
+		if (composition) {
+			if (this._compositionOwnership && !sameCompositionOwnership(this._compositionOwnership, composition)) {
+				throw new Error('Keep all owned M2L-X composition PiP and DSK indices explicit until standDown')
+			}
+			this._compositionOwnership = {
+				pip: { ...composition.pip },
+				...(composition.dsk ? { dsk: { ...composition.dsk } } : {}),
+			}
+		} else if (this._compositionOwnership && nextState.mixer?.program !== undefined) {
+			throw new Error('Keep all owned M2L-X composition PiP and DSK indices explicit until standDown')
+		}
 
 		this._doOnTime.clearQueueNowAndAfter(previousStateTime)
 		const generation = this._commandGeneration
@@ -196,6 +220,7 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 			this._doOnTime.clearQueueNowAndAfter(0)
 			this.clearStates()
 			this._productionActive = false
+			this._compositionOwnership = undefined
 		}
 	}
 
@@ -354,6 +379,8 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 		const result: M2LXState = { keyers: {} }
 		// The program of a lookahead mixer object is what comes next, so it is parked on preview.
 		let lookaheadPreview: string | undefined
+		let lookaheadComposition: NonNullable<M2LXState['mixer']>['composition']
+		const keyerIntents = new Set<string>()
 
 		for (const mapping of Object.values(mappings)) {
 			if (mapping.mappingType === MappingM2LXType.KEYER) {
@@ -380,7 +407,10 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 
 			if (mapping.mappingType === MappingM2LXType.MIXER && content.type === TimelineContentTypeM2LX.MIXER) {
 				if (isLookahead) {
-					lookaheadPreview = content.mixer.program ?? lookaheadPreview
+					if (content.mixer.program !== undefined) {
+						lookaheadPreview = content.mixer.program
+						lookaheadComposition = content.mixer.composition
+					}
 					continue
 				}
 				if (result.mixer) throw new Error('Multiple M2L-X mixer objects cannot control the same physical mixer')
@@ -397,7 +427,10 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 				content.type === TimelineContentTypeM2LX.KEYER &&
 				!isLookahead
 			) {
-				result.keyers[keyerStateId(mapping.bus, mapping.keyer.index, mapping.keyer.type === M2LXKeyerType.DSK)] = {
+				const id = keyerStateId(mapping.bus, mapping.keyer.index, mapping.keyer.type === M2LXKeyerType.DSK)
+				if (keyerIntents.has(id)) throw new Error(`Multiple M2L-X keyer objects control ${id}`)
+				keyerIntents.add(id)
+				result.keyers[id] = {
 					...content.keyer,
 					index: mapping.keyer.index,
 					keyerType: mapping.keyer.type,
@@ -446,9 +479,10 @@ export class M2LXDevice extends DeviceWithState<M2LXState, DeviceOptionsM2LXInte
 
 		if (lookaheadPreview !== undefined) {
 			if (!result.mixer) {
-				result.mixer = { preview: lookaheadPreview, timelineObjId: '' }
+				result.mixer = { preview: lookaheadPreview, previewComposition: lookaheadComposition, timelineObjId: '' }
 			} else if (result.mixer.preview === undefined) {
 				result.mixer.preview = lookaheadPreview
+				result.mixer.previewComposition = lookaheadComposition
 			}
 		}
 

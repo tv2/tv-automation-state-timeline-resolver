@@ -34,8 +34,11 @@ class MockConnection extends EventEmitter<M2LXConnectionEvents> implements IM2LX
 			program: { 0: { visible: false, source: 'cam1' }, 4: { visible: false, source: '' } },
 			preview: { 0: { visible: false, source: 'cam1' } },
 		},
+		nodes: { mixer: { animations: { keys: {} } } },
 	}
 	commands: M2LXCommand[] = []
+	transitionCompletion?: Promise<void>
+	programDskCompletion?: () => Promise<void>
 
 	async connect(): Promise<void> {
 		this.emit('connected', this.sources, this.state)
@@ -56,6 +59,10 @@ class MockConnection extends EventEmitter<M2LXConnectionEvents> implements IM2LX
 				program: this.state.preview,
 				keyers: { ...this.state.keyers, program: { ...this.state.keyers.preview } },
 			}
+			if (this.transitionCompletion) {
+				await this.transitionCompletion
+				if (!options.isComplete(this.state)) throw new Error('Modeled Take completion timeout')
+			}
 		} else if (command.command === 'set_key_property') {
 			const bus = command.args.target
 			const field = command.args.key_type === 'downstream' ? 'downstreamKeyers' : 'keyers'
@@ -64,7 +71,6 @@ class MockConnection extends EventEmitter<M2LXConnectionEvents> implements IM2LX
 			const property = command.args.property
 			if (property.name === 'visible') {
 				key.visible = property.value
-				if (command.args.key_type === 'downstream' && !property.value) key.opacity = 0
 			} else if (property.name === 'video' || property.name === 'image') {
 				key.source = property.value
 				key.sourceType = property.name
@@ -81,6 +87,12 @@ class MockConnection extends EventEmitter<M2LXConnectionEvents> implements IM2LX
 						[command.args.key_index]: key,
 					},
 				},
+			}
+			if (command.args.key_type === 'downstream') {
+				if (bus === 'program' && property.name === 'visible' && property.value) {
+					await this.programDskCompletion?.()
+				}
+				if (!options.isComplete(this.state)) throw new Error('Modeled DSK completion timeout')
 			}
 		} else if (command.command === 'set_input_volume' || command.command === 'set_input_muted') {
 			for (const input of command.args) {
@@ -176,6 +188,395 @@ describe('M2LXDevice', () => {
 	const mockTime = new MockTime()
 
 	beforeEach(() => mockTime.init())
+
+	test.each([
+		[M2LXTransitionType.CUT, false],
+		[M2LXTransitionType.EFFECT, false],
+		[M2LXTransitionType.CUT, true],
+		[M2LXTransitionType.EFFECT, true],
+	] as const)(
+		'prepares the complete Next layout and Takes it without rebuilding Preview (%s, DSK=%s)',
+		async (transition, withDsk) => {
+			const connection = new MockConnection()
+			const expectedDsk = (value: unknown) => (withDsk ? value : undefined)
+			const dsk = [{ key: { visible: false, rotation: 0 } }, { key: { visible: true, source: 'watermark.png' } }]
+			connection.state.nodes = {
+				mixer: {
+					animations: { keys: {} },
+					program: { upstream_keys: [{ key: { visible: false } }], downstream_keys: withDsk ? dsk : [] },
+					preview: { upstream_keys: [{ key: { visible: false } }], downstream_keys: withDsk ? dsk : [] },
+				},
+			}
+			if (withDsk) {
+				connection.state.downstreamKeyers = {
+					program: { 0: { visible: false, opacity: 0 }, 1: { visible: true, source: 'watermark.png' } },
+					preview: { 0: { visible: false, opacity: 0 }, 1: { visible: true, source: 'watermark.png' } },
+				}
+			}
+			const device = new M2LXDevice('m2lx0', { type: DeviceType.M2LX, connection }, mockTime.getCurrentTime2)
+			const errors: unknown[] = []
+			device.on('commandError', (...args) => errors.push(...args))
+			device.on('error', (...args) => errors.push(...args))
+			await device.init({ baseUrl: 'https://m2lx.test', password: 'password' })
+			const hidden = { pip: { 0: { visible: false } }, ...(withDsk ? { dsk: { 0: { visible: false } } } : {}) }
+			const layout = (x: number, source = 'cam3') => ({
+				...(withDsk
+					? {
+							dsk: {
+								0: {
+									visible: true,
+									source: { type: 'video', name: source },
+									translation: { x, y: 0 },
+									scale: { x: 1, y: 1 },
+									crop: { x: 0, y: 0, width: 1, height: 1 },
+								},
+							},
+					  }
+					: {}),
+				pip: {
+					0: {
+						visible: true,
+						source: { type: 'video', name: source },
+						translation: { x, y: 270 },
+						scale: { x: 0.5, y: 0.5 },
+						crop: { x: 0, y: 0, width: 1, height: 1 },
+					},
+				},
+			})
+			const apply = (time: number, program: string, composition: unknown, next: string, nextComposition: unknown) =>
+				device.handleState(
+					{
+						time,
+						nextEvents: [],
+						layers: {
+							mixer: mixerObject('current', { program, composition, transition: { type: transition } }),
+							next: mixerObject(
+								'next',
+								{ program: next, composition: nextComposition },
+								{ isLookahead: true, lookaheadForLayer: 'mixer' }
+							),
+						},
+					},
+					{
+						mixer: mixerMapping,
+						...(withDsk
+							? {
+									m2lx_dve_graphics: {
+										device: DeviceType.M2LX,
+										deviceId: 'm2lx0',
+										mappingType: MappingM2LXType.KEYER,
+										bus: M2LXMixerBus.PROGRAM,
+										keyer: { type: M2LXKeyerType.DSK, index: 0 },
+									} as MappingM2LX,
+							  }
+							: {}),
+					}
+				)
+			apply(11000, 'cam1', hidden, 'cam2', layout(0))
+			expect(() => serialize(device.queue)).not.toThrow()
+			await mockTime.advanceTimeToTicks(11100)
+			expect(connection.state.program).toBe('cam1')
+			expect(connection.state.keyers.program[0].visible).toBe(false)
+			expect(connection.state.preview).toBe('cam2')
+			expect(connection.state.keyers.preview[0]).toMatchObject({
+				visible: true,
+				source: 'cam3',
+				translation: { x: 0, y: 270 },
+				scale: { x: 0.5, y: 0.5 },
+			})
+			expect(connection.state.downstreamKeyers?.program[0]).toEqual(expectedDsk({ visible: false, opacity: 0 }))
+			expect(connection.state.downstreamKeyers?.preview[0]).toEqual(
+				expectedDsk(
+					expect.objectContaining({
+						visible: true,
+						source: 'cam3',
+						sourceType: 'video',
+						opacity: 1,
+						translation: { x: 0, y: 0 },
+						scale: { x: 1, y: 1 },
+						crop: { x: 0, y: 0, width: 1, height: 1 },
+					})
+				)
+			)
+			expect(connection.state.downstreamKeyers?.preview[1]).toEqual(
+				expectedDsk({ visible: true, source: 'watermark.png' })
+			)
+			connection.commands = []
+			apply(12000, 'cam1', hidden, 'cam2', layout(960, 'cam1'))
+			await mockTime.advanceTimeToTicks(12100)
+			expect(connection.state.keyers.preview[0].translation).toEqual({ x: 960, y: 270 })
+			expect(connection.state.keyers.preview[0].source).toBe('cam1')
+			expect(connection.commands.some((command) => command.command === 'transition')).toBe(false)
+			connection.commands = []
+			apply(13000, 'cam2', layout(960, 'cam1'), 'cam1', undefined)
+			await mockTime.advanceTimeToTicks(13100)
+			expect(connection.commands[0].command).toBe('transition')
+			expect(connection.commands[0].args).toEqual({ effect_enabled: transition === M2LXTransitionType.EFFECT })
+			expect(connection.commands.filter((command) => command.command === 'transition')).toHaveLength(1)
+			expect(connection.state.program).toBe('cam2')
+			expect(connection.state.keyers.program[0]).toMatchObject({
+				visible: true,
+				translation: { x: 960, y: 270 },
+			})
+			expect(connection.state.preview).toBe('cam1')
+			expect(connection.state.keyers.preview[0].visible).toBe(false)
+			expect(connection.state.downstreamKeyers?.program[0]).toEqual(
+				expectedDsk(
+					expect.objectContaining({
+						visible: true,
+						source: 'cam1',
+						opacity: 1,
+						translation: { x: 960, y: 0 },
+					})
+				)
+			)
+			expect(connection.state.downstreamKeyers?.preview[0].visible).toBe(expectedDsk(false))
+			connection.commands = []
+			apply(14000, 'cam1', hidden, 'cam2', layout(0))
+			await mockTime.advanceTimeToTicks(14100)
+			expect(connection.commands[0].command).toBe('transition')
+			expect(connection.state.keyers.program[0].visible).toBe(false)
+			expect(connection.state.keyers.preview[0].visible).toBe(true)
+			expect(connection.state.downstreamKeyers?.program[0].visible).toBe(expectedDsk(false))
+			expect(connection.state.downstreamKeyers?.preview[0].visible).toBe(expectedDsk(true))
+			expect(errors).toEqual([])
+			await device.terminate()
+		}
+	)
+
+	test.each([
+		[M2LXTransitionType.CUT, 'none'],
+		[M2LXTransitionType.EFFECT, 'none'],
+		[M2LXTransitionType.CUT, 'video'],
+		[M2LXTransitionType.EFFECT, 'video'],
+		[M2LXTransitionType.CUT, 'dsk'],
+		[M2LXTransitionType.EFFECT, 'dsk'],
+	] as const)(
+		'orders video, independent DSK completion and following Next (%s, failure=%s)',
+		async (transition, failure) => {
+			const connection = new MockConnection()
+			const watermark = { visible: true, source: 'watermark.png', opacity: 1 }
+			const progress = { running: false, value: 0 }
+			connection.state.downstreamKeyers = {
+				program: { 0: { visible: false, opacity: 0 }, 1: { ...watermark } },
+				preview: { 0: { visible: false, opacity: 0 }, 1: { ...watermark } },
+			}
+			connection.state.nodes = {
+				mixer: {
+					animations: {
+						keys: {
+							7: {
+								key_type: 'downstream',
+								key_index: 0,
+								target: 'program',
+								animations: { fade: { progress } },
+							},
+						},
+					},
+					program: { upstream_keys: [], downstream_keys: [{ key: { visible: false } }] },
+					preview: { upstream_keys: [], downstream_keys: [{ key: { visible: false } }] },
+				},
+			}
+			const device = new M2LXDevice('m2lx0', { type: DeviceType.M2LX, connection }, mockTime.getCurrentTime2)
+			const errors: unknown[] = []
+			device.on('commandError', (...args) => errors.push(...args))
+			device.on('error', (...args) => errors.push(...args))
+			await device.init({ baseUrl: 'https://m2lx.test', password: 'password' })
+			const hidden = { pip: {}, dsk: { 0: { visible: false } } }
+			const visible = {
+				pip: {},
+				dsk: {
+					0: {
+						visible: true,
+						source: { type: 'video', name: 'cam3' },
+						translation: { x: 0, y: 0 },
+						scale: { x: 1, y: 1 },
+						crop: { x: 0, y: 0, width: 1, height: 1 },
+					},
+				},
+			}
+			const apply = (
+				time: number,
+				program: string,
+				composition: unknown,
+				preview: string,
+				previewComposition?: unknown
+			) =>
+				device.handleState(
+					{
+						time,
+						nextEvents: [],
+						layers: {
+							mixer: mixerObject('current', { program, composition, transition: { type: transition } }),
+							next: mixerObject(
+								'next',
+								{ program: preview, composition: previewComposition },
+								{ isLookahead: true, lookaheadForLayer: 'mixer' }
+							),
+						},
+					},
+					{ mixer: mixerMapping }
+				)
+			apply(11000, 'cam1', hidden, 'cam2', visible)
+			await mockTime.advanceTimeToTicks(11100)
+			connection.commands = []
+			let finish!: () => void
+			connection.transitionCompletion = new Promise<void>((resolve) => {
+				finish = resolve
+			})
+			let finishDsk!: () => void
+			const dskCompletion = new Promise<void>((resolve) => {
+				finishDsk = resolve
+			})
+			connection.programDskCompletion = async () => {
+				progress.running = true
+				connection.state.downstreamKeyers!.program[0].opacity = 0
+				await dskCompletion
+			}
+			apply(12000, 'cam2', visible, 'cam1')
+			await mockTime.advanceTimeToTicks(12100)
+			expect(connection.commands.map((command) => command.command)).toEqual(['transition'])
+			expect(connection.state.preview).toBe('cam2')
+			expect(connection.state.downstreamKeyers.preview[0].visible).toBe(true)
+			// Even a landed Program source is insufficient while native transition is running.
+			connection.state.transition = { running: true, progress: 0.9 }
+			await mockTime.advanceTimeToTicks(12150)
+			expect(connection.commands).toHaveLength(1)
+			connection.state.transition = { running: false, progress: 1 }
+			if (failure === 'video') connection.state.program = 'cam1'
+			finish()
+			await mockTime.advanceTimeToTicks(12200)
+			expect(progress.running).toBe(failure !== 'video')
+			expect(connection.state.downstreamKeyers.program[0]).toMatchObject({ visible: failure !== 'video', opacity: 0 })
+			expect(connection.state.preview).toBe('cam2')
+			expect(connection.state.downstreamKeyers.preview[0].visible).toBe(true)
+			expect(
+				connection.commands
+					.slice(1)
+					.every(
+						(command) =>
+							command.command === 'set_key_property' &&
+							command.args.target === 'program' &&
+							command.args.key_type === 'downstream' &&
+							command.args.key_index === 0
+					)
+			).toBe(true)
+			expect(() => serialize(device.queue)).not.toThrow()
+			if (failure !== 'video') {
+				progress.running = false
+				if (failure !== 'dsk') connection.state.downstreamKeyers.program[0].opacity = 1
+				finishDsk()
+				await mockTime.advanceTimeToTicks(12300)
+			}
+			expect(errors.map(String).join(' ')).toMatch(
+				failure === 'none'
+					? /^$/
+					: failure === 'video'
+					? /Modeled Take completion timeout/
+					: /Modeled DSK completion timeout/
+			)
+			expect(connection.commands[connection.commands.length - 1]).toMatchObject(
+				failure === 'video'
+					? { command: 'transition' }
+					: failure === 'dsk'
+					? {
+							command: 'set_key_property',
+							args: { target: 'program', property: { name: 'visible', value: true } },
+					  }
+					: { command: 'set_input_property', args: { input_type: 'preview', property: { value: 'cam1' } } }
+			)
+			expect(connection.state.program).toBe(failure === 'video' ? 'cam1' : 'cam2')
+			expect(connection.state.downstreamKeyers.program[0]).toMatchObject({
+				visible: failure !== 'video',
+				opacity: failure === 'none' ? 1 : 0,
+			})
+			expect(connection.state.downstreamKeyers.preview[0].visible).toBe(failure !== 'none')
+			expect(connection.state.preview).toBe(failure === 'none' ? 'cam1' : 'cam2')
+			expect(connection.state.downstreamKeyers.program[1]).toEqual(watermark)
+			expect(connection.state.downstreamKeyers.preview[1]).toEqual(watermark)
+			expect(() => apply(12400, 'cam1', { pip: {}, dsk: { 1: { visible: false } } }, 'cam2')).toThrow('Keep all owned')
+			await device.terminate()
+		}
+	)
+
+	test.each([M2LXMixerBus.PROGRAM, M2LXMixerBus.PREVIEW])(
+		'rejects duplicate/competing independent DSK intents on %s and retains ownership until standDown/reconnection',
+		async (bus) => {
+			const connection = new MockConnection()
+			const device = new M2LXDevice('m2lx0', { type: DeviceType.M2LX, connection }, mockTime.getCurrentTime2)
+			await device.init({ baseUrl: 'https://m2lx.test', password: 'password' })
+			const mapping: MappingM2LX = {
+				device: DeviceType.M2LX,
+				deviceId: 'm2lx0',
+				mappingType: MappingM2LXType.KEYER,
+				bus,
+				keyer: { type: M2LXKeyerType.DSK, index: 0 },
+			}
+			expect(() =>
+				device.handleState(
+					{
+						time: 11000,
+						nextEvents: [],
+						layers: {
+							one: controlObject('one', {
+								deviceType: DeviceType.M2LX,
+								type: TimelineContentTypeM2LX.KEYER,
+								keyer: { visible: false },
+							}),
+							two: controlObject('two', {
+								deviceType: DeviceType.M2LX,
+								type: TimelineContentTypeM2LX.KEYER,
+								keyer: { visible: true },
+							}),
+						},
+					},
+					{ one: mapping, two: mapping }
+				)
+			).toThrow('Multiple M2L-X keyer objects')
+			expect(() =>
+				device.handleState(
+					{
+						time: 11500,
+						nextEvents: [],
+						layers: {
+							mixer: mixerObject('composition', {
+								program: 'cam1',
+								composition: { pip: {}, dsk: { 0: { visible: false } } },
+							}),
+							one: controlObject('one', {
+								deviceType: DeviceType.M2LX,
+								type: TimelineContentTypeM2LX.KEYER,
+								keyer: { visible: false },
+							}),
+						},
+					},
+					{ mixer: mixerMapping, one: mapping }
+				)
+			).toThrow('DSK 0 cannot also')
+			expect(connection.commands).toEqual([])
+			const apply = (time: number, index: number) =>
+				device.handleState(
+					{
+						time,
+						nextEvents: [],
+						layers: {
+							mixer: mixerObject('owned', {
+								program: 'cam1',
+								composition: { pip: {}, dsk: { [index]: { visible: false } } },
+							}),
+						},
+					},
+					{ mixer: mixerMapping }
+				)
+			apply(12000, 0)
+			expect(() => apply(13000, 1)).toThrow('Keep all owned')
+			await device.standDown()
+			expect(() => apply(14000, 1)).not.toThrow()
+			await connection.connect()
+			expect(() => apply(15000, 0)).not.toThrow()
+			await device.terminate()
+		}
+	)
 
 	test('converts and queues composition Takes, same-background layout changes and explicit cleanup', async () => {
 		const connection = new MockConnection()

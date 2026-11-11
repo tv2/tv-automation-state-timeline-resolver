@@ -214,6 +214,9 @@ function validateKeyerProperty(property: M2LXKeyerProperty): void {
 			if (typeof field === 'number') assertFinite(field, `${property.name}.${name}`)
 		}
 	}
+	if (property.name === 'translation' && ![property.value.x, property.value.y].every(Number.isInteger)) {
+		throw new Error('M2L-X translation x/y must use whole pixels')
+	}
 	if (property.name === 'scale' && (property.value.x <= 0 || property.value.y <= 0)) {
 		throw new Error('M2L-X scale must be greater than zero')
 	}
